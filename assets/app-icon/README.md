@@ -45,7 +45,7 @@ Apple公式: [Icon Composer](https://developer.apple.com/icon-composer/) / [Xcod
 
 ## 再書き出しと確認範囲
 
-Windows版もLightの完成画像を使用します。`windows/assets/PhotoWall-apple-style.ico`は16 / 24 / 32 / 48 / 64 / 128 / 256 pxを収録し、EXE・設定画面・タスクトレイで共通利用します。ICOのみの再書き出し:
+Windows版は[背景透過PNG](PhotoWall-windows-transparent.png)を使用します。Lightと同じ3枚のパネルを背景から切り抜いたWindows専用リソースで、Mac用の背景込み画像とは別に保存しています。`windows/assets/PhotoWall-apple-style.ico`は16 / 24 / 32 / 48 / 64 / 128 / 256 pxを収録し、EXE・設定画面・タスクトレイで共通利用します。元PNGのalphaを維持してICOのみを書き出します:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File windows/scripts/Export-AppIcon.ps1

@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $windowsRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $windowsRoot
-$sourcePath = Join-Path $repoRoot 'assets/app-icon/PhotoWall-light.png'
+$sourcePath = Join-Path $repoRoot 'assets/app-icon/PhotoWall-windows-transparent.png'
 $destination = Join-Path $windowsRoot 'assets/PhotoWall-apple-style.ico'
 $sizes = @(16, 24, 32, 48, 64, 128, 256)
 $source = [System.Drawing.Image]::FromFile($sourcePath)
