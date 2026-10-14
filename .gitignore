@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.tools/
+.vs/
+artifacts/
+*.user
+*.lnk
+photos/**
+!photos/.gitkeep
