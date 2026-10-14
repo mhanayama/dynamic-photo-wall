@@ -1,7 +1,7 @@
 # Third-party components
 
 The application uses .NET / WPF (Microsoft, MIT) and SkiaSharp 3.119.4 (Microsoft / Mono contributors, MIT).
-SkiaSharp is used only for local WebP decoding. Its Windows native assets include Skia and codec dependencies with their own permissive licenses.
+SkiaSharp is used for local WebP decoding and blurring the dynamic ambient background. Its Windows native assets include Skia and codec dependencies with their own permissive licenses.
 
 - .NET license: https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
 - WPF license: https://github.com/dotnet/wpf/blob/main/LICENSE.TXT

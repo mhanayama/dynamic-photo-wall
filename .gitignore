@@ -5,6 +5,7 @@
 artifacts/
 *.user
 *.lnk
+/DynamicPhotoWall.exe
 photos/**
 !photos/.gitkeep
 

@@ -4,11 +4,13 @@ Windows 11の選択したディスプレイを、写真がゆっくり動くギ�
 
 ## 起動
 
-プロジェクト直下の **`Dynamic Photo Wall`（ショートカット）をダブルクリック**すると起動します。PowerShellの操作は不要です。このショートカットはデスクトップにコピーしても使用できます。ビルド時に自動で作成・更新します。手動で再作成する場合は `windows\scripts\Create-Shortcut.ps1` を実行してください。
+プロジェクト直下の **`DynamicPhotoWall.exe`をダブルクリック**すると起動します。Windows x64向けのReleaseビルドで、.NETランタイム・画像処理ライブラリ・アイコンを同梱した単一EXEです。DLLやPowerShellの操作、.NETの別途インストールは不要です。
+
+`Dynamic Photo Wall`ショートカットも同じEXEを起動します。ビルド時に自動で作成・更新します。手動で再作成する場合は `windows\scripts\Create-Shortcut.ps1` を実行してください。
 
 リポジトリ直下から `windows\Start-PhotoWall.ps1` を実行してください。ルートの `photos` を初期の写真フォルダーとして検出します。
 
-または `artifacts\win-x64\DynamicPhotoWall.exe` を起動してください。配布フォルダー全体が必要です。.NETランタイムは同梱されています。
+ビルド元のEXEとドキュメント・ライセンス類は `artifacts\win-x64-single-file` に保存します。EXEを別のフォルダーへ移しても起動できます。写真はEXEに含めず、Photos設定で選択します。設定・キャッシュは引き続きユーザーのLocalAppDataへ保存します。初回起動時には、同梱したネイティブライブラリを.NETがユーザーの一時領域へ展開します。
 
 1. **Display**で表示対象を選びます。解像度・座標・接続状態を確認できます。
 2. **Photos**に写真フォルダーを追加します。複数フォルダーと再帰検索に対応しています。
@@ -22,7 +24,7 @@ Windows 11の選択したディスプレイを、写真がゆっくり動くギ�
 ## 見せ方
 
 - **Gallery**: 画面の縦横比に合わせて最大5枚。写真全体を表示し、写真ごとに独立して更新します。更新時には位置とサイズも滑らかに変わります。
-- **横スクロールGallery**: 従来のGalleryとは別モードです。上下の余白は初期値で各8pxに抑え、写真がゆっくり横に流れ、画面外へ出た写真を新しい写真へ交換します。後続写真を先読みし、同時表示の重複を避けます。速度はMotionから変更できます。
+- **Scrolling Gallery**: 従来のGalleryとは別モードです。上下の余白は初期値で各8pxに抑え、写真がゆっくり横に流れ、画面外へ出た写真を新しい写真へ交換します。後続写真を先読みし、同時表示の重複を避けます。速度はMotionから変更できます。
 - **Vertical Pan**: 横幅を画面に合わせ、最初に写真の下側を見せ、ビューポートを上側へ移します。画像自体のY座標は負のオフセットから0へ移動します。
 - 縦パンの幅は初期値で画面の96%を上限とし、中央に配置します。Windows標準のローカル顔検出で顔を見つけた場合は、顔全体と頭上の余白が見える幅・終了位置へ調整し、終了位置で3秒保持します。顔が見つからない写真は通常のパンを使用します。Compositionから表示幅と顔位置での停止を変更できます。
 - **Horizontal Pan**: 画面より横長の写真を高さに合わせ、左右いずれかの方向へ移します。はみ出しがない写真は自動選択しません。
@@ -33,7 +35,7 @@ Windows 11の選択したディスプレイを、写真がゆっくり動くギ�
 
 抽選ウェイトはGallery 45 / Pan合計35 / Zoom 20です。適性のないモードとウェイト0のモードは候補から外れます。同じモードが3回連続しないようにするため、長期の実測割合は設定ウェイトから多少変わります。少数の写真では直近履歴の制約を緩めますが、1つのGalleryで同じファイルを重複表示しません。
 
-Galleryと横スクロールGalleryを両方有効にすると、Galleryのウェイト45を2モードで分けます。Compositionで個別に有効・無効を選べます。
+GalleryとScrolling Galleryを両方有効にすると、Galleryのウェイト45を2モードで分けます。Compositionで個別に有効・無効を選べます。
 
 背景は表示中の写真・切り取り位置に追従するガラス風の色合いです。パン、横スクロール、Galleryの個別更新に合わせて変化します。Appearanceの「表示中の写真に追従するガラス風の背景」で単色背景へ切り替えられます。写真の4pxのフチぼかしは削除しました。写真の表示サイズをフチ処理のために縮めません。
 
@@ -50,13 +52,13 @@ JPEG / PNG / WebP対応。EXIFの8方向の回転・反転を適用します。H
 
 設定が壊れている場合はコピーを保存して初期値で起動します。`--data-dir <directory>` で保存場所を変更できます。`--tray` は設定画面を開かず起動します（表示対象が未設定の初回を除く）。フォルダー変更は監視し、通知漏れに備えて5分ごとにキャッシュを使って照合します。
 
-画像デコードはUIスレッド外で行い、画面に合わせたサイズを選びます。LRUキャッシュ予算は初期値256MiBです。この予算はキャッシュだけの値で、表示中・プリロード中・WPF/GPUのメモリは別に使用します。デコードは1件ずつ実行し、次の構成を1つだけプリロードします。横スクロールGalleryでは次に流入する写真も先読みします。30fps制限は撤廃し、WPFの描画スレッドとDWMの画面合成にペーシングを任せています。パンはRenderTransformで動かすため毎フレームのレイアウト計算が不要です。アプリからDXGIのPresentを直接制御する方式ではなく、厳密な提示フレーム数はWPF・DWM・GPUドライバーに依存します。
+画像デコードはUIスレッド外で行い、画面に合わせたサイズを選びます。LRUキャッシュ予算は初期値256MiBです。この予算はキャッシュだけの値で、表示中・プリロード中・WPF/GPUのメモリは別に使用します。デコードは1件ずつ実行し、次の構成を1つだけプリロードします。Scrolling Galleryでは次に流入する写真も先読みします。30fps制限は撤廃し、WPFの描画スレッドとDWMの画面合成にペーシングを任せています。パンはRenderTransformで動かすため毎フレームのレイアウト計算が不要です。アプリからDXGIのPresentを直接制御する方式ではなく、厳密な提示フレーム数はWPF・DWM・GPUドライバーに依存します。
 
 ## ビルドとテスト
 
 Windows 11 x64、.NET 10 SDKが必要です。ソリューションは `windows/DynamicPhotoWall.sln` です。初回の復元にはNuGet接続が必要です。プロジェクト内の `.tools\dotnet` があればビルドスクリプトが優先します。
 
-リポジトリ直下から実行します。生成物はルートの `artifacts/win-x64` に出力します。
+リポジトリ直下から実行します。生成物は `artifacts/win-x64-single-file` に出力し、ルートへ `DynamicPhotoWall.exe` をコピーします。再ビルドする前に、起動中のアプリをタスクトレイの「終了」で閉じてください。
 
 ```powershell
 .\windows\scripts\Build.ps1 -Test
@@ -68,7 +70,7 @@ Windows 11 x64、.NET 10 SDKが必要です。ソリューションは `windows/
 
 ```powershell
 Set-Location windows
-dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../artifacts/win-x64
+dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../artifacts/win-x64-single-file -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PublishTrimmed=false
 dotnet build tests/DynamicPhotoWall.Tests/DynamicPhotoWall.Tests.csproj -c Release
 dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/smoke-data
 ```
@@ -90,7 +92,7 @@ dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/Dyna
 - 前景の単一ウィンドウが対象画面の作業領域を覆う場合に一時停止します。複数ウィンドウの合計による完全遮蔽、仮想デスクトップの全状態は判定しません。
 - JPEGの撮影日時を取得します。WebPは寸法・EXIF向きを取得しますが撮影日時の読み取りには未対応です。HEICは環境のコーデックに依存します。
 - 極端な巨大画像は安全のためスキップし、1画像のデコードを約1600万画素に制限します。縦に極端に長い写真のパンでは表示が多少柔らかくなる場合があります。
-- 本体は署名なし・インストーラーなしです。配布物はフォルダー単位で保管してください。ウルトラワイドでZoomを選ぶと写真の上下を切り取ることがあります。
+- 本体は署名なし・インストーラーなしで、単一EXEから起動できます。再配布時は同梱のライセンス類も添付してください。ウルトラワイドでZoomを選ぶと写真の上下を切り取ることがあります。
 - Explorerの強制再起動、ケーブルの実際の抜き差し、混在DPI変更、長時間の連続運転は手動受け入れ確認が残っています。
 
 [設計と主要リスク](docs/ARCHITECTURE.md) / [テスト結果](docs/TEST-RESULTS.md) / [外部ライブラリ](THIRD-PARTY-NOTICES.md)

@@ -6,6 +6,7 @@ namespace DynamicPhotoWall.UI;
 public sealed class TrayController : IDisposable
 {
     private readonly Forms.NotifyIcon icon;
+    private readonly System.Drawing.Icon trayIcon;
     private readonly Forms.ToolStripMenuItem pause;
     private readonly WallController controller;
     private readonly SettingsManager manager;
@@ -23,7 +24,10 @@ public sealed class TrayController : IDisposable
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("設定を開く", null, (_, _) => OpenSettings());
         menu.Items.Add("終了", null, async (_, _) => await ExitAsync());
-        icon = new Forms.NotifyIcon { Text = "Dynamic Photo Wall", Icon = System.Drawing.SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+        using (var stream = Application.GetResourceStream(new Uri("/DynamicPhotoWall;component/Assets/PhotoWall.ico", UriKind.Relative))!.Stream)
+        using (var source = new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize))
+            trayIcon = (System.Drawing.Icon)source.Clone();
+        icon = new Forms.NotifyIcon { Text = "Dynamic Photo Wall", Icon = trayIcon, ContextMenuStrip = menu, Visible = true };
         icon.DoubleClick += (_, _) => OpenSettings(); controller.Changed += Update;
     }
     private void Update()
@@ -41,5 +45,5 @@ public sealed class TrayController : IDisposable
         if (exiting) return; exiting = true;
         settings?.Close(); icon.Visible = false; await controller.DisposeAsync(); Dispose(); Application.Current.Shutdown();
     }
-    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); }
+    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); trayIcon.Dispose(); }
 }

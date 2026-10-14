@@ -7,9 +7,13 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $sdk = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
 if (-not (Test-Path -LiteralPath $sdk)) { $sdk = 'dotnet' }
 if (Test-Path -LiteralPath (Join-Path $projectRoot '.tools\packages')) { $env:NUGET_PACKAGES = Join-Path $projectRoot '.tools\packages' }
-$release = Join-Path $projectRoot 'artifacts\win-x64'
-& $sdk publish 'src\DynamicPhotoWall\DynamicPhotoWall.csproj' -c Release -r win-x64 --self-contained true -o $release --nologo
+$release = Join-Path $projectRoot 'artifacts\win-x64-single-file'
+& $sdk publish 'src\DynamicPhotoWall\DynamicPhotoWall.csproj' -c Release -r win-x64 --self-contained true -o $release --nologo `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+    -p:DebugType=embedded -p:PublishTrimmed=false
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+$nativeSymbols = Join-Path $release 'libSkiaSharp.pdb'
+if (Test-Path -LiteralPath $nativeSymbols) { Remove-Item -LiteralPath $nativeSymbols -Force }
 Copy-Item -LiteralPath 'README.md', 'THIRD-PARTY-NOTICES.md' -Destination $release -Force
 New-Item -ItemType Directory -Path (Join-Path $release 'docs') -Force | Out-Null
 Copy-Item -LiteralPath 'docs\ARCHITECTURE.md', 'docs\TEST-RESULTS.md' -Destination (Join-Path $release 'docs') -Force
@@ -33,5 +37,6 @@ if ($Test -or $DesktopTest) {
     & $sdk @testArguments
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 }
+Copy-Item -LiteralPath (Join-Path $release 'DynamicPhotoWall.exe') -Destination (Join-Path $projectRoot 'DynamicPhotoWall.exe') -Force
 & (Join-Path $PSScriptRoot 'Create-Shortcut.ps1')
-Write-Output "Ready: $projectRoot\artifacts\win-x64\DynamicPhotoWall.exe"
+Write-Output "Ready: $projectRoot\DynamicPhotoWall.exe (self-contained single-file Windows x64)"

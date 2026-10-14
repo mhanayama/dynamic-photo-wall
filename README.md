@@ -39,14 +39,14 @@ dynamic-photo-wall/
 
 ## Windows
 
-リポジトリ直下から実行します。Windows 11 x64と.NET 10 SDKが必要です。
+ビルドにはWindows 11 x64と.NET 10 SDKが必要です。リポジトリ直下から実行します。作成したEXEの利用には.NETの別途インストールは不要です。
 
 ```powershell
 .\windows\scripts\Build.ps1 -Test
 .\windows\Start-PhotoWall.ps1
 ```
 
-実行ファイルは `artifacts/win-x64`、ショートカットはリポジトリ直下に作成します。Visual Studioでは `windows/DynamicPhotoWall.sln` を開きます。設定・操作・制約は [Windows版README](windows/README.md) を参照してください。
+ビルド後はリポジトリ直下の **`DynamicPhotoWall.exe`をダブルクリック**して起動できます。ランタイム同梱の単一EXEです。ビルド元と配布用ドキュメントは `artifacts/win-x64-single-file`、ショートカットはリポジトリ直下に作成します。Visual Studioでは `windows/DynamicPhotoWall.sln` を開きます。設定・操作・制約は [Windows版README](windows/README.md) を参照してください。
 
 ## macOS
 

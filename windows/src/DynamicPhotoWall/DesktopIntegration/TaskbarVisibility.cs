@@ -47,7 +47,13 @@ public sealed class TaskbarVisibility : IDisposable
                 var eventName = $"Local\\DynamicPhotoWall.Taskbar.{Guid.NewGuid():N}";
                 var release = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
                 using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, eventName + ".Ready");
-                var executable = Path.Combine(AppContext.BaseDirectory, "DynamicPhotoWall.exe");
+                // Relaunch the original bundle, including after the user moves
+                // or renames a portable single-file executable. Test runners
+                // and dotnet-hosted builds use the adjacent application host.
+                var processPath = Environment.ProcessPath;
+                var executable = System.Reflection.Assembly.GetEntryAssembly() == typeof(TaskbarVisibility).Assembly
+                    && processPath != null && !Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+                    ? processPath : Path.Combine(AppContext.BaseDirectory, "DynamicPhotoWall.exe");
                 Process? guard = null;
                 try
                 {

@@ -1,7 +1,8 @@
 <Window x:Class="DynamicPhotoWall.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dynamic Photo Wall — 設定" Width="880" Height="760" MinWidth="760" MinHeight="640"
+        Title="Dynamic Photo Wall — 設定" Icon="/DynamicPhotoWall;component/Assets/PhotoWall.ico"
+        Width="880" Height="760" MinWidth="760" MinHeight="640"
         Background="#14161C" Foreground="#E8EAF0" FontFamily="Yu Gothic UI, Segoe UI" FontSize="14"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
@@ -51,7 +52,7 @@
             <TabItem Header="Composition"><ScrollViewer><StackPanel>
                 <TextBlock Text="表示モード" FontSize="20"/>
                 <CheckBox Content="Gallery — 複数の写真を並べる" IsChecked="{Binding GalleryEnabled}"/>
-                <CheckBox Content="横スクロールGallery — 新しい写真が横から流れてくる" IsChecked="{Binding GalleryScrollEnabled}"/>
+                <CheckBox Content="Scrolling Gallery — 新しい写真が横から流れてくる" IsChecked="{Binding GalleryScrollEnabled}"/>
                 <CheckBox Content="Vertical Pan — 縦写真を下側から上側へ見せる" IsChecked="{Binding VerticalPanEnabled}"/>
                 <CheckBox Content="Horizontal Pan — パノラマを左右に見せる" IsChecked="{Binding HorizontalPanEnabled}"/>
                 <CheckBox Content="Cinematic Zoom — ゆっくり拡大・縮小" IsChecked="{Binding ZoomEnabled}"/>
@@ -74,7 +75,7 @@
             <TabItem Header="Motion"><ScrollViewer><StackPanel>
                 <TextBlock Text="ゆったりとしたモーション" FontSize="20"/>
                 <TextBlock Text="パン速度（物理px / 秒、5〜500）"/><TextBox Text="{Binding PanPixelsPerSecond, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="横スクロールGalleryの速度（px / 秒、5〜200）"/><TextBox Text="{Binding GalleryScrollPixelsPerSecond, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Scrolling Galleryの速度（px / 秒、5〜200）"/><TextBox Text="{Binding GalleryScrollPixelsPerSecond, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="ズームの所要時間（秒、10〜600）"/><TextBox Text="{Binding ZoomSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="最大ズーム倍率（1.0〜1.15）"/><TextBox Text="{Binding MaxZoom, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="クロスフェード（秒、0.2〜10）"/><TextBox Text="{Binding FadeSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
