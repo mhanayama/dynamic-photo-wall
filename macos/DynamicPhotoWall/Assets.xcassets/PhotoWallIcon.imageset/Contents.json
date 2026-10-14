@@ -1,0 +1,22 @@
+{
+    "images":  [
+                   {
+                       "filename":  "PhotoWall-light.png",
+                       "idiom":  "universal"
+                   },
+                   {
+                       "filename":  "PhotoWall-dark.png",
+                       "idiom":  "universal",
+                       "appearances":  [
+                                           {
+                                               "value":  "dark",
+                                               "appearance":  "luminosity"
+                                           }
+                                       ]
+                   }
+               ],
+    "info":  {
+                 "author":  "xcode",
+                 "version":  1
+             }
+}
