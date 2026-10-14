@@ -88,7 +88,7 @@ Releaseのpackagingは上記のCLI手順、またはXcodeのProduct → Archive�
 
 ## 管理するファイル
 
-アプリアイコンはLightを既定にし、Dark / Liquid Glass風のリソースもアセットカタログに収録しています。変更方法とネイティブLiquid Glassとの違いは [アイコンリソース](../assets/app-icon/README.md) を参照してください。
+アプリアイコンはIcon Composerの `DynamicPhotoWall/PhotoWall.icon` を使用し、DefaultにLight、DarkにDark、MonoにLiquid Glass版のPNGを割り当てています。Debug／ReleaseともApp Icon名は `PhotoWall` です。編集方法は [アイコンリソース](../assets/app-icon/README.md) を参照してください。
 
 アプリ・テスト・アセット・Xcodeプロジェクト・共有スキーム・ドキュメントを親のGitリポジトリで管理します。`xcuserdata`、DerivedData、コンパイルキャッシュは個人環境の状態として除外します。
 
