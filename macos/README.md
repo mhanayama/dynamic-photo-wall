@@ -4,7 +4,7 @@ SwiftUIで設定とシーンを構成し、AppKitで対象ディスプレイの�
 
 ## 開発環境と起動
 
-現在のプロジェクトはmacOS 27.0以降を対象とし、Xcode 27.0でビルド確認しています。App Sandboxとユーザー選択フォルダの読取り権限を使用します。
+現在のプロジェクトはApple Silicon（arm64）搭載MacのmacOS 27.0以降を対象とし、Xcode 27.0でビルド確認しています。Debug／Releaseともarm64専用です。App Sandboxとユーザー選択フォルダの読取り権限を使用します。
 
 リポジトリ直下から開きます。
 
@@ -28,6 +28,29 @@ xcodebuild build \
 ```
 
 これは署名なしのローカルコンパイル確認です。Xcodeからの実行や配布では、用途に合わせてSigning設定を使用してください。
+
+## Releaseのパッケージ化
+
+CLIでもReleaseのarchiveとZIPを作成できます。以下はローカル実行向けのアドホック署名を使用し、App Sandbox権限を保持する手順です。
+
+```sh
+mkdir -p artifacts/macos-release
+xcodebuild archive \
+  -project macos/DynamicPhotoWall.xcodeproj \
+  -scheme DynamicPhotoWall \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath artifacts/macos-release/DerivedData \
+  -archivePath artifacts/macos-release/DynamicPhotoWall.xcarchive \
+  CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES
+
+ditto -c -k --sequesterRsrc --keepParent \
+  artifacts/macos-release/DynamicPhotoWall.xcarchive/Products/Applications/DynamicPhotoWall.app \
+  artifacts/macos-release/DynamicPhotoWall-macos-arm64.zip
+```
+
+プロジェクトの `ARCHS = arm64` を使用するため、Intel向けの実行ファイルは含みません。この手順ではDeveloper ID署名・公証は行いません。archiveとパッケージの生成だけでは、実行時の動作確認にはなりません。
 
 ## テスト
 
@@ -61,7 +84,7 @@ P0の画面ID・再生位置・走査競合・空ライブラリ・無効モー�
 
 ライブラリ更新時の表示保持、横Galleryの次画像準備待ち、全件読込み失敗後の待機／再試行、表示幅に合わせた寸法別デコードも実装済みです。[機能差レビュー](WINDOWS_PARITY_REVIEW.md) に修正範囲と残る確認を記載しています。
 
-packagingはXcodeで行います。CLIではアプリとテストコードのビルド確認までを行います。
+Releaseのpackagingは上記のCLI手順、またはXcodeのProduct → Archiveで行えます。
 
 ## 管理するファイル
 

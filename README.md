@@ -50,7 +50,7 @@ dynamic-photo-wall/
 
 ## macOS
 
-Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` スキームで起動します。現在のプロジェクトの対象OSはmacOS 27.0以降です。
+Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` スキームで起動します。Apple Silicon（arm64）専用で、対象OSはmacOS 27.0以降です。
 
 ```sh
 open macos/DynamicPhotoWall.xcodeproj
