@@ -1,86 +1,20 @@
 import AppKit
-import ImageIO
 import SwiftUI
-
-private final class PhotoDataCache: @unchecked Sendable {
-    static let shared = PhotoDataCache()
-
-    private let cache = NSCache<NSURL, NSData>()
-
-    private init() {
-        cache.totalCostLimit = 256 * 1_024 * 1_024
-    }
-
-    func data(for url: URL) async -> Data? {
-        if let cached = cache.object(forKey: url as NSURL) {
-            return cached as Data
-        }
-
-        let data = await Task.detached(priority: .userInitiated) {
-            try? Data(contentsOf: url, options: [.mappedIfSafe])
-        }.value
-
-        if let data {
-            cache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
-        }
-        return data
-    }
-}
-
-private enum PhotoDecoder {
-    nonisolated static func decode(data: Data) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return nil
-        }
-
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 4_096,
-            kCGImageSourceShouldCacheImmediately: true
-        ]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-    }
-}
 
 struct PhotoImageView: View {
     let asset: PhotoAsset
     let contentMode: ContentMode
-
-    @State private var image: NSImage?
+    let images: PhotoImageStore
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.18)
-
-            if let image {
+        Group {
+            if let image = images.image(for: asset) {
                 AppKitPhotoView(image: image, contentMode: contentMode)
             } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
+                Color.clear
             }
         }
         .clipped()
-        .task(id: asset.id) {
-            image = nil
-            guard let data = await PhotoDataCache.shared.data(for: asset.url),
-                  !Task.isCancelled else {
-                return
-            }
-
-            let decoded = await Task.detached(priority: .userInitiated) {
-                PhotoDecoder.decode(data: data)
-            }.value
-
-            guard !Task.isCancelled, let decoded else {
-                return
-            }
-            image = NSImage(
-                cgImage: decoded,
-                size: NSSize(width: decoded.width, height: decoded.height)
-            )
-        }
     }
 }
 
@@ -89,7 +23,9 @@ private struct AppKitPhotoView: NSViewRepresentable {
     let contentMode: ContentMode
 
     func makeNSView(context: Context) -> AspectImageView {
-        AspectImageView()
+        let view = AspectImageView()
+        view.wantsLayer = true
+        return view
     }
 
     func updateNSView(_ view: AspectImageView, context: Context) {

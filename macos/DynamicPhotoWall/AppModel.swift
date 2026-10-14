@@ -22,7 +22,7 @@ final class AppModel {
     private(set) var folderWarning: String?
     private(set) var settingsWarning: String?
     private(set) var userPaused = false
-    let playback = WallPlaybackController()
+    let playback: WallPlaybackController
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let host: any DesktopWallHosting
@@ -40,12 +40,14 @@ final class AppModel {
     @ObservationIgnored private var terminated = false
 
     init(defaults: UserDefaults = .standard, host: (any DesktopWallHosting)? = nil,
+         playback: WallPlaybackController? = nil,
          folderStore: FolderBookmarkStore? = nil,
          screenProvider: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
          scanner: @escaping Scanner = { await PhotoLibrary.scan(folderURL: $0, recursive: $1) },
          observeEnvironment: Bool = true) {
         self.defaults = defaults
         self.host = host ?? DesktopWindowController()
+        self.playback = playback ?? WallPlaybackController(imageStore: .shared)
         self.folderStore = folderStore ?? FolderBookmarkStore(defaults: defaults)
         self.screenProvider = screenProvider
         self.scanner = scanner
@@ -76,6 +78,9 @@ final class AppModel {
 
     var selectedScreen: ScreenDescriptor? { screens.first { $0.id == selectedScreenID } }
     var canStart: Bool { selectedScreen != nil && !folders.isEmpty && !isScanning }
+    var displayStatusMessage: String {
+        playback.imageFailureMessage ?? (playback.waitingForImages ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
+    }
     var currentMode: String? { playback.currentScene?.mode.rawValue }
 
     func refreshScreens() {

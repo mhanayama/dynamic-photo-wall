@@ -7,12 +7,12 @@ struct DesktopWallView: View {
         GeometryReader { proxy in
             TimelineView(.animation(paused: playback.isPaused)) { context in
                 ZStack {
-                    if let old = playback.outgoing {
-                        WallSceneLayer(presentation: old, settings: playback.settings)
-                    }
-                    if let current = playback.presentation() {
-                        WallSceneLayer(presentation: current, settings: playback.settings)
-                            .opacity(playback.transitionProgress())
+                    // The scene's identity survives current -> outgoing. Moving
+                    // it between two conditional view trees would recreate NSViews.
+                    ForEach(playback.layers()) { layer in
+                        WallSceneLayer(presentation: layer.presentation, settings: playback.settings,
+                                       images: playback.imageStore ?? .shared)
+                            .opacity(layer.opacity)
                     }
                 }
                 // Plans, eligibility and velocities use physical pixels. The surface

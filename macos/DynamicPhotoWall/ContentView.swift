@@ -233,7 +233,7 @@ private struct StatusAndSaveView: View {
 
     var body: some View {
         HStack {
-            Text("\(model.statusMessage) · ライブラリ \(model.photoAssets.count)枚 · \(model.currentMode ?? "—")")
+            Text("\(model.displayStatusMessage) · ライブラリ \(model.photoAssets.count)枚 · \(model.currentMode ?? "—")")
                 .foregroundStyle(.secondary)
             Spacer()
             Button("保存して適用", action: model.saveSettings)

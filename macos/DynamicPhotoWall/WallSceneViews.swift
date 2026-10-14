@@ -3,22 +3,30 @@ import SwiftUI
 struct WallSceneLayer: View {
     let presentation: WallScenePresentation
     let settings: WallSettings
+    let images: PhotoImageStore
 
     var body: some View {
         ZStack {
             if settings.glassBackground {
-                AmbientBackgroundView(asset: presentation.scene.assets.first)
+                AmbientBackgroundView(
+                    asset: presentation.scene.assets.first,
+                    previousAsset: presentation.slots.first?.previousAsset,
+                    progress: presentation.slots.first.map {
+                        min(1, max(0, (presentation.elapsed - $0.changedAt) / settings.fadeSeconds))
+                    } ?? 1,
+                    images: images
+                )
             } else {
                 Color(hex: settings.backgroundHex)
             }
             switch presentation.scene.mode {
             case .gallery:
-                GallerySceneView(presentation: presentation, settings: settings)
+                GallerySceneView(presentation: presentation, settings: settings, images: images)
             case .horizontalGallery:
-                HorizontalGallerySceneView(presentation: presentation, settings: settings)
+                HorizontalGallerySceneView(presentation: presentation, settings: settings, images: images)
             case .verticalPan, .horizontalPan, .zoom:
                 if let asset = presentation.scene.assets.first {
-                    MotionSceneView(asset: asset, presentation: presentation, settings: settings)
+                    MotionSceneView(asset: asset, presentation: presentation, settings: settings, images: images)
                 }
             }
         }
@@ -28,14 +36,20 @@ struct WallSceneLayer: View {
 
 private struct AmbientBackgroundView: View {
     let asset: PhotoAsset?
+    let previousAsset: PhotoAsset?
+    let progress: Double
+    let images: PhotoImageStore
     var body: some View {
         ZStack {
             Color.black
             if let asset {
-                PhotoImageView(asset: asset, contentMode: .fill)
-                    .blur(radius: 48)
-                    .scaleEffect(1.15)
-                    .overlay(Color.black.opacity(0.42))
+                ForEach(previousAsset.map { [$0, asset] } ?? [asset]) { photo in
+                    PhotoImageView(asset: photo, contentMode: .fill, images: images)
+                        .blur(radius: 48)
+                        .scaleEffect(1.15)
+                        .overlay(Color.black.opacity(0.42))
+                        .opacity(photo == asset && previousAsset != nil ? progress : 1)
+                }
             }
             LinearGradient(colors: [.white.opacity(0.08), .clear, .black.opacity(0.2)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -46,8 +60,9 @@ private struct AmbientBackgroundView: View {
 private struct PhotoCard: View {
     let asset: PhotoAsset
     let settings: WallSettings
+    let images: PhotoImageStore
     var body: some View {
-        PhotoImageView(asset: asset, contentMode: .fit)
+        PhotoImageView(asset: asset, contentMode: .fit, images: images)
             .overlay(alignment: .bottomLeading) {
                 if settings.exifOverlay {
                     VStack(alignment: .leading, spacing: 2) {
@@ -67,6 +82,7 @@ private struct PhotoCard: View {
 private struct GallerySceneView: View {
     let presentation: WallScenePresentation
     let settings: WallSettings
+    let images: PhotoImageStore
     var body: some View {
         GeometryReader { proxy in
             let frames = GalleryLayout.frames(assets: presentation.slots.map(\.asset), in: proxy.size, gap: settings.gap)
@@ -74,9 +90,13 @@ private struct GallerySceneView: View {
                 if frames.indices.contains(slot.id) {
                     let frame = frames[slot.id]
                     ZStack {
-                        if let old = slot.previousAsset { PhotoCard(asset: old, settings: settings) }
-                        PhotoCard(asset: slot.asset, settings: settings)
-                            .opacity(slot.previousAsset == nil ? 1 : min(1, max(0, (presentation.elapsed - slot.changedAt) / settings.fadeSeconds)))
+                        // Keep the old card's identity when it moves from current
+                        // to outgoing, just as we do for full-screen scenes.
+                        ForEach(slot.previousAsset.map { [$0, slot.asset] } ?? [slot.asset]) { asset in
+                            PhotoCard(asset: asset, settings: settings, images: images)
+                                .opacity(asset == slot.asset && slot.previousAsset != nil
+                                    ? min(1, max(0, (presentation.elapsed - slot.changedAt) / settings.fadeSeconds)) : 1)
+                        }
                     }
                     .frame(width: frame.width, height: frame.height)
                     .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
@@ -114,13 +134,14 @@ enum GalleryLayout {
 private struct HorizontalGallerySceneView: View {
     let presentation: WallScenePresentation
     let settings: WallSettings
+    let images: PhotoImageStore
     var body: some View {
         GeometryReader { proxy in
             let height = max(1, proxy.size.height - 2 * settings.gap)
             let totalWidth = presentation.scene.assets.reduce(0) { $0 + height * $1.aspectRatio + settings.gap }
             HStack(spacing: settings.gap) {
                 ForEach(presentation.scene.assets) { asset in
-                    PhotoCard(asset: asset, settings: settings)
+                    PhotoCard(asset: asset, settings: settings, images: images)
                         .frame(width: height * asset.aspectRatio, height: height)
                         .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
                 }
@@ -135,6 +156,7 @@ private struct MotionSceneView: View {
     let asset: PhotoAsset
     let presentation: WallScenePresentation
     let settings: WallSettings
+    let images: PhotoImageStore
     var body: some View {
         GeometryReader { proxy in
             let scene = presentation.scene
@@ -144,7 +166,7 @@ private struct MotionSceneView: View {
             let eased = 0.5 - cos(presentation.progress * .pi) / 2
             let scale = scene.mode == .zoom
                 ? (scene.reverse ? settings.maxZoom - eased * (settings.maxZoom - 1) : 1 + eased * (settings.maxZoom - 1)) : 1
-            PhotoCard(asset: asset, settings: settings)
+            PhotoCard(asset: asset, settings: settings, images: images)
                 .frame(width: frame.width, height: frame.height)
                 .scaleEffect(scale, anchor: UnitPoint(x: scene.zoomCenter.x, y: scene.zoomCenter.y))
                 .position(x: frame.midX, y: frame.midY)

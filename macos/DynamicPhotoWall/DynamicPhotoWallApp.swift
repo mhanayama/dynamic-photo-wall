@@ -23,7 +23,7 @@ private struct MenuBarControls: View {
     let model: AppModel
 
     var body: some View {
-        Text(model.statusMessage)
+        Text(model.displayStatusMessage)
 
         Divider()
 

@@ -68,7 +68,7 @@ struct AppModelRegressionTests {
         let (defaults, name) = profile()
         defer { defaults.removePersistentDomain(forName: name) }
         defaults.set(2, forKey: "selectedScreenID")
-        let model = AppModel(defaults: defaults, host: FakeWallHost(), screenProvider: { [first, second] }, observeEnvironment: false)
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(), screenProvider: { [first, second] }, observeEnvironment: false)
         defer { model.shutdown() }
         #expect(model.selectedScreenID == 2)
         #expect(defaults.integer(forKey: "selectedScreenID") == 2)
@@ -82,7 +82,7 @@ struct AppModelRegressionTests {
         let inventory = FakeScreenInventory([first, second])
         let host = FakeWallHost()
         let photo = photo
-        let model = AppModel(defaults: defaults, host: host,
+        let model = AppModel(defaults: defaults, host: host, playback: WallPlaybackController(),
                              folderStore: FolderBookmarkStore(defaults: defaults, access: access),
                              screenProvider: { inventory.screens }, scanner: { _, _ in [photo] }, observeEnvironment: false)
         defer { model.shutdown() }
@@ -106,7 +106,7 @@ struct AppModelRegressionTests {
         defer { defaults.removePersistentDomain(forName: name) }
         try installFolder(in: defaults)
         let gate = ScanGate()
-        let model = AppModel(defaults: defaults, host: FakeWallHost(),
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
                              folderStore: FolderBookmarkStore(defaults: defaults, access: access),
                              screenProvider: { [first] }, scanner: { _, _ in await gate.scan() }, observeEnvironment: false)
         defer { model.shutdown() }
@@ -129,7 +129,7 @@ struct AppModelRegressionTests {
         try installFolder(in: defaults)
         let gate = ScanGate()
         let host = FakeWallHost()
-        let model = AppModel(defaults: defaults, host: host,
+        let model = AppModel(defaults: defaults, host: host, playback: WallPlaybackController(),
                              folderStore: FolderBookmarkStore(defaults: defaults, access: access),
                              screenProvider: { [second] }, scanner: { _, _ in await gate.scan() }, observeEnvironment: false)
         defer { model.shutdown() }
@@ -148,7 +148,7 @@ struct AppModelRegressionTests {
         defaults.set(2, forKey: "selectedScreenID")
         try installFolder(in: defaults)
         let gate = ScanGate()
-        let model = AppModel(defaults: defaults, host: FakeWallHost(),
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
                              folderStore: FolderBookmarkStore(defaults: defaults, access: access),
                              screenProvider: { [second] }, scanner: { _, _ in await gate.scan() }, observeEnvironment: false)
         defer { model.shutdown() }
