@@ -1,0 +1,539 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		69B4E5FA307F38420099175C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 69B4E5E4307F38400099175C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 69B4E5EB307F38400099175C;
+			remoteInfo = DynamicPhotoWall;
+		};
+		69B4E604307F38420099175C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 69B4E5E4307F38400099175C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 69B4E5EB307F38400099175C;
+			remoteInfo = DynamicPhotoWall;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		69B4E5EC307F38400099175C /* DynamicPhotoWall.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DynamicPhotoWall.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		69B4E5F9307F38420099175C /* DynamicPhotoWallTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamicPhotoWallTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		69B4E603307F38420099175C /* DynamicPhotoWallUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamicPhotoWallUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		69B4E5EE307F38400099175C /* DynamicPhotoWall */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DynamicPhotoWall;
+			sourceTree = "<group>";
+		};
+		69B4E5FC307F38420099175C /* DynamicPhotoWallTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DynamicPhotoWallTests;
+			sourceTree = "<group>";
+		};
+		69B4E606307F38420099175C /* DynamicPhotoWallUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DynamicPhotoWallUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		69B4E5E9307F38400099175C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		69B4E5F6307F38420099175C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		69B4E600307F38420099175C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		69B4E5E3307F38400099175C = {
+			isa = PBXGroup;
+			children = (
+				69B4E5EE307F38400099175C /* DynamicPhotoWall */,
+				69B4E5FC307F38420099175C /* DynamicPhotoWallTests */,
+				69B4E606307F38420099175C /* DynamicPhotoWallUITests */,
+				69B4E5ED307F38400099175C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		69B4E5ED307F38400099175C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				69B4E5EC307F38400099175C /* DynamicPhotoWall.app */,
+				69B4E5F9307F38420099175C /* DynamicPhotoWallTests.xctest */,
+				69B4E603307F38420099175C /* DynamicPhotoWallUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		69B4E5EB307F38400099175C /* DynamicPhotoWall */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 69B4E60B307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWall" */;
+			buildPhases = (
+				69B4E5E8307F38400099175C /* Sources */,
+				69B4E5E9307F38400099175C /* Frameworks */,
+				69B4E5EA307F38400099175C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				69B4E5EE307F38400099175C /* DynamicPhotoWall */,
+			);
+			name = DynamicPhotoWall;
+			productName = DynamicPhotoWall;
+			productReference = 69B4E5EC307F38400099175C /* DynamicPhotoWall.app */;
+			productType = "com.apple.product-type.application";
+		};
+		69B4E5F8307F38420099175C /* DynamicPhotoWallTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 69B4E60E307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWallTests" */;
+			buildPhases = (
+				69B4E5F5307F38420099175C /* Sources */,
+				69B4E5F6307F38420099175C /* Frameworks */,
+				69B4E5F7307F38420099175C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				69B4E5FB307F38420099175C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				69B4E5FC307F38420099175C /* DynamicPhotoWallTests */,
+			);
+			name = DynamicPhotoWallTests;
+			productName = DynamicPhotoWallTests;
+			productReference = 69B4E5F9307F38420099175C /* DynamicPhotoWallTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		69B4E602307F38420099175C /* DynamicPhotoWallUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 69B4E611307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWallUITests" */;
+			buildPhases = (
+				69B4E5FF307F38420099175C /* Sources */,
+				69B4E600307F38420099175C /* Frameworks */,
+				69B4E601307F38420099175C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				69B4E605307F38420099175C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				69B4E606307F38420099175C /* DynamicPhotoWallUITests */,
+			);
+			name = DynamicPhotoWallUITests;
+			productName = DynamicPhotoWallUITests;
+			productReference = 69B4E603307F38420099175C /* DynamicPhotoWallUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		69B4E5E4307F38400099175C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					69B4E5EB307F38400099175C = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					69B4E5F8307F38420099175C = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 69B4E5EB307F38400099175C;
+					};
+					69B4E602307F38420099175C = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 69B4E5EB307F38400099175C;
+					};
+				};
+			};
+			buildConfigurationList = 69B4E5E7307F38400099175C /* Build configuration list for PBXProject "DynamicPhotoWall" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 69B4E5E3307F38400099175C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 69B4E5ED307F38400099175C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				69B4E5EB307F38400099175C /* DynamicPhotoWall */,
+				69B4E5F8307F38420099175C /* DynamicPhotoWallTests */,
+				69B4E602307F38420099175C /* DynamicPhotoWallUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		69B4E5EA307F38400099175C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		69B4E5F7307F38420099175C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		69B4E601307F38420099175C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		69B4E5E8307F38400099175C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		69B4E5F5307F38420099175C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		69B4E5FF307F38420099175C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		69B4E5FB307F38420099175C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 69B4E5EB307F38400099175C /* DynamicPhotoWall */;
+			targetProxy = 69B4E5FA307F38420099175C /* PBXContainerItemProxy */;
+		};
+		69B4E605307F38420099175C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 69B4E5EB307F38400099175C /* DynamicPhotoWall */;
+			targetProxy = 69B4E604307F38420099175C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		69B4E609307F38420099175C /* Debug configuration for PBXProject "DynamicPhotoWall" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		69B4E60A307F38420099175C /* Release configuration for PBXProject "DynamicPhotoWall" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		69B4E60C307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWall" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWall;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		69B4E60D307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWall" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWall;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		69B4E60F307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWallTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWallTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DynamicPhotoWall.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DynamicPhotoWall";
+			};
+			name = Debug;
+		};
+		69B4E610307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWallTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWallTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DynamicPhotoWall.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DynamicPhotoWall";
+			};
+			name = Release;
+		};
+		69B4E612307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWallUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWallUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DynamicPhotoWall;
+			};
+			name = Debug;
+		};
+		69B4E613307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWallUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = asia.dix.mhanayama.DynamicPhotoWallUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = DynamicPhotoWall;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		69B4E5E7307F38400099175C /* Build configuration list for PBXProject "DynamicPhotoWall" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69B4E609307F38420099175C /* Debug configuration for PBXProject "DynamicPhotoWall" */,
+				69B4E60A307F38420099175C /* Release configuration for PBXProject "DynamicPhotoWall" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		69B4E60B307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWall" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69B4E60C307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWall" */,
+				69B4E60D307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWall" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		69B4E60E307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWallTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69B4E60F307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWallTests" */,
+				69B4E610307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWallTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		69B4E611307F38420099175C /* Build configuration list for PBXNativeTarget "DynamicPhotoWallUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69B4E612307F38420099175C /* Debug configuration for PBXNativeTarget "DynamicPhotoWallUITests" */,
+				69B4E613307F38420099175C /* Release configuration for PBXNativeTarget "DynamicPhotoWallUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 69B4E5E4307F38400099175C /* Project object */;
+	validationLevel = 1;
+}

@@ -7,3 +7,10 @@ artifacts/
 *.lnk
 photos/**
 !photos/.gitkeep
+
+# macOS / Xcode local state and build caches
+.DS_Store
+**/xcuserdata/
+*.xcuserstate
+**/DerivedData/
+*.noindex/

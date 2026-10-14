@@ -1,14 +1,15 @@
 param([switch]$Test, [switch]$DesktopTest)
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
-Set-Location -LiteralPath $projectRoot
+$windowsRoot = Split-Path -Parent $PSScriptRoot
+$projectRoot = Split-Path -Parent $windowsRoot
+Set-Location -LiteralPath $windowsRoot
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $sdk = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
 if (-not (Test-Path -LiteralPath $sdk)) { $sdk = 'dotnet' }
-if (Test-Path -LiteralPath '.tools\packages') { $env:NUGET_PACKAGES = Join-Path $projectRoot '.tools\packages' }
-& $sdk publish 'src\DynamicPhotoWall\DynamicPhotoWall.csproj' -c Release -r win-x64 --self-contained true -o 'artifacts\win-x64' --nologo
-if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+if (Test-Path -LiteralPath (Join-Path $projectRoot '.tools\packages')) { $env:NUGET_PACKAGES = Join-Path $projectRoot '.tools\packages' }
 $release = Join-Path $projectRoot 'artifacts\win-x64'
+& $sdk publish 'src\DynamicPhotoWall\DynamicPhotoWall.csproj' -c Release -r win-x64 --self-contained true -o $release --nologo
+if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 Copy-Item -LiteralPath 'README.md', 'THIRD-PARTY-NOTICES.md' -Destination $release -Force
 New-Item -ItemType Directory -Path (Join-Path $release 'docs') -Force | Out-Null
 Copy-Item -LiteralPath 'docs\ARCHITECTURE.md', 'docs\TEST-RESULTS.md' -Destination (Join-Path $release 'docs') -Force
@@ -27,7 +28,7 @@ Copy-Item -LiteralPath (Join-Path $skiaRoot 'THIRD-PARTY-NOTICES.txt') -Destinat
 if ($Test -or $DesktopTest) {
     & $sdk build 'tests\DynamicPhotoWall.Tests\DynamicPhotoWall.Tests.csproj' -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Test build failed.' }
-    $testArguments = @('tests\DynamicPhotoWall.Tests\bin\Release\net10.0-windows10.0.19041.0\DynamicPhotoWall.Tests.dll', 'artifacts\smoke-data')
+    $testArguments = @('tests\DynamicPhotoWall.Tests\bin\Release\net10.0-windows10.0.19041.0\DynamicPhotoWall.Tests.dll', (Join-Path $projectRoot 'artifacts\smoke-data'))
     if ($DesktopTest) { $testArguments += '--desktop' }
     & $sdk @testArguments
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }

@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
+$windowsRoot = Split-Path -Parent $PSScriptRoot
+$projectRoot = Split-Path -Parent $windowsRoot
 $executable = Join-Path $projectRoot 'artifacts\win-x64\DynamicPhotoWall.exe'
-if (-not (Test-Path -LiteralPath $executable)) { throw 'Run scripts\Build.ps1 first.' }
+if (-not (Test-Path -LiteralPath $executable)) { throw 'Run windows\scripts\Build.ps1 first.' }
 $shell = New-Object -ComObject WScript.Shell
 try {
     $shortcutPath = Join-Path $projectRoot 'Dynamic Photo Wall.lnk'
@@ -9,7 +10,7 @@ try {
     $shortcut.TargetPath = $executable
     $shortcut.WorkingDirectory = $projectRoot
     $shortcut.Description = 'Dynamic Photo Wall'
-    $shortcut.IconLocation = (Join-Path $projectRoot 'assets\PhotoWall.ico') + ',0'
+    $shortcut.IconLocation = (Join-Path $windowsRoot 'assets\PhotoWall.ico') + ',0'
     $shortcut.Save()
     Write-Output $shortcutPath
 }

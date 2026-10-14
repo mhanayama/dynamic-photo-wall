@@ -43,7 +43,7 @@ UI側のアニメーション更新計測であり、60Hz画面で75fpsが提示
 結果: `artifacts/ambient-final/test-results.json`、`ambient-results.json`、`pan-metrics.json`、`feature-results.json`。実写PNGはローカルのみ。
 
 ```powershell
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/ambient-final --compositor --pan-metrics --features --ambient
+dotnet windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/ambient-final --compositor --pan-metrics --features --ambient
 ```
 
 ## 2026-10-14 — タスクバーなしの全画面表示
@@ -70,7 +70,7 @@ dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/Dyna
 再実行コマンド:
 
 ```powershell
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/compositor-fix --scan-only --compositor
+dotnet windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/compositor-fix --scan-only --compositor
 ```
 
 実施日: 2026-10-13（日本時間）。環境: Windows 11 build 26300、x64、.NET SDK 10.0.401。

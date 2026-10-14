@@ -1,93 +1,63 @@
 # Dynamic Photo Wall
 
-Windows 11の選択したディスプレイを、写真がゆっくり動くギャラリーにするWPF常駐アプリです。Windowsの壁紙設定を変更せず、Explorerの背面描画階層に接続します。写真はローカルで処理し、アップロードもテレメトリも行いません。
+写真がゆっくり動くデスクトップギャラリーです。Windows版とmacOS版を、このリポジトリで管理します。写真はローカルで処理します。
 
-## 起動
+| プラットフォーム | 状態 | 開発・利用ガイド |
+|---|---|---|
+| Windows | WPF常駐アプリ。Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
+| macOS | SwiftUI / AppKit版を開発中。Windows版との差分対応が残る | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
 
-プロジェクト直下の **`Dynamic Photo Wall`（ショートカット）をダブルクリック**すると起動します。PowerShellの操作は不要です。このショートカットはデスクトップにコピーしても使用できます。ビルド時に自動で作成・更新します。手動で再作成する場合は `scripts\Create-Shortcut.ps1` を実行してください。
+## ディレクトリ構成
 
-このワークスペースでは `Start-PhotoWall.ps1` を実行してください。`C:\dev\photowall\photos` を初期の写真フォルダーとして検出します。
-
-または `artifacts\win-x64\DynamicPhotoWall.exe` を起動してください。配布フォルダー全体が必要です。.NETランタイムは同梱されています。
-
-1. **Display**で表示対象を選びます。解像度・座標・接続状態を確認できます。
-2. **Photos**に写真フォルダーを追加します。複数フォルダーと再帰検索に対応しています。
-3. **保存して表示開始**を押します。設定画面は閉じても構いません。
-4. タスクトレイから開始・一時停止・次の構成・停止・設定・終了を操作できます。
-
-**Display →「対象画面のタスクバーを隠して全画面表示」**を有効にすると、写真を選択した画面全体に表示します（初期値は有効）。停止・終了、スリープ、対象画面が最大化アプリで覆われたときにはタスクバーを戻します。ほかの画面のタスクバーは変更しません。アプリが異常終了した場合も独立した復元用プロセスがタスクバーを戻します。
-
-初回は自動で表示を始めません。保存後は、起動時の再生とWindowsログオン時の自動起動を設定できます。自動起動は現在ユーザーのRunレジストリに実行ファイルを登録します。移動後は設定し直してください。
-
-## 見せ方
-
-- **Gallery**: 画面の縦横比に合わせて最大5枚。写真全体を表示し、写真ごとに独立して更新します。更新時には位置とサイズも滑らかに変わります。
-- **横スクロールGallery**: 従来のGalleryとは別モードです。上下の余白は初期値で各8pxに抑え、写真がゆっくり横に流れ、画面外へ出た写真を新しい写真へ交換します。後続写真を先読みし、同時表示の重複を避けます。速度はMotionから変更できます。
-- **Vertical Pan**: 横幅を画面に合わせ、最初に写真の下側を見せ、ビューポートを上側へ移します。画像自体のY座標は負のオフセットから0へ移動します。
-- 縦パンの幅は初期値で画面の96%を上限とし、中央に配置します。Windows標準のローカル顔検出で顔を見つけた場合は、顔全体と頭上の余白が見える幅・終了位置へ調整し、終了位置で3秒保持します。顔が見つからない写真は通常のパンを使用します。Compositionから表示幅と顔位置での停止を変更できます。
-- **Horizontal Pan**: 画面より横長の写真を高さに合わせ、左右いずれかの方向へ移します。はみ出しがない写真は自動選択しません。
-- **Zoom**: 横写真を画面いっぱいに表示し、中心を変えながら1.0〜1.08倍の緩やかな拡大・縮小を行います。
-- 全画面のZoomでも顔を検出し、顔が画面内に入る縦位置とズーム中心を選びます。Compositionの「全画面表示でも顔が見える位置を優先」で切り替えられます。
-
-パンは物理ピクセルの距離÷速度で時間を決めます。初期値120px/秒、クロスフェード1.2秒、Gallery更新30〜60秒です。拡大率の初期上限は4倍です。**画面のネイティブ解像度より小さい写真も表示できます。** 粗さが気になる場合はCompositionの許容拡大率を下げてください。
-
-抽選ウェイトはGallery 45 / Pan合計35 / Zoom 20です。適性のないモードとウェイト0のモードは候補から外れます。同じモードが3回連続しないようにするため、長期の実測割合は設定ウェイトから多少変わります。少数の写真では直近履歴の制約を緩めますが、1つのGalleryで同じファイルを重複表示しません。
-
-Galleryと横スクロールGalleryを両方有効にすると、Galleryのウェイト45を2モードで分けます。Compositionで個別に有効・無効を選べます。
-
-背景は表示中の写真・切り取り位置に追従するガラス風の色合いです。パン、横スクロール、Galleryの個別更新に合わせて変化します。Appearanceの「表示中の写真に追従するガラス風の背景」で単色背景へ切り替えられます。写真の4pxのフチぼかしは削除しました。写真の表示サイズをフチ処理のために縮めません。
-
-JPEG / PNG / WebP対応。EXIFの8方向の回転・反転を適用します。HEIC / HEIFにはWindowsの対応WICコーデックが必要です。コピー済みの同内容ファイルは別写真として扱います。
-
-## 設定とログ
-
-通常は `%LOCALAPPDATA%\DynamicPhotoWall` に保存します。
-
-- `settings.json`: 設定。テンポラリファイルから置換して保存します。
-- `metadata.json`: パス・サイズ・更新日時をキーにした画像情報キャッシュ。
-- `faces.json`: ローカル顔検出で取得した顔位置のキャッシュ。
-- `app.log`: エラーと復旧記録。約2MBで1世代ローテーションします。パスなどローカル情報を含みます。
-
-設定が壊れている場合はコピーを保存して初期値で起動します。`--data-dir <directory>` で保存場所を変更できます。`--tray` は設定画面を開かず起動します（表示対象が未設定の初回を除く）。フォルダー変更は監視し、通知漏れに備えて5分ごとにキャッシュを使って照合します。
-
-画像デコードはUIスレッド外で行い、画面に合わせたサイズを選びます。LRUキャッシュ予算は初期値256MiBです。この予算はキャッシュだけの値で、表示中・プリロード中・WPF/GPUのメモリは別に使用します。デコードは1件ずつ実行し、次の構成を1つだけプリロードします。横スクロールGalleryでは次に流入する写真も先読みします。30fps制限は撤廃し、WPFの描画スレッドとDWMの画面合成にペーシングを任せています。パンはRenderTransformで動かすため毎フレームのレイアウト計算が不要です。アプリからDXGIのPresentを直接制御する方式ではなく、厳密な提示フレーム数はWPF・DWM・GPUドライバーに依存します。
-
-## ビルドとテスト
-
-Windows 11 x64、.NET 10 SDKが必要です。初回の復元にはNuGet接続が必要です。プロジェクト内の `.tools\dotnet` があればビルドスクリプトが優先します。
-
-```powershell
-.\scripts\Build.ps1 -Test
-# 実際のデスクトップへ短時間表示するテストも行う場合
-.\scripts\Build.ps1 -DesktopTest
+```text
+dynamic-photo-wall/
+├── windows/                         # Windows版
+│   ├── DynamicPhotoWall.sln
+│   ├── Directory.Build.props
+│   ├── global.json
+│   ├── src/                         # WPFアプリと.NET Coreロジック
+│   ├── tests/
+│   ├── scripts/                     # ビルド・ショートカット・診断
+│   ├── assets/
+│   ├── docs/                        # Windows設計・テスト結果
+│   ├── Start-PhotoWall.ps1
+│   ├── THIRD-PARTY-NOTICES.md
+│   └── README.md
+├── macos/                           # macOS版
+│   ├── DynamicPhotoWall.xcodeproj
+│   ├── DynamicPhotoWall/             # Swiftアプリ・アセット
+│   ├── DynamicPhotoWallTests/
+│   ├── DynamicPhotoWallUITests/
+│   ├── MACOS_PARITY_TODO.md
+│   └── README.md
+├── docs/                            # プラットフォーム共通の計画
+├── photos/                          # ローカル写真（Git対象外）
+└── artifacts/                       # ビルド・検証結果（Git対象外）
 ```
 
-コマンドを直接使う場合:
+`windows/src/DynamicPhotoWall.Core` は現在Windows側で利用するOS非依存の.NETロジックです。macOS版はSwift実装を持ちます。両OS共通の実装ができた場合に、独立した共通ディレクトリへ切り出します。
+
+## Windows
+
+リポジトリ直下から実行します。Windows 11 x64と.NET 10 SDKが必要です。
 
 ```powershell
-dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o artifacts/win-x64
-dotnet build tests/DynamicPhotoWall.Tests/DynamicPhotoWall.Tests.csproj -c Release
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/smoke-data
+.\windows\scripts\Build.ps1 -Test
+.\windows\Start-PhotoWall.ps1
 ```
 
-`--probe --monitor \\.\DISPLAY2 --output <json-path>` は指定画面に4秒間だけ検証ウィンドウを表示し、親・スタイル・座標・破棄結果を記録します。monitor省略時は列挙順の最初の画面です。
+実行ファイルは `artifacts/win-x64`、ショートカットはリポジトリ直下に作成します。Visual Studioでは `windows/DynamicPhotoWall.sln` を開きます。設定・操作・制約は [Windows版README](windows/README.md) を参照してください。
 
-実写テスト（全画像をデコードし、最も横長の画面へGallery・縦パン・Zoomを短時間表示）:
+## macOS
 
-```powershell
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/actual-photos --scan-only --actual=photos
+Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` スキームで起動します。現在のプロジェクトの対象OSはmacOS 27.0以降です。
+
+```sh
+open macos/DynamicPhotoWall.xcodeproj
 ```
 
-テストはアプリの通常設定を使わず、指定出力フォルダー配下に専用プロファイルを作ります。実写の確認用PNGはローカルの `artifacts/actual-photos` に保存され、Gitから除外されています。ユーザー写真自体もGitから除外しています。
+ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 
-## 制約
+## 共通の計画
 
-- WorkerW / Progmanは非公開Shell階層です。未知のWindows構成では安全に停止します。全Windows 11ビルドでの互換性は保証できません。
-- Explorer再起動・画面変更・スリープ復帰には通知と15秒間隔のHWND確認で復旧します。指定画面が消えても別画面には表示しません。同じモニターでも接続ポート変更でIDが変わる場合は選び直してください。
-- 前景の単一ウィンドウが対象画面の作業領域を覆う場合に一時停止します。複数ウィンドウの合計による完全遮蔽、仮想デスクトップの全状態は判定しません。
-- JPEGの撮影日時を取得します。WebPは寸法・EXIF向きを取得しますが撮影日時の読み取りには未対応です。HEICは環境のコーデックに依存します。
-- 極端な巨大画像は安全のためスキップし、1画像のデコードを約1600万画素に制限します。縦に極端に長い写真のパンでは表示が多少柔らかくなる場合があります。
-- 本体は署名なし・インストーラーなしです。配布物はフォルダー単位で保管してください。ウルトラワイドでZoomを選ぶと写真の上下を切り取ることがあります。
-- Explorerの強制再起動、ケーブルの実際の抜き差し、混在DPI変更、長時間の連続運転は手動受け入れ確認が残っています。
-
-[設計と主要リスク](docs/ARCHITECTURE.md) / [テスト結果](docs/TEST-RESULTS.md) / [外部ライブラリ](THIRD-PARTY-NOTICES.md)
+[Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)。macOS単体版の完成後に、Windowsの複数画面表示とPC間同期へ進む計画です。
