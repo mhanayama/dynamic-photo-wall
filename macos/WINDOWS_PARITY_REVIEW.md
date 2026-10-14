@@ -1,10 +1,21 @@
 # Windows / macOS 機能差レビュー
 
-確認日: 2026-10-14（日本時間）。対象: `6a2ff97`。WindowsとmacOSのローカル実装を静的に照合した。今回のレビューではアプリ実装を変更していない。
+確認日: 2026-10-14（日本時間）。初回レビュー対象: `6a2ff97`。WindowsとmacOSのローカル実装を静的に照合し、その後R01〜R04を修正した。下記の指摘本文は修正前の記録として残す。リンク先は現在のソースのため、記載行番号は初回レビュー時の位置を表す。
 
-**判定: 基本表示・選択・一時停止は揃ってきたが、未解消の不具合と未実装機能があり、Windows版と同等の品質として合格にはできない。** シーン切替とGallery交換の画像準備待ちは実装されている。ただし横Gallery流入、ライブラリ更新、エラー終了には別の表示欠落経路が残る。
+**現在の判定: R01〜R04はコード修正とCLIビルドまで完了。実行・実画面での解消確認は未実施で、Windows版との完全な機能同等性には未実装項目が残る。**
 
-## 優先して直す問題
+## 修正状況
+
+| 指摘 | 対応した動作 | 残る確認 |
+|---|---|---|
+| R01 | 写真候補を再生中に差し替え、追加だけではウィンドウ・scene ID・時計をリセットしない。表示中写真の削除／更新では旧ビットマップを保持して次画像を準備。走査結果が0枚でも最後の表示を保持して待機 | 写真の追加・上書き・削除、手動／5分照合、外付けストレージでの表示 |
+| R02 | 次流入写真を先読みして保持。成功した写真を右側へ配置してからscrollを進め、先頭退出後に座標を補正。未準備時は現在位置で待ち、失敗候補はstripへ入れず別候補へ進む | 遅いストレージ、破損画像、小規模ライブラリ、右端の連続性 |
+| R03 | 再生要求・ウィンドウ保持・エラー待機を分離。全候補失敗時は「待機中」を表示。Nextと「再検索して再試行」で失敗集合を解除し、元の写真候補から復旧可能にした | 全件失敗→ファイル修復→再試行、pause中の復旧 |
+| R04 | モード・物理viewportから必要幅を計算。元解像度・幅8192・約16MPを上限にImageIO縮小。パス／更新情報／デコード寸法で画像をキャッシュし、解像度を上げる間も既存ビットマップを保持 | Retina・極端な縦写真の実画質、デコード時間とプロセスメモリ |
+
+併せて、極端な縦Panのアスペクト比クランプを撤去し、Gallery初回・再交換の待機をフェード後から数えるようにした。横Gallery流入も縦写真を優先する。次scene自体の事前先読み、顔検出、前景に追従する背景、常駐運用機能は別の残件。
+
+## 優先問題の指摘記録（修正前）
 
 ### R01 / P1 — ライブラリ更新で壁表示を破棄し、点滅が再発する
 
@@ -46,7 +57,7 @@ macOSはすべての写真を「長辺最大4096、約16MPまで」でデコー�
 - Windows: [PrepareAsync](../windows/src/DynamicPhotoWall/WallController.cs)（192行）、[ImageCache.LoadAsync](../windows/src/DynamicPhotoWall/PhotoLibrary/ImageCache.cs)（16行）。
 - 対応: 必要な物理幅・向き・画素上限から寸法を決め、寸法付きキーでキャッシュする。M11 / M12。
 
-## その他の正確な動作差
+## その他の動作差の記録（修正前・今回コード修正済み）
 
 - **極端な縦写真のPan**: macOSの高さ計算は `width / max(aspect, 0.01)`、Windowsは `width / aspect`。縦横比0.01未満でサイズ・移動距離・速度計算が変わる。例: 500×100000の画像は走査の5億画素上限内だが、計画上の高さがWindowsの半分になる。通常写真の幾何一致だけで全画像対応と判定できない。[WallMotionGeometry](DynamicPhotoWall/WallScene.swift)、[MotionEngine](../windows/src/DynamicPhotoWall.Core/MotionEngine.cs)。M17 / T02。
 - **Gallery初回交換時刻**: macOSはscene開始から `min + slot×3秒`。Windowsはsceneフェード完了後に同じ待機を始めるため、macOSの方がfadeSecondsだけ早い。致命的な不具合ではないが、同じ設定・時刻の厳密比較では一致しない。M18 / T02。
@@ -70,9 +81,10 @@ macOSはすべての写真を「長辺最大4096、約16MPまで」でデコー�
 
 ## 今回の確認範囲
 
-- CLI `xcodebuild build-for-testing` は **TEST BUILD SUCCEEDED**。Swiftソースのコンパイル警告なし（AppIntentsメタデータ未使用のツール通知は除く）。34件の単体テストコードとUIテストをコンパイルした。
-- ログ: `artifacts/macos-parity-review-build.log`。DerivedData: `artifacts/macos-parity-review/DerivedData`。いずれもGit対象外。
-- 前のユーザー指定に従い、テスト実行・実行中アプリ操作・packagingは行っていない。上記の不具合はソース経路から判断したもので、今回の実機再現結果ではない。
+- 修正後のCLI `xcodebuild build` と `build-for-testing` は成功。Swiftソースのコンパイル警告なし（AppIntentsメタデータ未使用のツール通知は除く）。単体テストは11件追加した計45件と、UIテストをコンパイルした。
+- 追加ケースは、ライブラリ追加／削除時のウィンドウ保持、同名更新中の旧画素保持、scroll準備待ち／失敗除外、全件失敗後のモデル状態と再試行、寸法別キャッシュ、極端な縦Pan、ImageIOの実縮小を対象とする。
+- 最新ログ: `artifacts/macos-parity-fixes-build.log`。DerivedData: `artifacts/macos-parity-fixes/DerivedData`。初回レビューのログは `artifacts/macos-parity-review-build.log`。いずれもGit対象外。
+- ユーザー指定に従い、テスト実行・実行中アプリ操作・packagingは行っていない。45件PASSとは判定していない。上記の不具合の指摘はソース経路からの判断で、実機再現・解消結果ではない。
 - Windows実行環境がないためWPFの再実行はしていない。既存Windows実機記録は [TEST-RESULTS](../windows/docs/TEST-RESULTS.md) を参照。
 
-推奨修正順: **R01・R02 → R03 → R04 → 顔検出・動的背景・常駐運用の不足**。全TODOは [MACOS_PARITY_TODO](MACOS_PARITY_TODO.md) を参照。
+次の確認はXcodeからの実表示と追加回帰テストの実行。その後の実装は、次scene先読み・イベント監視、顔検出・動的背景、常駐運用の不足を進める。全TODOは [MACOS_PARITY_TODO](MACOS_PARITY_TODO.md) を参照。

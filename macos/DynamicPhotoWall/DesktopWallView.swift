@@ -5,7 +5,7 @@ struct DesktopWallView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            TimelineView(.animation(paused: playback.isPaused)) { context in
+            TimelineView(.animation(paused: playback.isPaused || playback.isWaiting)) { context in
                 ZStack {
                     // The scene's identity survives current -> outgoing. Moving
                     // it between two conditional view trees would recreate NSViews.

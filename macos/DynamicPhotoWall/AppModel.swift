@@ -16,7 +16,7 @@ final class AppModel {
     var photoAssets: [PhotoAsset] = []
     var settings = WallSettings()
     private(set) var isScanning = false
-    private(set) var isPlaying = false
+    private(set) var wallAttached = false
     private(set) var desiredRunning = false
     private(set) var statusMessage = "写真フォルダを選択してください。"
     private(set) var folderWarning: String?
@@ -78,8 +78,21 @@ final class AppModel {
 
     var selectedScreen: ScreenDescriptor? { screens.first { $0.id == selectedScreenID } }
     var canStart: Bool { selectedScreen != nil && !folders.isEmpty && !isScanning }
+    var isPlaying: Bool { wallAttached && playback.currentScene != nil && !playback.isWaiting }
+    var isWaiting: Bool { desiredRunning && (!wallAttached || playback.isWaiting) }
+    var canAdvance: Bool { desiredRunning && wallAttached }
+    var playbackStateLabel: String {
+        if !desiredRunning { return "停止中" }
+        if isWaiting { return "待機中" }
+        if sleeping { return "スリープ中" }
+        if userPaused { return "一時停止中" }
+        if playback.waitingForImages { return "準備中" }
+        return "再生中"
+    }
     var displayStatusMessage: String {
-        playback.imageFailureMessage ?? (playback.waitingForImages ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
+        playback.imageFailureMessage
+            ?? ((playback.waitingForImages || playback.waitingForScrollImage)
+                ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
     }
     var currentMode: String? { playback.currentScene?.mode.rawValue }
 
@@ -108,9 +121,16 @@ final class AppModel {
     }
 
     func removeFolders(at offsets: IndexSet) {
-        // Close the wall before removing access needed by its image tasks.
-        suspendWall()
         scanTask?.cancel()
+        let removed = offsets.compactMap { folders.indices.contains($0) ? folders[$0].url : nil }
+        if offsets.filter({ folders.indices.contains($0) }).count == folders.count {
+            suspendWall()
+        } else if wallAttached {
+            let remaining = photoAssets.filter { photo in
+                !removed.contains { root in root.path == "/" || photo.url.path == root.path || photo.url.path.hasPrefix(root.path + "/") }
+            }
+            playback.updateLibrary(assets: remaining, retryFailed: false)
+        }
         folderStore.remove(at: offsets)
         syncFolders()
         reloadPhotos()
@@ -160,8 +180,13 @@ final class AppModel {
         updatePlayingStatus()
     }
 
+    func retryPlayback() {
+        guard desiredRunning, !isScanning else { return }
+        retryFolders()
+    }
+
     func showNextScene() {
-        guard isPlaying else { return }
+        guard canAdvance else { return }
         playback.next()
         updatePlayingStatus()
     }
@@ -199,11 +224,12 @@ final class AppModel {
                   self.scanGeneration == generation else { return }
             let unique = Dictionary(grouping: photos, by: { $0.url.standardizedFileURL })
             let updated = unique.compactMap(\.value.first).sorted { $0.url.path < $1.url.path }
-            let changed = updated != self.photoAssets
             self.photoAssets = updated
             self.isScanning = false
             self.scanTask = nil
-            if changed { self.suspendWall() }
+            if self.desiredRunning, self.wallAttached {
+                self.playback.updateLibrary(assets: updated)
+            }
             self.reconcilePlayback()
         }
     }
@@ -220,12 +246,12 @@ final class AppModel {
             return
         }
         guard !photoAssets.isEmpty else {
-            suspendWall()
+            if wallAttached { playback.updateLibrary(assets: [], retryFailed: false) }
             statusMessage = "画像がありません · 写真の追加を待機中"
             return
         }
         let viewport = CGSize(width: screen.pixelWidth, height: screen.pixelHeight)
-        if !isPlaying || playback.viewport != viewport {
+        if !wallAttached || playback.viewport != viewport {
             playback.start(assets: photoAssets, settings: appliedSettings, viewport: viewport)
             guard playback.currentScene != nil else {
                 suspendWall()
@@ -235,18 +261,22 @@ final class AppModel {
         }
         playback.setPaused(userPaused || sleeping)
         host.show(on: screen, playback: playback)
-        isPlaying = true
+        wallAttached = true
         updatePlayingStatus()
     }
 
     private func suspendWall() {
         host.close()
         playback.stop()
-        isPlaying = false
+        wallAttached = false
     }
 
     private func updatePlayingStatus() {
-        guard isPlaying else { return }
+        guard wallAttached else { return }
+        if playback.isWaiting {
+            statusMessage = playback.imageFailureMessage ?? "画像の準備を待機中"
+            return
+        }
         statusMessage = userPaused ? "一時停止中" : sleeping ? "スリープ中" : "再生中 · \(photoAssets.count)枚"
     }
 

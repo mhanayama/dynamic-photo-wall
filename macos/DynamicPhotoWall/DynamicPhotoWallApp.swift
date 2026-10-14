@@ -27,9 +27,15 @@ private struct MenuBarControls: View {
 
         Divider()
 
-        if model.isPlaying {
-            Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
-            Button("次の構成", action: model.showNextScene)
+        if model.desiredRunning {
+            if model.isWaiting {
+                Button("再検索して再試行", action: model.retryPlayback)
+                    .disabled(model.isScanning)
+            } else {
+                Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
+                Button("次の構成", action: model.showNextScene)
+                    .disabled(!model.canAdvance)
+            }
             Button("停止", action: model.stop)
         } else {
             Button("表示開始", action: model.start)

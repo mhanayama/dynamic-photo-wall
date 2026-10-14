@@ -21,6 +21,8 @@ private actor HeldPhotoDecoder {
         return Self.bitmap()
     }
 
+    func block(_ url: URL) { blocked.insert(url) }
+
     func release(_ url: URL) {
         blocked.remove(url)
         for waiter in waiters.removeValue(forKey: url) ?? [] { waiter.resume() }
@@ -54,7 +56,7 @@ struct ImageTransitionRegressionTests {
 
     @Test func slowDecodeKeepsOldBitmapOpaqueAndStartsFadeOnlyWhenReady() async throws {
         let decoder = HeldPhotoDecoder(blocked: [photos[1].url])
-        let images = PhotoImageStore(decode: { await decoder.decode($0) })
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
         #expect(await images.prepare([photos[0]]))
         let playback = WallPlaybackController(imageStore: images)
         defer { playback.stop() }
@@ -82,7 +84,7 @@ struct ImageTransitionRegressionTests {
 
     @Test func rapidNextDuringLoadingDoesNotReplaceOldLayerWithAnEmptyOne() async throws {
         let decoder = HeldPhotoDecoder(blocked: [photos[1].url, photos[2].url])
-        let images = PhotoImageStore(decode: { await decoder.decode($0) })
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
         #expect(await images.prepare([photos[0]]))
         let playback = WallPlaybackController(imageStore: images)
         defer { playback.stop() }
@@ -104,7 +106,7 @@ struct ImageTransitionRegressionTests {
 
     @Test func galleryKeepsSlotAndBackgroundPhotoUntilReplacementHasDecoded() async throws {
         let decoder = HeldPhotoDecoder(blocked: [photos[2].url])
-        let images = PhotoImageStore(decode: { await decoder.decode($0) })
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
         #expect(await images.prepare(Array(photos.prefix(2))))
         var settings = zoomOnly
         settings.zoomEnabled = false
@@ -135,7 +137,7 @@ struct ImageTransitionRegressionTests {
         let good = photos[0]
         let bad = photos[1]
         let images = PhotoImageStore(decode: { asset in
-            asset.url == good.url ? HeldPhotoDecoder.bitmap() : nil
+            asset.asset.url == good.url ? HeldPhotoDecoder.bitmap() : nil
         })
         #expect(await images.prepare([good]))
         let playback = WallPlaybackController(imageStore: images)
@@ -151,7 +153,7 @@ struct ImageTransitionRegressionTests {
 
     @Test func simultaneousRequestsShareDecodeAndFileUpdateInvalidatesTheKey() async throws {
         let decoder = HeldPhotoDecoder(blocked: [photos[0].url])
-        let images = PhotoImageStore(decode: { await decoder.decode($0) })
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
         let asset = photos[0]
         images.setDisplayedAssets([asset], cacheMegabytes: 64)
         let first = Task { await images.prepare([asset]) }
@@ -172,5 +174,111 @@ struct ImageTransitionRegressionTests {
         #expect(await images.prepare([updated]))
         #expect(await decoder.calls == 2)
         #expect(images.image(for: asset) != nil)
+    }
+    @Test func updatedFileVersionRetainsOldPixelsDuringTheNewDecode() async throws {
+        let original = photos[0]
+        let decoder = HeldPhotoDecoder(blocked: [])
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
+        #expect(await images.prepare([original]))
+        let playback = WallPlaybackController(imageStore: images)
+        defer { playback.stop() }
+        playback.start(assets: [original], settings: zoomOnly, viewport: viewport, seed: 42, now: 0)
+        let old = try #require(images.image(for: original))
+        var changed = original
+        changed.modifiedAt = 1
+        await decoder.block(original.url)
+        playback.updateLibrary(assets: [changed], now: 10)
+        playback.update(now: 20)
+        #expect(playback.outgoing?.scene.assets == [original])
+        #expect(playback.layers(now: 20).map(\.opacity) == [1, 0])
+        #expect(images.image(for: original) === old)
+        await decoder.release(original.url)
+        #expect(await images.prepare([changed]))
+        playback.update(now: 21)
+        #expect(!playback.waitingForImages)
+        #expect(images.image(for: original) === old)
+    }
+
+    @Test func scrollWaitsForPreparedIncomingPhotoWithoutEmptyingTheStrip() async throws {
+        let decoder = HeldPhotoDecoder(blocked: [photos[2].url])
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
+        #expect(await images.prepare(Array(photos.prefix(2))))
+        var settings = zoomOnly
+        settings.zoomEnabled = false
+        settings.galleryScrollEnabled = true
+        let playback = WallPlaybackController(imageStore: images)
+        defer { playback.stop() }
+        playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
+        let initial = try #require(playback.currentScene).assets
+        playback.update(now: 100)
+        #expect(playback.currentScene?.assets == initial)
+        #expect(playback.presentation(now: 100)?.scrollDistance == 0)
+        #expect(images.isReady(initial))
+        await decoder.release(photos[2].url)
+        #expect(await images.prepare([photos[2]]))
+        playback.update(now: 101)
+        #expect(playback.currentScene?.assets.first == photos[0])
+        #expect(playback.currentScene?.assets.last == photos[2])
+        #expect(Set(playback.currentScene?.assets.map(\.url) ?? []).count == playback.currentScene?.assets.count)
+        #expect(playback.presentation(now: 102)?.scrollDistance == 40)
+        playback.update(now: 151)
+        let streamed = try #require(playback.currentScene).assets
+        #expect(streamed.first == photos[1])
+        #expect(streamed.last == photos[2])
+        #expect(images.isReady(streamed))
+    }
+
+    @Test func failedScrollCandidateIsNeverAddedToTheVisibleStrip() async throws {
+        let bad = photos[2]
+        let images = PhotoImageStore(decode: { request in
+            request.asset.url == bad.url ? nil : HeldPhotoDecoder.bitmap()
+        })
+        #expect(await images.prepare(Array(photos.prefix(2))))
+        var settings = zoomOnly
+        settings.zoomEnabled = false
+        settings.galleryScrollEnabled = true
+        let playback = WallPlaybackController(imageStore: images)
+        defer { playback.stop() }
+        playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
+        #expect(!(await images.prepare([bad])))
+        playback.update(now: 1)
+        #expect(await images.prepare([photos[3]]))
+        playback.update(now: 2)
+        playback.update(now: 60)
+        let streamed = try #require(playback.currentScene).assets
+        #expect(!streamed.contains(bad))
+        #expect(streamed.last == photos[3])
+        #expect(images.isReady(streamed))
+    }
+
+    @Test func retryAfterAllFailuresUsesTheOriginalLibraryAgain() async throws {
+        let decoder = RepairablePhotoDecoder()
+        let images = PhotoImageStore(decode: { await decoder.decode($0) })
+        let playback = WallPlaybackController(imageStore: images)
+        defer { playback.stop() }
+        playback.start(assets: Array(photos.prefix(2)), settings: zoomOnly, viewport: viewport, seed: 42, now: 0)
+        for index in 1...3 {
+            if let scene = playback.currentScene { _ = await images.prepare(scene.assets) }
+            playback.update(now: Double(index))
+        }
+        #expect(playback.currentScene == nil)
+        #expect(playback.isWaiting)
+        #expect(playback.hasSession)
+        await decoder.repair()
+        playback.next(now: 10)
+        let retried = try #require(playback.currentScene)
+        #expect(await images.prepare(retried.assets))
+        playback.update(now: 11)
+        #expect(!playback.isWaiting)
+        #expect(!playback.waitingForImages)
+    }
+
+}
+
+private actor RepairablePhotoDecoder {
+    private var repaired = false
+    func repair() { repaired = true }
+    func decode(_ request: PhotoDecodeRequest) -> DecodedPhoto? {
+        repaired ? HeldPhotoDecoder.bitmap() : nil
     }
 }

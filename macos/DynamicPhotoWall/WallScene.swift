@@ -158,7 +158,7 @@ nonisolated enum WallMotionGeometry {
         switch mode {
         case .verticalPan:
             let width = viewport.width * settings.panWidthFraction
-            let height = width / max(asset.aspectRatio, 0.01)
+            let height = width / asset.aspectRatio
             let overflow = max(0, height - viewport.height)
             let left = (viewport.width - width) / 2
             let seconds = overflow > 0

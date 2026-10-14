@@ -116,7 +116,7 @@ struct PlaybackRegressionTests {
         let playback = WallPlaybackController()
         playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
         let initial = try #require(playback.currentScene).assets
-        playback.update(now: 5)
+        playback.update(now: 5 + settings.fadeSeconds)
         let updated = try #require(playback.currentScene).assets
         #expect(updated[0] != initial[0])
         #expect(updated[1] == initial[1])

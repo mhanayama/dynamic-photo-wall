@@ -7,11 +7,31 @@ nonisolated struct PhotoImageKey: Hashable, Sendable {
     let url: URL
     let fileSize: Int64
     let modifiedAt: TimeInterval
-
     init(_ asset: PhotoAsset) {
         url = asset.url.standardizedFileURL
         fileSize = asset.fileSize
         modifiedAt = asset.modifiedAt
+    }
+}
+
+nonisolated struct PhotoDecodeKey: Hashable, Sendable {
+    let photo: PhotoImageKey
+    let maximumPixelSize: Int
+}
+
+nonisolated struct PhotoDecodeRequest: Sendable {
+    let asset: PhotoAsset
+    let maximumPixelSize: Int
+    var key: PhotoDecodeKey { PhotoDecodeKey(photo: PhotoImageKey(asset), maximumPixelSize: maximumPixelSize) }
+
+    init(_ asset: PhotoAsset, desiredWidth: Int) {
+        self.asset = asset
+        let width = Double(max(1, asset.pixelWidth))
+        let height = Double(max(1, asset.pixelHeight))
+        let requested = Double(max(1, min(8192, desiredWidth)))
+        let scale = min(1, requested / width, sqrt(16_000_000 / (width * height)))
+        let shortSide = max(1, Int(ceil(min(width, height) * scale)))
+        maximumPixelSize = max(1, min(Int(floor(max(width, height) * scale)), 16_000_000 / shortSide))
     }
 }
 
@@ -20,42 +40,38 @@ nonisolated struct DecodedPhoto: @unchecked Sendable {
     var bytes: Int { image.bytesPerRow * image.height }
 }
 
-/// Synchronous ImageIO work stays on this actor, serially, off the UI actor.
 actor PhotoImageDecoder {
-    func decode(_ asset: PhotoAsset) -> DecodedPhoto? {
+    func decode(_ request: PhotoDecodeRequest) -> DecodedPhoto? {
         guard !Task.isCancelled,
-              let source = CGImageSourceCreateWithURL(asset.url as CFURL, nil) else { return nil }
-        let width = Double(asset.pixelWidth)
-        let height = Double(asset.pixelHeight)
-        guard width > 0, height > 0 else { return nil }
-        let scale = min(1, 4096 / max(width, height), sqrt(16_000_000 / (width * height)))
+              let source = CGImageSourceCreateWithURL(request.asset.url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(1, Int(max(width, height) * scale)),
+            kCGImageSourceThumbnailMaxPixelSize: request.maximumPixelSize,
             kCGImageSourceShouldCacheImmediately: true
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary),
-              !Task.isCancelled else { return nil }
+              image.width <= 16_000_000 / max(1, image.height), !Task.isCancelled else { return nil }
         return DecodedPhoto(image: image)
     }
 }
 
-/// Views read ready bitmaps synchronously. Displayed images remain pinned even
-/// when the reusable LRU cache is evicted; no view owns an asynchronous reset.
+/// Decoded variants use a byte-budgeted LRU. Currently displayed pixels are
+/// retained separately so eviction, resizing and transitions cannot blank them.
 @MainActor
 @Observable
 final class PhotoImageStore {
     static let shared = PhotoImageStore()
-    typealias Decode = @Sendable (PhotoAsset) async -> DecodedPhoto?
-
-    private(set) var displayedImages: [PhotoImageKey: NSImage] = [:]
+    typealias Decode = @Sendable (PhotoDecodeRequest) async -> DecodedPhoto?
+    private(set) var displayedImages: [PhotoDecodeKey: NSImage] = [:]
     private(set) var failedKeys: Set<PhotoImageKey> = []
     @ObservationIgnored private let decode: Decode
-    @ObservationIgnored private var pinnedKeys: Set<PhotoImageKey> = []
-    @ObservationIgnored private var cache: [PhotoImageKey: (image: NSImage, bytes: Int)] = [:]
-    @ObservationIgnored private var recency: [PhotoImageKey] = []
-    @ObservationIgnored private var inFlight: [PhotoImageKey: (id: UUID, task: Task<DecodedPhoto?, Never>)] = [:]
+    @ObservationIgnored private var pinnedPhotos: Set<PhotoImageKey> = []
+    @ObservationIgnored private var desiredWidths: [PhotoImageKey: Int] = [:]
+    @ObservationIgnored private var cache: [PhotoDecodeKey: (image: NSImage, bytes: Int)] = [:]
+    @ObservationIgnored private var recency: [PhotoDecodeKey] = []
+    @ObservationIgnored private var inFlight: [PhotoDecodeKey: (id: UUID, task: Task<DecodedPhoto?, Never>)] = [:]
+    @ObservationIgnored private var failureGeneration = 0
     @ObservationIgnored private var cachedBytes = 0
     @ObservationIgnored private var budgetBytes = 256 * 1024 * 1024
 
@@ -64,80 +80,95 @@ final class PhotoImageStore {
         self.decode = decode ?? { await decoder.decode($0) }
     }
 
+    func request(for asset: PhotoAsset, desiredWidth: Int? = nil) -> PhotoDecodeRequest {
+        PhotoDecodeRequest(asset, desiredWidth: desiredWidth ?? desiredWidths[PhotoImageKey(asset)] ?? asset.pixelWidth)
+    }
+
     func image(for asset: PhotoAsset) -> NSImage? {
-        let key = PhotoImageKey(asset)
+        let request = request(for: asset)
+        // A lower-resolution bitmap remains usable while a larger variant loads.
+        let keys = Set(displayedImages.keys).union(cache.keys).filter { $0.photo == request.key.photo }
+        let adequate = keys.filter { $0.maximumPixelSize >= request.maximumPixelSize }.min { $0.maximumPixelSize < $1.maximumPixelSize }
+        guard let key = adequate ?? keys.max(by: { $0.maximumPixelSize < $1.maximumPixelSize }) else { return nil }
         return displayedImages[key] ?? cache[key]?.image
     }
 
     func isReady(_ assets: [PhotoAsset]) -> Bool {
-        !assets.isEmpty && assets.allSatisfy { image(for: $0) != nil }
+        !assets.isEmpty && assets.allSatisfy { readyKey(for: request(for: $0)) != nil }
     }
 
     func failed(_ asset: PhotoAsset) -> Bool { failedKeys.contains(PhotoImageKey(asset)) }
 
-    func setDisplayedAssets(_ assets: [PhotoAsset], cacheMegabytes: Int) {
+    func setDisplayedAssets(_ assets: [PhotoAsset], cacheMegabytes: Int,
+                            desiredWidths: [PhotoImageKey: Int] = [:]) {
         budgetBytes = max(64, min(1024, cacheMegabytes)) * 1024 * 1024
-        let keys = Set(assets.map(PhotoImageKey.init))
-        var retained: [PhotoImageKey: NSImage] = [:]
-        for key in keys {
-            if let image = displayedImages[key] ?? cache[key]?.image { retained[key] = image }
-        }
-        pinnedKeys = keys
+        pinnedPhotos = Set(assets.map(PhotoImageKey.init))
+        self.desiredWidths = desiredWidths
+        var retained = displayedImages.filter { pinnedPhotos.contains($0.key.photo) }
+        for (key, value) in cache where pinnedPhotos.contains(key.photo) { retained[key] = value.image }
         if Set(displayedImages.keys) != Set(retained.keys) { displayedImages = retained }
         evictIfNeeded()
     }
 
-    func resetFailures() { failedKeys.removeAll() }
-
-    @discardableResult
-    func prepare(_ assets: [PhotoAsset]) async -> Bool {
-        for asset in assets {
-            guard !Task.isCancelled else { return false }
-            let key = PhotoImageKey(asset)
-            if let image = self.image(for: asset) {
-                touch(key)
-                if pinnedKeys.contains(key), displayedImages[key] == nil { displayedImages[key] = image }
-                continue
-            }
-            guard !failedKeys.contains(key) else { return false }
-            let task: Task<DecodedPhoto?, Never>
-            let requestID: UUID
-            if let pending = inFlight[key] {
-                task = pending.task
-                requestID = pending.id
-            } else {
-                let decode = decode
-                task = Task { await decode(asset) }
-                requestID = UUID()
-                inFlight[key] = (requestID, task)
-            }
-            let decoded = await task.value
-            // Other waiters can use the same result. A cancelled scene does not
-            // clear a bitmap already needed by the current display.
-            if inFlight[key]?.id == requestID { inFlight.removeValue(forKey: key) }
-            if let decoded {
-                let image = self.image(for: asset) ?? NSImage(cgImage: decoded.image,
-                    size: NSSize(width: decoded.image.width, height: decoded.image.height))
-                if cache[key] == nil {
-                    cache[key] = (image, decoded.bytes)
-                    cachedBytes += decoded.bytes
-                }
-                touch(key)
-                if pinnedKeys.contains(key) { displayedImages[key] = image }
-                evictIfNeeded()
-            } else {
-                failedKeys.insert(key)
-                return false
-            }
-        }
-        return !Task.isCancelled && isReady(assets)
+    func resetFailures() {
+        failureGeneration += 1
+        failedKeys.removeAll()
+        for pending in inFlight.values { pending.task.cancel() }
+        inFlight.removeAll()
     }
 
-    private func touch(_ key: PhotoImageKey) {
+    @discardableResult
+    func prepare(_ assets: [PhotoAsset], desiredWidths: [PhotoImageKey: Int]? = nil) async -> Bool {
+        let requests = assets.map { request(for: $0, desiredWidth: desiredWidths?[PhotoImageKey($0)]) }
+        let generation = failureGeneration
+        for request in requests {
+            guard !Task.isCancelled else { return false }
+            let key = request.key
+            if let existing = readyKey(for: request) {
+                touch(existing)
+                if pinnedPhotos.contains(key.photo), displayedImages[existing] == nil {
+                    displayedImages[existing] = cache[existing]?.image
+                }
+                continue
+            }
+            guard !failedKeys.contains(key.photo) else { return false }
+            let pending: (id: UUID, task: Task<DecodedPhoto?, Never>)
+            if let shared = inFlight[key] { pending = shared }
+            else {
+                let decode = decode
+                pending = (UUID(), Task { await decode(request) })
+                inFlight[key] = pending
+            }
+            let decoded = await pending.task.value
+            if inFlight[key]?.id == pending.id { inFlight.removeValue(forKey: key) }
+            guard generation == failureGeneration else { return false }
+            guard let decoded else {
+                if !pending.task.isCancelled { failedKeys.insert(key.photo) }
+                return false
+            }
+            let image = displayedImages[key] ?? cache[key]?.image ?? NSImage(cgImage: decoded.image,
+                size: NSSize(width: decoded.image.width, height: decoded.image.height))
+            if cache[key] == nil {
+                cache[key] = (image, decoded.bytes)
+                cachedBytes += decoded.bytes
+            }
+            touch(key)
+            if pinnedPhotos.contains(key.photo) { displayedImages[key] = image }
+            evictIfNeeded()
+        }
+        return !Task.isCancelled && requests.allSatisfy { readyKey(for: $0) != nil }
+    }
+
+    private func readyKey(for request: PhotoDecodeRequest) -> PhotoDecodeKey? {
+        Set(displayedImages.keys).union(cache.keys)
+            .filter { $0.photo == request.key.photo && $0.maximumPixelSize >= request.maximumPixelSize }
+            .min { $0.maximumPixelSize < $1.maximumPixelSize }
+    }
+
+    private func touch(_ key: PhotoDecodeKey) {
         recency.removeAll { $0 == key }
         recency.append(key)
     }
-
     private func evictIfNeeded() {
         while cachedBytes > budgetBytes, let key = recency.first {
             recency.removeFirst()

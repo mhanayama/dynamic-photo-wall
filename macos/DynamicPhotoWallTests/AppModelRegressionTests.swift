@@ -201,4 +201,82 @@ struct AppModelRegressionTests {
         store.endScan(lease)
         #expect(released == [URL(filePath: "/photos")])
     }
+    @Test func addingPhotosDoesNotCloseWindowOrRestartCurrentScene() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(2, forKey: "selectedScreenID")
+        try installFolder(in: defaults)
+        let gate = ScanGate()
+        let host = FakeWallHost()
+        let model = AppModel(defaults: defaults, host: host, playback: WallPlaybackController(),
+                             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
+                             screenProvider: { [second] }, scanner: { _, _ in await gate.scan() }, observeEnvironment: false)
+        defer { model.shutdown() }
+        try await awaitRequests(gate, count: 1)
+        await gate.finish(1, photos: [photo])
+        try await awaitScan(model)
+        let scene = try #require(model.playback.currentScene)
+        let started = model.playback.sceneStartedAt
+        let closes = host.closed
+        model.retryFolders()
+        try await awaitRequests(gate, count: 2)
+        let added = PhotoAsset(url: URL(filePath: "/photos/b.jpg"), pixelWidth: 2400, pixelHeight: 1600)
+        await gate.finish(2, photos: [photo, added])
+        try await awaitScan(model)
+        #expect(host.closed == closes)
+        #expect(model.playback.currentScene == scene)
+        #expect(model.playback.sceneStartedAt == started)
+        #expect(model.isPlaying)
+    }
+
+    @Test func deletingCurrentFileChangesSceneWithoutClosingWindow() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(2, forKey: "selectedScreenID")
+        try installFolder(in: defaults)
+        let gate = ScanGate()
+        let host = FakeWallHost()
+        let model = AppModel(defaults: defaults, host: host, playback: WallPlaybackController(),
+                             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
+                             screenProvider: { [second] }, scanner: { _, _ in await gate.scan() }, observeEnvironment: false)
+        defer { model.shutdown() }
+        try await awaitRequests(gate, count: 1)
+        await gate.finish(1, photos: [photo])
+        try await awaitScan(model)
+        let old = try #require(model.playback.currentScene)
+        let closes = host.closed
+        model.retryFolders()
+        try await awaitRequests(gate, count: 2)
+        let replacement = PhotoAsset(url: URL(filePath: "/photos/b.jpg"), pixelWidth: 2400, pixelHeight: 1600)
+        await gate.finish(2, photos: [replacement])
+        try await awaitScan(model)
+        #expect(host.closed == closes)
+        #expect(model.playback.outgoing?.scene == old)
+        #expect(model.playback.currentScene?.assets == [replacement])
+    }
+
+    @Test func allDecodeFailuresAreReportedAsWaitingAndNextCanRetry() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(2, forKey: "selectedScreenID")
+        try installFolder(in: defaults)
+        let images = PhotoImageStore(decode: { _ in nil })
+        let playback = WallPlaybackController(imageStore: images)
+        let photo = photo
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: playback,
+                             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
+                             screenProvider: { [second] }, scanner: { _, _ in [photo] }, observeEnvironment: false)
+        defer { model.shutdown() }
+        try await awaitScan(model)
+        #expect(!(await images.prepare([photo])))
+        playback.update()
+        #expect(!model.isPlaying)
+        #expect(model.isWaiting)
+        #expect(model.playbackStateLabel == "待機中")
+        #expect(model.canAdvance)
+        model.showNextScene()
+        #expect(playback.currentScene != nil)
+        #expect(playback.waitingForImages)
+    }
+
 }

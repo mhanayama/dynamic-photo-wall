@@ -5,7 +5,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            AppHeaderView(isPlaying: model.isPlaying)
+            AppHeaderView(isPlaying: model.isPlaying, stateLabel: model.playbackStateLabel)
 
             TabView {
                 DisplaySettingsView(model: model)
@@ -34,6 +34,7 @@ struct ContentView: View {
 
 private struct AppHeaderView: View {
     let isPlaying: Bool
+    let stateLabel: String
 
     var body: some View {
         HStack {
@@ -45,7 +46,7 @@ private struct AppHeaderView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Label(isPlaying ? "再生中" : "停止中", systemImage: isPlaying ? "play.circle.fill" : "stop.circle")
+            Label(stateLabel, systemImage: isPlaying ? "play.circle.fill" : "stop.circle")
                 .foregroundStyle(isPlaying ? .green : .secondary)
         }
     }
@@ -78,11 +79,15 @@ private struct DisplaySettingsView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!model.canStart)
                     Button("表示停止", action: model.stop)
-                        .disabled(!model.isPlaying)
+                        .disabled(!model.desiredRunning)
                     Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
                         .disabled(!model.isPlaying)
                     Button("次の構成", action: model.showNextScene)
-                        .disabled(!model.isPlaying)
+                        .disabled(!model.canAdvance)
+                    if model.isWaiting {
+                        Button("再検索して再試行", action: model.retryPlayback)
+                            .disabled(model.isScanning)
+                    }
                 }
                 Text("設定画面を閉じても再生は続きます。")
                     .foregroundStyle(.secondary)
