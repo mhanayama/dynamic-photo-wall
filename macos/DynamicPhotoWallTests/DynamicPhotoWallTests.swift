@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import DynamicPhotoWall
 
+@MainActor
 struct DynamicPhotoWallTests {
     @Test func supportedPhotoExtensionsIncludeWindowsFormats() {
         #expect(PhotoLibrary.supportedExtensions.contains("jpg"))
@@ -38,94 +39,39 @@ struct DynamicPhotoWallTests {
         #expect(photos.allSatisfy { $0.pixelWidth == 1 && $0.pixelHeight == 1 })
     }
 
-    @Test func scenePlannerUsesEligibleAspectRatios() {
-        let portrait = PhotoAsset(
-            url: URL(filePath: "/portrait.jpg"),
-            pixelWidth: 800,
-            pixelHeight: 1_600
-        )
-        let landscape = PhotoAsset(
-            url: URL(filePath: "/landscape.jpg"),
-            pixelWidth: 2_400,
-            pixelHeight: 1_000
-        )
-        let assets = [portrait, landscape]
-
-        let viewport = CGSize(width: 1_920, height: 1_080)
-        var settings = WallSettings()
-        settings.galleryEnabled = false
-        settings.galleryScrollEnabled = false
-        settings.horizontalPanEnabled = false
-        settings.zoomEnabled = false
-        let verticalScene = WallScenePlanner.scene(
-            index: 0,
-            assets: assets,
-            settings: settings,
-            viewport: viewport,
-            seed: 42
-        )
-
-        settings.verticalPanEnabled = false
-        settings.zoomEnabled = true
-        let zoomScene = WallScenePlanner.scene(
-            index: 0,
-            assets: assets,
-            settings: settings,
-            viewport: viewport,
-            seed: 42
-        )
-
-        settings.zoomEnabled = false
-        settings.horizontalPanEnabled = true
-        let horizontalScene = WallScenePlanner.scene(
-            index: 0,
-            assets: assets,
-            settings: settings,
-            viewport: viewport,
-            seed: 42
-        )
-
-        #expect(verticalScene.mode == .verticalPan)
-        #expect(verticalScene.assets == [portrait])
-        #expect(zoomScene.mode == .zoom)
-        #expect(zoomScene.assets == [landscape])
-        #expect(horizontalScene.mode == .horizontalPan)
-        #expect(horizontalScene.assets == [landscape])
+    @Test func scenePlannerUsesEligibleAspectRatios() throws {
+        let portrait = PhotoAsset(url: URL(filePath: "/portrait.jpg"), pixelWidth: 800, pixelHeight: 1600)
+        let landscape = PhotoAsset(url: URL(filePath: "/landscape.jpg"), pixelWidth: 2400, pixelHeight: 1000)
+        let viewport = CGSize(width: 1920, height: 1080)
+        for mode in [WallMode.verticalPan, .horizontalPan, .zoom] {
+            var settings = WallSettings()
+            settings.galleryEnabled = false
+            settings.galleryScrollEnabled = false
+            settings.verticalPanEnabled = mode == .verticalPan
+            settings.horizontalPanEnabled = mode == .horizontalPan
+            settings.zoomEnabled = mode == .zoom
+            let scene = try #require(WallScenePlanner(seed: 42).next(
+                assets: [portrait, landscape], settings: settings, viewport: viewport))
+            #expect(scene.mode == mode)
+            #expect(scene.assets == (mode == .verticalPan ? [portrait] : [landscape]))
+        }
     }
 
-    @Test func playbackPositionStartsCrossfadeNearSceneEnd() {
-        let asset = PhotoAsset(
-            url: URL(filePath: "/photo.jpg"),
-            pixelWidth: 1_920,
-            pixelHeight: 1_080
-        )
-
+    @Test func crossfadeKeepsOutgoingLayerAndStartsIncomingMotion() throws {
         var settings = WallSettings()
         settings.galleryEnabled = false
         settings.galleryScrollEnabled = false
         settings.verticalPanEnabled = false
         settings.horizontalPanEnabled = false
-        settings.zoomEnabled = true
-        let viewport = CGSize(width: 1_920, height: 1_080)
-        let middle = WallPlaybackPosition.resolve(
-            elapsed: settings.zoomSeconds / 2,
-            assets: [asset],
-            settings: settings,
-            viewport: viewport,
-            seed: 42
-        )
-        let nearEnd = WallPlaybackPosition.resolve(
-            elapsed: settings.zoomSeconds - 0.3,
-            assets: [asset],
-            settings: settings,
-            viewport: viewport,
-            seed: 42
-        )
-
-        #expect(middle.currentScene.id == 0)
-        #expect(middle.transitionProgress == 0)
-        #expect(nearEnd.transitionProgress > 0)
-        #expect(nearEnd.nextScene.id == 1)
+        let assets = (0..<2).map { PhotoAsset(url: URL(filePath: "/\($0).jpg"), pixelWidth: 1920, pixelHeight: 1080) }
+        let playback = WallPlaybackController()
+        playback.start(assets: assets, settings: settings, viewport: CGSize(width: 1920, height: 1080), seed: 42, now: 0)
+        playback.update(now: settings.zoomSeconds + settings.fadeSeconds)
+        #expect(playback.currentScene?.id == 1)
+        #expect(playback.outgoing?.scene.id == 0)
+        let halfway = settings.zoomSeconds + settings.fadeSeconds * 1.5
+        #expect(abs(playback.transitionProgress(now: halfway) - 0.5) < 0.001)
+        #expect(try #require(playback.presentation(now: halfway)).progress > 0)
     }
 
     @Test func galleryLayoutPreservesAspectAndStaysInsideViewport() {
@@ -145,42 +91,16 @@ struct DynamicPhotoWallTests {
 
     @Test func sceneSequenceChangesWithPlaybackSeed() {
         let assets = [
-            PhotoAsset(url: URL(filePath: "/portrait.jpg"), pixelWidth: 800, pixelHeight: 1_600),
-            PhotoAsset(url: URL(filePath: "/landscape.jpg"), pixelWidth: 2_400, pixelHeight: 1_000),
-            PhotoAsset(url: URL(filePath: "/square.jpg"), pixelWidth: 1_200, pixelHeight: 1_200)
+            PhotoAsset(url: URL(filePath: "/portrait.jpg"), pixelWidth: 800, pixelHeight: 1600),
+            PhotoAsset(url: URL(filePath: "/landscape.jpg"), pixelWidth: 2400, pixelHeight: 1000),
+            PhotoAsset(url: URL(filePath: "/square.jpg"), pixelWidth: 1200, pixelHeight: 1200)
         ]
-        let settings = WallSettings()
-        let viewport = CGSize(width: 1_920, height: 1_080)
-        let first = (0..<20).map {
-            WallScenePlanner.scene(
-                index: $0,
-                assets: assets,
-                settings: settings,
-                viewport: viewport,
-                seed: 1
-            ).mode
+        func sequence(seed: UInt64) -> [WallScene?] {
+            let planner = WallScenePlanner(seed: seed)
+            return (0..<20).map { _ in planner.next(assets: assets, settings: WallSettings(), viewport: CGSize(width: 1920, height: 1080)) }
         }
-        let repeated = (0..<20).map {
-            WallScenePlanner.scene(
-                index: $0,
-                assets: assets,
-                settings: settings,
-                viewport: viewport,
-                seed: 1
-            ).mode
-        }
-        let second = (0..<20).map {
-            WallScenePlanner.scene(
-                index: $0,
-                assets: assets,
-                settings: settings,
-                viewport: viewport,
-                seed: 2
-            ).mode
-        }
-
-        #expect(first == repeated)
-        #expect(first != second)
+        #expect(sequence(seed: 1) == sequence(seed: 1))
+        #expect(sequence(seed: 1) != sequence(seed: 2))
     }
 
     @Test func photoSelectorExcludesDisplayedPhotosAndAvoidsImmediateRepeats() throws {

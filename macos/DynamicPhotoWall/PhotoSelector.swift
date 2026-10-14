@@ -3,6 +3,7 @@ import Foundation
 /// Stateful photo selection matching the Windows implementation's history and
 /// sequential-playback rules. Simultaneously displayed photos are never used
 /// as the small-library history fallback.
+@MainActor
 final class PhotoSelector {
     private var recentURLs: [URL] = []
     private var sequentialAfter: URL?
@@ -61,7 +62,7 @@ final class PhotoSelector {
     }
 }
 
-private struct SeededRandomNumberGenerator: RandomNumberGenerator {
+nonisolated struct SeededRandomNumberGenerator: RandomNumberGenerator {
     private var state: UInt64
 
     init(seed: UInt64) {

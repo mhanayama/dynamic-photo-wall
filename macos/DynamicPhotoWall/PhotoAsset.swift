@@ -1,10 +1,13 @@
 import CoreGraphics
 import Foundation
 
-struct PhotoAsset: Identifiable, Equatable, Sendable {
+nonisolated struct PhotoAsset: Identifiable, Equatable, Sendable {
     let url: URL
     let pixelWidth: Int
     let pixelHeight: Int
+    var fileSize: Int64 = 0
+    var modifiedAt: TimeInterval = 0
+    var takenAt: Date? = nil
 
     nonisolated var id: URL {
         url
@@ -17,10 +20,4 @@ struct PhotoAsset: Identifiable, Equatable, Sendable {
         return CGFloat(pixelWidth) / CGFloat(pixelHeight)
     }
 
-    nonisolated var stableMotionDirection: CGFloat {
-        let checksum = url.absoluteString.utf8.reduce(0) { partialResult, byte in
-            (partialResult + Int(byte)) % 2
-        }
-        return checksum == 0 ? 1 : -1
-    }
 }

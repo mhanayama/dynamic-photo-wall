@@ -7,9 +7,14 @@ enum PhotoLibrary {
     }
 
     nonisolated static func scan(folderURL: URL, recursive: Bool = true) async -> [PhotoAsset] {
-        await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             scanSynchronously(folderURL: folderURL, recursive: recursive)
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private nonisolated static func scanSynchronously(
@@ -34,6 +39,7 @@ enum PhotoLibrary {
 
         var photos: [PhotoAsset] = []
         for case let url as URL in enumerator {
+            if Task.isCancelled { return [] }
             guard supportedExtensions.contains(url.pathExtension.lowercased()),
                   let values = try? url.resourceValues(forKeys: Set(keys)),
                   values.isRegularFile == true,
@@ -62,14 +68,22 @@ enum PhotoLibrary {
         let pixelWidth = swapsDimensions ? height.intValue : width.intValue
         let pixelHeight = swapsDimensions ? width.intValue : height.intValue
 
-        guard pixelWidth > 0, pixelHeight > 0 else {
+        guard pixelWidth > 0, pixelHeight > 0, pixelWidth <= 500_000_000 / pixelHeight else {
             return nil
         }
 
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
         return PhotoAsset(
-            url: url,
+            url: url.standardizedFileURL,
             pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight
+            pixelHeight: pixelHeight,
+            fileSize: Int64(values?.fileSize ?? 0),
+            modifiedAt: values?.contentModificationDate?.timeIntervalSince1970 ?? 0,
+            takenAt: (exif?[kCGImagePropertyExifDateTimeOriginal] as? String).flatMap { formatter.date(from: $0) }
         )
     }
 }

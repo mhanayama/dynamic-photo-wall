@@ -3,10 +3,10 @@ import SwiftUI
 
 @main
 struct DynamicPhotoWallApp: App {
-    @State private var model = AppModel()
+    @State private var model = AppModel.makeLaunchModel()
 
     var body: some Scene {
-        WindowGroup(id: "settings") {
+        Window("Dynamic Photo Wall", id: "settings") {
             ContentView(model: model)
         }
         .defaultSize(width: 680, height: 430)
@@ -28,6 +28,7 @@ private struct MenuBarControls: View {
         Divider()
 
         if model.isPlaying {
+            Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
             Button("次の構成", action: model.showNextScene)
             Button("停止", action: model.stop)
         } else {
@@ -43,7 +44,7 @@ private struct MenuBarControls: View {
         Divider()
 
         Button("終了") {
-            model.stop()
+            model.shutdown()
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")

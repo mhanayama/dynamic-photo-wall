@@ -24,6 +24,7 @@ struct ContentView: View {
                     .tabItem { Label("Appearance", systemImage: "paintpalette") }
             }
 
+            if let warning = model.settingsWarning { Text(warning).foregroundStyle(.orange) }
             StatusAndSaveView(model: model)
         }
         .padding(24)
@@ -57,6 +58,9 @@ private struct DisplaySettingsView: View {
         Form {
             Section("表示するディスプレイ") {
                 Picker("対象画面", selection: $model.selectedScreenID) {
+                    if let id = model.selectedScreenID, model.selectedScreen == nil {
+                        Text("未接続のディスプレイ（ID \(id)）").tag(Optional(id))
+                    }
                     ForEach(model.screens) { screen in
                         Text("\(screen.name)（\(screen.resolutionDescription)）")
                             .tag(Optional(screen.id))
@@ -74,6 +78,8 @@ private struct DisplaySettingsView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!model.canStart)
                     Button("表示停止", action: model.stop)
+                        .disabled(!model.isPlaying)
+                    Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
                         .disabled(!model.isPlaying)
                     Button("次の構成", action: model.showNextScene)
                         .disabled(!model.isPlaying)
@@ -93,16 +99,21 @@ private struct PhotoSettingsView: View {
         Form {
             Section("写真フォルダ") {
                 List {
-                    ForEach(model.folderURLs, id: \.self) { url in
-                        Text(url.path(percentEncoded: false))
+                    ForEach(model.folders) { folder in
+                        Label(folder.path ?? "未解決の登録フォルダ", systemImage: folder.isAccessible ? "folder" : "exclamationmark.triangle")
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .foregroundStyle(folder.isAccessible ? Color.primary : Color.orange)
                     }
                     .onDelete(perform: model.removeFolders)
                 }
                 .frame(minHeight: 180)
 
-                Button("フォルダを追加", systemImage: "plus", action: model.chooseFolder)
+                HStack {
+                    Button("フォルダを追加／再許可", systemImage: "plus", action: model.chooseFolder)
+                    Button("再検索／アクセス再試行", systemImage: "arrow.clockwise", action: model.retryFolders)
+                }
+                if let warning = model.folderWarning { Text(warning).foregroundStyle(.orange) }
 
                 Toggle("サブフォルダも検索", isOn: $model.settings.recursive)
                 Toggle("ランダムに再生", isOn: $model.settings.randomOrder)
@@ -222,7 +233,7 @@ private struct StatusAndSaveView: View {
 
     var body: some View {
         HStack {
-            Text("\(model.statusMessage) · ライブラリ \(model.photoAssets.count)枚")
+            Text("\(model.statusMessage) · ライブラリ \(model.photoAssets.count)枚 · \(model.currentMode ?? "—")")
                 .foregroundStyle(.secondary)
             Spacer()
             Button("保存して適用", action: model.saveSettings)

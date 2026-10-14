@@ -2,41 +2,19 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class DesktopWindowController {
+protocol DesktopWallHosting: AnyObject {
+    func show(on screen: ScreenDescriptor, playback: WallPlaybackController)
+    func close()
+}
+
+@MainActor
+final class DesktopWindowController: DesktopWallHosting {
     private var window: NSWindow?
-    private var screen: ScreenDescriptor?
-    private var photoAssets: [PhotoAsset] = []
-    private var settings = WallSettings()
-    private var sceneIndex = 0
+    private var playback: WallPlaybackController?
 
-    func show(on screen: ScreenDescriptor, photoAssets: [PhotoAsset], settings: WallSettings) {
-        close()
-        self.screen = screen
-        self.photoAssets = photoAssets
-        self.settings = settings
-        sceneIndex = 0
-        showCurrentScene()
-    }
-
-    func showNextScene() {
-        guard window != nil else {
-            return
-        }
-        sceneIndex += 1
-        showCurrentScene()
-    }
-
-    private func showCurrentScene() {
-        guard let screen else {
-            return
-        }
-
-        let wallWindow = window ?? NSWindow(
-            contentRect: screen.frame,
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
+    func show(on screen: ScreenDescriptor, playback: WallPlaybackController) {
+        let wallWindow = window ?? NSWindow(contentRect: screen.frame, styleMask: [.borderless],
+                                            backing: .buffered, defer: false)
         wallWindow.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
         wallWindow.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         wallWindow.backgroundColor = .black
@@ -44,13 +22,10 @@ final class DesktopWindowController {
         wallWindow.hasShadow = false
         wallWindow.ignoresMouseEvents = true
         wallWindow.isReleasedWhenClosed = false
-        wallWindow.contentViewController = NSHostingController(
-            rootView: DesktopWallView(
-                photoAssets: photoAssets,
-                initialSceneIndex: sceneIndex,
-                settings: settings
-            )
-        )
+        if self.playback !== playback || wallWindow.contentViewController == nil {
+            wallWindow.contentViewController = NSHostingController(rootView: DesktopWallView(playback: playback))
+            self.playback = playback
+        }
         wallWindow.setFrame(screen.frame, display: true)
         wallWindow.orderFrontRegardless()
         window = wallWindow
@@ -60,9 +35,6 @@ final class DesktopWindowController {
         window?.orderOut(nil)
         window?.close()
         window = nil
-        screen = nil
-        photoAssets = []
-        settings = WallSettings()
-        sceneIndex = 0
+        playback = nil
     }
 }

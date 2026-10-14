@@ -4,247 +4,305 @@ import Observation
 @MainActor
 @Observable
 final class AppModel {
+    typealias Scanner = @Sendable (URL, Bool) async -> [PhotoAsset]
     private enum DefaultsKey {
-        static let folderBookmarks = "photoFolderBookmarks"
-        static let legacyFolderBookmark = "photoFolderBookmark"
         static let selectedScreenID = "selectedScreenID"
         static let settings = "wallSettings"
     }
 
     var screens: [ScreenDescriptor] = []
     var selectedScreenID: CGDirectDisplayID?
-    var folderURLs: [URL] = []
+    var folders: [PhotoFolder] = []
     var photoAssets: [PhotoAsset] = []
     var settings = WallSettings()
-    var isScanning = false
-    var isPlaying = false
-    var statusMessage = "写真フォルダを選択してください。"
+    private(set) var isScanning = false
+    private(set) var isPlaying = false
+    private(set) var desiredRunning = false
+    private(set) var statusMessage = "写真フォルダを選択してください。"
+    private(set) var folderWarning: String?
+    private(set) var settingsWarning: String?
+    private(set) var userPaused = false
+    let playback = WallPlaybackController()
 
-    @ObservationIgnored private let desktopWindowController = DesktopWindowController()
-    @ObservationIgnored private var securityScopedFolderURLs: [URL] = []
-    @ObservationIgnored private var didHandleLaunchStart = false
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let host: any DesktopWallHosting
+    @ObservationIgnored private let folderStore: FolderBookmarkStore
+    @ObservationIgnored private let screenProvider: @MainActor () -> [ScreenDescriptor]
+    @ObservationIgnored private let scanner: Scanner
+    @ObservationIgnored private var appliedSettings = WallSettings()
+    @ObservationIgnored private var appliedScreenID: CGDirectDisplayID?
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var scanGeneration = 0
+    @ObservationIgnored private var healthTask: Task<Void, Never>?
+    @ObservationIgnored private var reconciliationTask: Task<Void, Never>?
+    @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    @ObservationIgnored private var sleeping = false
+    @ObservationIgnored private var terminated = false
 
-    init() {
+    init(defaults: UserDefaults = .standard, host: (any DesktopWallHosting)? = nil,
+         folderStore: FolderBookmarkStore? = nil,
+         screenProvider: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
+         scanner: @escaping Scanner = { await PhotoLibrary.scan(folderURL: $0, recursive: $1) },
+         observeEnvironment: Bool = true) {
+        self.defaults = defaults
+        self.host = host ?? DesktopWindowController()
+        self.folderStore = folderStore ?? FolderBookmarkStore(defaults: defaults)
+        self.screenProvider = screenProvider
+        self.scanner = scanner
         restoreSettings()
-        refreshScreens()
-        restoreSelection()
-        restoreFolderAccess()
+        // Read the saved ID before enumeration. Disconnection never overwrites it.
+        let saved = defaults.integer(forKey: DefaultsKey.selectedScreenID)
+        selectedScreenID = saved > 0 ? CGDirectDisplayID(saved) : nil
+        screens = screenProvider()
+        if selectedScreenID == nil { selectedScreenID = screens.first?.id }
+        appliedScreenID = saved > 0 ? CGDirectDisplayID(saved) : nil
+        appliedSettings = settings
+        syncFolders()
+        desiredRunning = saved > 0 && settings.startOnLaunch && !folders.isEmpty
+        if observeEnvironment { observeSystemEnvironment() }
+        reloadPhotos()
     }
 
-    var selectedScreen: ScreenDescriptor? {
-        screens.first { $0.id == selectedScreenID }
+    static func makeLaunchModel() -> AppModel {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil || environment["XCTestSessionIdentifier"] != nil
+            || NSClassFromString("XCTestCase") != nil {
+            // The app is the test host. Never open the user's wall or bookmarks.
+            return AppModel(defaults: UserDefaults(suiteName: "DynamicPhotoWall.TestHost.\(UUID())")!,
+                            screenProvider: { [] }, observeEnvironment: false)
+        }
+        return AppModel()
     }
 
-    var canStart: Bool {
-        selectedScreen != nil && !photoAssets.isEmpty && !isScanning
-    }
+    var selectedScreen: ScreenDescriptor? { screens.first { $0.id == selectedScreenID } }
+    var canStart: Bool { selectedScreen != nil && !folders.isEmpty && !isScanning }
+    var currentMode: String? { playback.currentScene?.mode.rawValue }
 
     func refreshScreens() {
-        screens = ScreenDescriptor.availableScreens()
-        if let selectedScreenID, screens.contains(where: { $0.id == selectedScreenID }) {
-            return
-        }
-        selectedScreenID = screens.first?.id
-        persistScreenSelection()
+        screens = screenProvider()
+        if selectedScreenID == nil { selectedScreenID = screens.first?.id }
+        reconcilePlayback()
     }
 
     func chooseFolder() {
         let panel = NSOpenPanel()
-        panel.title = "写真フォルダを追加"
-        panel.message = "複数の写真フォルダを登録できます。"
+        panel.title = "写真フォルダを追加／再許可"
         panel.prompt = "追加"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
-
-        guard panel.runModal() == .OK else {
-            return
+        guard panel.runModal() == .OK else { return }
+        var failures: [String] = []
+        for url in panel.urls {
+            do { try folderStore.add(url) }
+            catch { failures.append(error.localizedDescription) }
         }
-
-        for url in panel.urls where !folderURLs.contains(url) {
-            guard url.startAccessingSecurityScopedResource() else {
-                statusMessage = "選択したフォルダへのアクセスを開始できませんでした。"
-                continue
-            }
-            securityScopedFolderURLs.append(url)
-            folderURLs.append(url)
-        }
-        saveBookmarks()
+        syncFolders()
         reloadPhotos()
+        if !failures.isEmpty { folderWarning = failures.joined(separator: "\n") }
     }
 
     func removeFolders(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) {
-            guard folderURLs.indices.contains(index) else {
-                continue
-            }
-            let url = folderURLs.remove(at: index)
-            if let accessIndex = securityScopedFolderURLs.firstIndex(of: url) {
-                securityScopedFolderURLs.remove(at: accessIndex)
-                    .stopAccessingSecurityScopedResource()
-            }
-        }
-        saveBookmarks()
+        // Close the wall before removing access needed by its image tasks.
+        suspendWall()
+        scanTask?.cancel()
+        folderStore.remove(at: offsets)
+        syncFolders()
         reloadPhotos()
     }
 
-    func saveSettings() {
-        settings.normalize()
-        persistScreenSelection()
-        if let data = try? JSONEncoder().encode(settings) {
-            UserDefaults.standard.set(data, forKey: DefaultsKey.settings)
-        }
+    func retryFolders() {
+        folderStore.refreshAccess()
+        syncFolders()
         reloadPhotos()
     }
 
+    func saveSettings() { applySettings(startRequested: false) }
     func start() {
-        guard let selectedScreen, !photoAssets.isEmpty else {
-            statusMessage = "対象画面と写真フォルダを確認してください。"
-            return
-        }
+        guard !isScanning else { return }
+        applySettings(startRequested: true)
+    }
 
-        settings.normalize()
-        saveSettingsWithoutRestart()
-        desktopWindowController.show(
-            on: selectedScreen,
-            photoAssets: photoAssets,
-            settings: settings
-        )
-        isPlaying = true
-        statusMessage = "\(selectedScreen.name) で表示中"
+    private func applySettings(startRequested: Bool) {
+        do {
+            var normalized = settings
+            normalized.normalize()
+            try normalized.validate()
+            let encoded = try JSONEncoder().encode(normalized)
+            defaults.set(encoded, forKey: DefaultsKey.settings)
+            if let selectedScreenID { defaults.set(Int(selectedScreenID), forKey: DefaultsKey.selectedScreenID) }
+            settings = normalized
+            settingsWarning = nil
+            appliedSettings = normalized
+            appliedScreenID = selectedScreenID
+            if startRequested { desiredRunning = true; userPaused = false }
+            suspendWall()
+            reloadPhotos()
+        } catch { statusMessage = error.localizedDescription }
     }
 
     func stop() {
-        desktopWindowController.close()
-        isPlaying = false
-        statusMessage = photoAssets.isEmpty
-            ? "写真フォルダを選択してください。"
-            : "\(photoAssets.count)枚の写真を読み込み済み"
+        desiredRunning = false
+        userPaused = false
+        suspendWall()
+        statusMessage = "停止中 · \(photoAssets.count)枚"
+    }
+
+    func togglePause() {
+        guard desiredRunning else { return }
+        userPaused.toggle()
+        playback.setPaused(userPaused || sleeping)
+        updatePlayingStatus()
     }
 
     func showNextScene() {
-        guard isPlaying else {
-            return
-        }
-        desktopWindowController.showNextScene()
-        statusMessage = "次の構成を表示しました。"
+        guard isPlaying else { return }
+        playback.next()
+        updatePlayingStatus()
     }
 
-    private func reloadPhotos() {
-        let folders = folderURLs
+    /// All writers use a generation token, including scans that ignore cancellation.
+    func reloadPhotos() {
+        guard !terminated else { return }
+        scanGeneration += 1
+        let generation = scanGeneration
+        scanTask?.cancel()
+        let folders = folderStore.accessibleURLs
         guard !folders.isEmpty else {
+            isScanning = false
             photoAssets = []
-            statusMessage = "写真フォルダを選択してください。"
+            suspendWall()
+            statusMessage = self.folders.isEmpty ? "写真フォルダを選択してください。" : "写真フォルダ未接続 · 再接続を待機中"
             return
         }
-
         isScanning = true
         statusMessage = "写真を検索しています…"
-        let recursive = settings.recursive
-
-        Task {
+        let recursive = appliedSettings.recursive
+        let scanner = scanner
+        let store = folderStore
+        let lease = store.beginScan()
+        scanTask = Task { [weak self] in
             let photos = await withTaskGroup(of: [PhotoAsset].self) { group in
-                for folder in folders {
-                    group.addTask {
-                        await PhotoLibrary.scan(folderURL: folder, recursive: recursive)
-                    }
-                }
-
+                for folder in folders { group.addTask { await scanner(folder, recursive) } }
                 var result: [PhotoAsset] = []
-                for await items in group {
-                    result.append(contentsOf: items)
-                }
+                for await items in group { result.append(contentsOf: items) }
                 return result
             }
-
-            photoAssets = Array(Dictionary(grouping: photos, by: \.url).compactMap(\.value.first))
-                .sorted {
-                    $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent)
-                        == .orderedAscending
-                }
-            isScanning = false
-            statusMessage = photoAssets.isEmpty
-                ? "対応する写真が見つかりませんでした。"
-                : "\(photoAssets.count)枚の写真を読み込みました。"
-
-            if isPlaying {
-                start()
-            } else if !didHandleLaunchStart {
-                didHandleLaunchStart = true
-                if settings.startOnLaunch, canStart {
-                    start()
-                }
-            }
+            // Even obsolete scans must release their scope lease after all work ends.
+            store.endScan(lease)
+            guard let self, !Task.isCancelled, !self.terminated,
+                  self.scanGeneration == generation else { return }
+            let unique = Dictionary(grouping: photos, by: { $0.url.standardizedFileURL })
+            let updated = unique.compactMap(\.value.first).sorted { $0.url.path < $1.url.path }
+            let changed = updated != self.photoAssets
+            self.photoAssets = updated
+            self.isScanning = false
+            self.scanTask = nil
+            if changed { self.suspendWall() }
+            self.reconcilePlayback()
         }
     }
 
-    private func saveSettingsWithoutRestart() {
-        persistScreenSelection()
-        if let data = try? JSONEncoder().encode(settings) {
-            UserDefaults.standard.set(data, forKey: DefaultsKey.settings)
+    private func reconcilePlayback() {
+        guard !terminated, !isScanning else { return }
+        guard desiredRunning else {
+            statusMessage = "停止中 · \(photoAssets.count)枚"
+            return
         }
+        guard let screen = screens.first(where: { $0.id == appliedScreenID }) else {
+            suspendWall()
+            statusMessage = "対象ディスプレイ未接続 · 再接続を待機中"
+            return
+        }
+        guard !photoAssets.isEmpty else {
+            suspendWall()
+            statusMessage = "画像がありません · 写真の追加を待機中"
+            return
+        }
+        let viewport = CGSize(width: screen.pixelWidth, height: screen.pixelHeight)
+        if !isPlaying || playback.viewport != viewport {
+            playback.start(assets: photoAssets, settings: appliedSettings, viewport: viewport)
+            guard playback.currentScene != nil else {
+                suspendWall()
+                statusMessage = "適した写真・有効なモードがありません。"
+                return
+            }
+        }
+        playback.setPaused(userPaused || sleeping)
+        host.show(on: screen, playback: playback)
+        isPlaying = true
+        updatePlayingStatus()
+    }
+
+    private func suspendWall() {
+        host.close()
+        playback.stop()
+        isPlaying = false
+    }
+
+    private func updatePlayingStatus() {
+        guard isPlaying else { return }
+        statusMessage = userPaused ? "一時停止中" : sleeping ? "スリープ中" : "再生中 · \(photoAssets.count)枚"
+    }
+
+    private func syncFolders() {
+        folders = folderStore.folders
+        folderWarning = folderStore.warning
     }
 
     private func restoreSettings() {
-        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.settings),
-              let decoded = try? JSONDecoder().decode(WallSettings.self, from: data) else {
-            return
+        guard let data = defaults.data(forKey: DefaultsKey.settings) else { return }
+        do { settings = try JSONDecoder().decode(WallSettings.self, from: data) }
+        catch {
+            defaults.set(data, forKey: "wallSettings.invalid")
+            settingsWarning = "設定を読み込めないため初期値を使用します。元の設定は退避しました。"
         }
-        settings = decoded
-        settings.normalize()
     }
 
-    private func saveBookmarks() {
-        let bookmarks = folderURLs.compactMap {
-            try? $0.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
+    private func observeSystemEnvironment() {
+        observe(.default, NSApplication.didChangeScreenParametersNotification) { $0.refreshScreens() }
+        let workspace = NSWorkspace.shared.notificationCenter
+        observe(workspace, NSWorkspace.willSleepNotification) {
+            $0.sleeping = true; $0.playback.setPaused(true); $0.updatePlayingStatus()
         }
-        UserDefaults.standard.set(bookmarks, forKey: DefaultsKey.folderBookmarks)
-    }
-
-    private func restoreFolderAccess() {
-        var bookmarks = UserDefaults.standard.array(forKey: DefaultsKey.folderBookmarks) as? [Data] ?? []
-        if bookmarks.isEmpty,
-           let legacy = UserDefaults.standard.data(forKey: DefaultsKey.legacyFolderBookmark) {
-            bookmarks = [legacy]
+        observe(workspace, NSWorkspace.didWakeNotification) {
+            $0.sleeping = false; $0.refreshScreens(); $0.playback.setPaused($0.userPaused)
         }
-
-        for bookmark in bookmarks {
-            var isStale = false
-            guard let url = try? URL(
-                resolvingBookmarkData: bookmark,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            ), url.startAccessingSecurityScopedResource() else {
-                continue
+        observe(.default, NSApplication.willTerminateNotification) { $0.shutdown() }
+        healthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                self?.refreshScreens()
             }
-            securityScopedFolderURLs.append(url)
-            folderURLs.append(url)
         }
-
-        saveBookmarks()
-        reloadPhotos()
-    }
-
-    private func persistScreenSelection() {
-        if let selectedScreenID {
-            UserDefaults.standard.set(Int(selectedScreenID), forKey: DefaultsKey.selectedScreenID)
+        reconciliationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(300)) } catch { return }
+                self?.retryFolders()
+            }
         }
     }
 
-    private func restoreSelection() {
-        let savedID = UserDefaults.standard.integer(forKey: DefaultsKey.selectedScreenID)
-        guard savedID != 0 else {
-            return
+    private func observe(_ center: NotificationCenter, _ name: Notification.Name,
+                         action: @escaping @MainActor (AppModel) -> Void) {
+        let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in action(self) }
         }
+        observers.append((center, observer))
+    }
 
-        let displayID = CGDirectDisplayID(savedID)
-        if screens.contains(where: { $0.id == displayID }) {
-            selectedScreenID = displayID
-        }
+    func shutdown() {
+        guard !terminated else { return }
+        terminated = true
+        desiredRunning = false
+        scanGeneration += 1
+        scanTask?.cancel()
+        healthTask?.cancel()
+        reconciliationTask?.cancel()
+        for (center, observer) in observers { center.removeObserver(observer) }
+        observers.removeAll()
+        suspendWall()
+        folderStore.shutdown()
     }
 }

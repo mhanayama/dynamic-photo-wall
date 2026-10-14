@@ -1,240 +1,133 @@
 import CoreGraphics
 import Foundation
 
-enum WallMode: String, CaseIterable, Equatable, Sendable {
-    case gallery
-    case horizontalGallery
-    case verticalPan
-    case horizontalPan
-    case zoom
+nonisolated enum WallMode: String, CaseIterable, Equatable, Sendable {
+    case gallery, horizontalGallery, verticalPan, horizontalPan, zoom
 }
 
-struct WallScene: Equatable, Sendable {
+nonisolated struct WallScene: Equatable, Sendable {
     let id: Int
     let mode: WallMode
-    let assets: [PhotoAsset]
+    var assets: [PhotoAsset]
+    var reverse = false
+    var zoomCenter = CGPoint(x: 0.5, y: 0.5)
 }
 
-enum WallScenePlanner {
-    nonisolated static func scene(
-        index: Int,
-        assets: [PhotoAsset],
-        settings: WallSettings,
-        viewport: CGSize,
-        seed: UInt64
-    ) -> WallScene {
-        guard !assets.isEmpty else {
-            return WallScene(id: index, mode: .gallery, assets: [])
+/// One planner and one selector live for the entire playback session.
+@MainActor
+final class WallScenePlanner {
+    private let selector: PhotoSelector
+    private var generator: SeededRandomNumberGenerator
+    private var previous: WallMode?
+    private var repeats = 0
+    private var nextID = 0
+
+    init(seed: UInt64 = .random(in: .min ... .max)) {
+        selector = PhotoSelector(seed: seed)
+        generator = SeededRandomNumberGenerator(seed: seed ^ 0xA076_1D64_78BD_642F)
+    }
+
+    func next(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
+              excluding: Set<URL> = []) -> WallScene? {
+        var choices = eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: excluding)
+        if choices.isEmpty, !excluding.isEmpty {
+            choices = eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: [])
         }
-
-        var choices: [(mode: WallMode, candidates: [PhotoAsset], weight: Double)] = []
-        let galleryModes = [settings.galleryEnabled, settings.galleryScrollEnabled].filter { $0 }.count
-        let panModes = [settings.verticalPanEnabled, settings.horizontalPanEnabled].filter { $0 }.count
-
-        func add(_ mode: WallMode, enabled: Bool, weight: Double) {
-            guard enabled, weight > 0 else {
-                return
+        guard !choices.isEmpty else { return nil }
+        let galleryCount = choices.filter { $0.mode == .gallery || $0.mode == .horizontalGallery }.count
+        let panCount = choices.filter { $0.mode == .verticalPan || $0.mode == .horizontalPan }.count
+        for index in choices.indices {
+            switch choices[index].mode {
+            case .gallery, .horizontalGallery: choices[index].weight /= Double(galleryCount)
+            case .verticalPan, .horizontalPan: choices[index].weight /= Double(panCount)
+            case .zoom: break
             }
-            let candidates = eligibleAssets(
-                for: mode,
-                assets: assets,
-                settings: settings,
-                viewport: viewport
-            )
-            if !candidates.isEmpty {
-                choices.append((mode, candidates, weight))
-            }
         }
-
-        add(
-            .gallery,
-            enabled: settings.galleryEnabled,
-            weight: Double(settings.galleryWeight) / Double(max(1, galleryModes))
-        )
-        add(
-            .horizontalGallery,
-            enabled: settings.galleryScrollEnabled && assets.count > 1,
-            weight: Double(settings.galleryWeight) / Double(max(1, galleryModes))
-        )
-        add(
-            .verticalPan,
-            enabled: settings.verticalPanEnabled,
-            weight: Double(settings.panWeight) / Double(max(1, panModes))
-        )
-        add(
-            .horizontalPan,
-            enabled: settings.horizontalPanEnabled,
-            weight: Double(settings.panWeight) / Double(max(1, panModes))
-        )
-        add(.zoom, enabled: settings.zoomEnabled, weight: Double(settings.zoomWeight))
-
-        guard !choices.isEmpty else {
-            return WallScene(id: index, mode: .gallery, assets: Array(assets.prefix(1)))
-        }
-
-        let totalWeight = choices.reduce(0) { $0 + $1.weight }
-        var ticket = deterministicUnitValue(index: index, seed: seed) * totalWeight
-        let choice = choices.first {
-            ticket -= $0.weight
-            return ticket < 0
-        } ?? choices[choices.count - 1]
-
-        let start = settings.randomOrder
-            ? Int(deterministicValue(index: index + 10_000, seed: seed) % UInt64(choice.candidates.count))
-            : positiveModulo(index * 7, choice.candidates.count)
+        if repeats >= 2, choices.count > 1 { choices.removeAll { $0.mode == previous } }
+        var ticket = Double.random(in: 0..<choices.reduce(0) { $0 + $1.weight }, using: &generator)
+        let chosen = choices.first { ticket -= $0.weight; return ticket < 0 } ?? choices[choices.count - 1]
         var selected: [PhotoAsset] = []
-
-        switch choice.mode {
+        var used: Set<URL> = []
+        let count: Int
+        switch chosen.mode {
         case .gallery:
-            let desired = Int((viewport.width / max(viewport.height, 1) / 0.68).rounded())
-            let count = min(max(1, desired), min(settings.galleryMax, choice.candidates.count))
-            selected = select(count: count, start: start, from: choice.candidates)
-
-        case .horizontalGallery:
-            var stripWidth = settings.gap
-            var offset = 0
-            while selected.count < min(24, choice.candidates.count) {
-                let asset = choice.candidates[(start + offset) % choice.candidates.count]
-                selected.append(asset)
-                stripWidth += max(1, Double(viewport.height) - 2 * settings.gap)
-                    * Double(asset.aspectRatio) + settings.gap
-                offset += 1
-                if selected.count >= 2,
-                   stripWidth >= Double(viewport.width + viewport.height * 1.5) {
-                    break
-                }
-            }
-
-        case .verticalPan, .horizontalPan, .zoom:
-            selected = [choice.candidates[start]]
+            count = min(settings.galleryMax, max(1, Int((viewport.width / viewport.height / 0.68).rounded())))
+        case .horizontalGallery: count = min(24, chosen.assets.count)
+        default: count = 1
         }
-
-        return WallScene(id: index, mode: choice.mode, assets: selected)
+        let portraits = chosen.assets.filter { $0.aspectRatio < 1 }
+        var stripWidth = settings.gap
+        for _ in 0..<count {
+            let pool = (chosen.mode == .gallery || chosen.mode == .horizontalGallery)
+                && portraits.contains(where: { !used.contains($0.url) }) ? portraits : chosen.assets
+            guard let photo = selector.pick(from: pool, settings: settings, excluding: used) else { break }
+            selected.append(photo)
+            used.insert(photo.url)
+            stripWidth += max(1, viewport.height - 2 * settings.gap) * photo.aspectRatio + settings.gap
+            if chosen.mode == .horizontalGallery, selected.count >= 2,
+               stripWidth >= viewport.width + viewport.height * 1.5 { break }
+        }
+        guard !selected.isEmpty else { return nil }
+        repeats = chosen.mode == previous ? repeats + 1 : 1
+        previous = chosen.mode
+        defer { nextID += 1 }
+        return WallScene(id: nextID, mode: chosen.mode, assets: selected,
+                         reverse: Bool.random(using: &generator),
+                         zoomCenter: CGPoint(x: Double.random(in: 0.35...0.65, using: &generator),
+                                             y: Double.random(in: 0.35...0.65, using: &generator)))
     }
 
-    private nonisolated static func eligibleAssets(
-        for mode: WallMode,
-        assets: [PhotoAsset],
-        settings: WallSettings,
-        viewport: CGSize
-    ) -> [PhotoAsset] {
-        let viewportAspect = viewport.width / max(viewport.height, 1)
+    func replacement(assets: [PhotoAsset], settings: WallSettings, excluding: Set<URL>) -> PhotoAsset? {
+        selector.pick(from: assets, settings: settings, excluding: excluding)
+    }
 
-        return assets.filter { asset in
-            switch mode {
-            case .gallery, .horizontalGallery:
-                return true
-            case .verticalPan:
-                let displayWidth = viewport.width * settings.panWidthFraction
-                let upscale = displayWidth / CGFloat(asset.pixelWidth)
-                return asset.aspectRatio < 0.95
-                    && upscale <= settings.maxPanUpscale
-                    && displayWidth / asset.aspectRatio > viewport.height + 20
-            case .horizontalPan:
-                let upscale = viewport.height / CGFloat(asset.pixelHeight)
-                return asset.aspectRatio > viewportAspect * 1.05
-                    && upscale <= settings.maxPanUpscale
-            case .zoom:
-                return asset.aspectRatio >= 1
+    func galleryInterval(settings: WallSettings) -> TimeInterval {
+        Double.random(in: settings.galleryMinSeconds...settings.galleryMaxSeconds, using: &generator)
+    }
+
+    private struct Choice {
+        let mode: WallMode
+        let assets: [PhotoAsset]
+        var weight: Double
+    }
+
+    private func eligibleChoices(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
+                                 excluding: Set<URL>) -> [Choice] {
+        guard viewport.width > 0, viewport.height > 0 else { return [] }
+        let definitions: [(WallMode, Bool, Int)] = [
+            (.gallery, settings.galleryEnabled, settings.galleryWeight),
+            (.horizontalGallery, settings.galleryScrollEnabled && assets.count > 1, settings.galleryWeight),
+            (.verticalPan, settings.verticalPanEnabled, settings.panWeight),
+            (.horizontalPan, settings.horizontalPanEnabled, settings.panWeight),
+            (.zoom, settings.zoomEnabled, settings.zoomWeight)
+        ]
+        return definitions.compactMap { mode, enabled, weight in
+            guard enabled, weight > 0 else { return nil }
+            let candidates = assets.filter {
+                !excluding.contains($0.url) && Self.isEligible($0, for: mode, settings: settings, viewport: viewport)
             }
+            return candidates.isEmpty ? nil : Choice(mode: mode, assets: candidates, weight: Double(weight))
         }
     }
 
-    private nonisolated static func select(
-        count: Int,
-        start: Int,
-        from assets: [PhotoAsset]
-    ) -> [PhotoAsset] {
-        (0..<count).map { assets[(start + $0) % assets.count] }
-    }
-
-    private nonisolated static func deterministicUnitValue(index: Int, seed: UInt64) -> Double {
-        Double(deterministicValue(index: index, seed: seed) % 10_000) / 10_000
-    }
-
-    private nonisolated static func deterministicValue(index: Int, seed: UInt64) -> UInt64 {
-        var value = UInt64(bitPattern: Int64(index)) ^ seed
-        value = value &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-        value ^= value >> 30
-        value = value &* 13_760_289_258_834_695_229
-        value ^= value >> 27
-        return value
-    }
-
-    private nonisolated static func positiveModulo(_ value: Int, _ divisor: Int) -> Int {
-        let remainder = value % divisor
-        return remainder >= 0 ? remainder : remainder + divisor
+    nonisolated static func isEligible(_ asset: PhotoAsset, for mode: WallMode,
+                                       settings: WallSettings, viewport: CGSize) -> Bool {
+        guard asset.pixelWidth > 0, asset.pixelHeight > 0 else { return false }
+        switch mode {
+        case .gallery, .horizontalGallery: return true
+        case .verticalPan:
+            let width = viewport.width * settings.panWidthFraction
+            return asset.aspectRatio < 0.95 && width / CGFloat(asset.pixelWidth) <= settings.maxPanUpscale
+                && width / asset.aspectRatio > viewport.height + 20
+        case .horizontalPan:
+            return asset.aspectRatio > viewport.width / viewport.height * 1.05
+                && viewport.height / CGFloat(asset.pixelHeight) <= settings.maxPanUpscale
+        case .zoom: return asset.aspectRatio >= 1
+        }
     }
 }
 
-struct WallPlaybackPosition: Equatable, Sendable {
-    let currentScene: WallScene
-    let nextScene: WallScene
-    let progress: Double
-    let transitionProgress: Double
-
-    nonisolated static func resolve(
-        elapsed: TimeInterval,
-        assets: [PhotoAsset],
-        settings: WallSettings,
-        viewport: CGSize,
-        seed: UInt64,
-        startingSceneIndex: Int = 0
-    ) -> WallPlaybackPosition {
-        let safeElapsed = max(0, elapsed)
-        var sceneIndex = max(0, startingSceneIndex)
-        var sceneElapsed = safeElapsed
-        var currentScene = WallScenePlanner.scene(
-            index: sceneIndex,
-            assets: assets,
-            settings: settings,
-            viewport: viewport,
-            seed: seed
-        )
-        var duration = WallMotionGeometry.duration(
-            for: currentScene,
-            viewport: viewport,
-            settings: settings
-        )
-        while sceneElapsed >= duration {
-            sceneElapsed -= duration
-            sceneIndex += 1
-            currentScene = WallScenePlanner.scene(
-                index: sceneIndex,
-                assets: assets,
-                settings: settings,
-                viewport: viewport,
-                seed: seed
-            )
-            duration = WallMotionGeometry.duration(
-                for: currentScene,
-                viewport: viewport,
-                settings: settings
-            )
-        }
-        let progress = sceneElapsed / duration
-        let transitionDuration = min(settings.fadeSeconds, duration)
-        let transitionProgress = max(
-            0,
-            min(1, (sceneElapsed - (duration - transitionDuration)) / transitionDuration)
-        )
-
-        return WallPlaybackPosition(
-            currentScene: currentScene,
-            nextScene: WallScenePlanner.scene(
-                index: sceneIndex + 1,
-                assets: assets,
-                settings: settings,
-                viewport: viewport,
-                seed: seed
-            ),
-            progress: progress,
-            transitionProgress: transitionProgress
-        )
-    }
-}
-
-struct WallMotionPlan: Equatable, Sendable {
+nonisolated struct WallMotionPlan: Equatable, Sendable {
     let width: CGFloat
     let height: CGFloat
     let fromX: CGFloat
@@ -254,7 +147,7 @@ struct WallMotionPlan: Equatable, Sendable {
     }
 }
 
-enum WallMotionGeometry {
+nonisolated enum WallMotionGeometry {
     nonisolated static func plan(
         for mode: WallMode,
         asset: PhotoAsset,
@@ -345,18 +238,14 @@ enum WallMotionGeometry {
         case .gallery:
             return max(90, settings.galleryMaxSeconds * 2)
         case .horizontalGallery:
-            let height = max(1, viewport.height - 2 * settings.gap)
-            return max(
-                120,
-                TimeInterval(viewport.width + height * asset.aspectRatio) / settings.galleryScrollPixelsPerSecond
-            )
+            return max(120, settings.galleryMaxSeconds * 3)
         case .verticalPan, .horizontalPan, .zoom:
             return plan(
                 for: mode,
                 asset: asset,
                 viewport: viewport,
                 settings: settings,
-                reverse: asset.stableMotionDirection < 0
+                reverse: false
             ).seconds
         }
     }

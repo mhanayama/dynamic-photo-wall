@@ -1,63 +1,24 @@
 import SwiftUI
 
 struct WallSceneLayer: View {
-    let scene: WallScene
-    let allAssets: [PhotoAsset]
-    let progress: Double
+    let presentation: WallScenePresentation
     let settings: WallSettings
 
     var body: some View {
         ZStack {
             if settings.glassBackground {
-                AmbientBackgroundView(asset: scene.assets.first)
+                AmbientBackgroundView(asset: presentation.scene.assets.first)
             } else {
                 Color(hex: settings.backgroundHex)
             }
-
-            switch scene.mode {
+            switch presentation.scene.mode {
             case .gallery:
-                GallerySceneView(
-                    sceneID: scene.id,
-                    assets: scene.assets,
-                    allAssets: allAssets,
-                    progress: progress,
-                    sceneSeconds: WallMotionGeometry.duration(
-                        for: scene,
-                        viewport: CGSize(width: 1, height: 1),
-                        settings: settings
-                    ),
-                    minimumSeconds: settings.galleryMinSeconds,
-                    maximumSeconds: settings.galleryMaxSeconds,
-                    fadeSeconds: settings.fadeSeconds,
-                    gap: settings.gap,
-                    cornerRadius: settings.cornerRadius
-                )
+                GallerySceneView(presentation: presentation, settings: settings)
             case .horizontalGallery:
-                HorizontalGallerySceneView(
-                    assets: scene.assets,
-                    progress: progress,
-                    gap: settings.gap,
-                    cornerRadius: settings.cornerRadius
-                )
-            case .verticalPan:
-                if let asset = scene.assets.first {
-                    VerticalPanSceneView(
-                        asset: asset,
-                        progress: progress,
-                        settings: settings
-                    )
-                }
-            case .horizontalPan:
-                if let asset = scene.assets.first {
-                    HorizontalPanSceneView(asset: asset, progress: progress, settings: settings)
-                }
-            case .zoom:
-                if let asset = scene.assets.first {
-                    ZoomSceneView(
-                        asset: asset,
-                        progress: progress,
-                        maxZoom: settings.maxZoom
-                    )
+                HorizontalGallerySceneView(presentation: presentation, settings: settings)
+            case .verticalPan, .horizontalPan, .zoom:
+                if let asset = presentation.scene.assets.first {
+                    MotionSceneView(asset: asset, presentation: presentation, settings: settings)
                 }
             }
         }
@@ -67,102 +28,64 @@ struct WallSceneLayer: View {
 
 private struct AmbientBackgroundView: View {
     let asset: PhotoAsset?
-
     var body: some View {
         ZStack {
             Color.black
-
             if let asset {
                 PhotoImageView(asset: asset, contentMode: .fill)
                     .blur(radius: 48)
                     .scaleEffect(1.15)
                     .overlay(Color.black.opacity(0.42))
             }
-
-            LinearGradient(
-                colors: [.white.opacity(0.08), .clear, .black.opacity(0.2)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            LinearGradient(colors: [.white.opacity(0.08), .clear, .black.opacity(0.2)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
         }
-        .ignoresSafeArea()
+    }
+}
+
+private struct PhotoCard: View {
+    let asset: PhotoAsset
+    let settings: WallSettings
+    var body: some View {
+        PhotoImageView(asset: asset, contentMode: .fit)
+            .overlay(alignment: .bottomLeading) {
+                if settings.exifOverlay {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(asset.url.lastPathComponent) · \(asset.pixelWidth)×\(asset.pixelHeight)")
+                        if let date = asset.takenAt { Text(date, format: .dateTime.year().month().day().hour().minute()) }
+                    }
+                    .font(.system(size: 16))
+                    .lineLimit(1)
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(.black.opacity(0.5))
+                }
+            }
     }
 }
 
 private struct GallerySceneView: View {
-    let sceneID: Int
-    let assets: [PhotoAsset]
-    let allAssets: [PhotoAsset]
-    let progress: Double
-    let sceneSeconds: TimeInterval
-    let minimumSeconds: TimeInterval
-    let maximumSeconds: TimeInterval
-    let fadeSeconds: TimeInterval
-    let gap: Double
-    let cornerRadius: Double
-
+    let presentation: WallScenePresentation
+    let settings: WallSettings
     var body: some View {
         GeometryReader { proxy in
-            let slots = gallerySlots()
-            let frames = GalleryLayout.frames(
-                assets: slots.map(\.asset),
-                in: proxy.size,
-                gap: CGFloat(gap)
-            )
-
-            ForEach(slots) { slot in
+            let frames = GalleryLayout.frames(assets: presentation.slots.map(\.asset), in: proxy.size, gap: settings.gap)
+            ForEach(presentation.slots) { slot in
                 if frames.indices.contains(slot.id) {
                     let frame = frames[slot.id]
-                    PhotoImageView(asset: slot.asset, contentMode: .fit)
-                        .id(slot.asset.id)
-                        .frame(width: frame.width, height: frame.height)
-                        .background(.black.opacity(0.3))
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .shadow(color: .black.opacity(0.45), radius: 18)
-                        .position(x: frame.midX, y: frame.midY)
-                        .transition(.opacity)
-                        .animation(.easeInOut(duration: fadeSeconds), value: slot.asset.id)
+                    ZStack {
+                        if let old = slot.previousAsset { PhotoCard(asset: old, settings: settings) }
+                        PhotoCard(asset: slot.asset, settings: settings)
+                            .opacity(slot.previousAsset == nil ? 1 : min(1, max(0, (presentation.elapsed - slot.changedAt) / settings.fadeSeconds)))
+                    }
+                    .frame(width: frame.width, height: frame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
+                    .position(x: frame.midX, y: frame.midY)
+                    .animation(.easeInOut(duration: settings.fadeSeconds), value: presentation.scene.assets)
                 }
             }
         }
     }
-
-    private func gallerySlots() -> [GallerySlot] {
-        guard !assets.isEmpty else { return [] }
-        let pool = allAssets.isEmpty ? assets : allAssets
-        var used: Set<URL> = []
-        let elapsed = progress * sceneSeconds
-
-        return assets.indices.map { slot in
-            let intervalRange = max(0, maximumSeconds - minimumSeconds)
-            let fraction = Double(deterministicValue(slot: slot) % 10_000) / 10_000
-            let interval = max(0.1, minimumSeconds + intervalRange * fraction)
-            let delayedElapsed = max(0, elapsed - Double(slot * 3))
-            let replacementCount = Int(delayedElapsed / interval)
-            let originalIndex = pool.firstIndex(of: assets[slot]) ?? slot % pool.count
-            var candidateIndex = (originalIndex + replacementCount) % pool.count
-            var attempts = 0
-            while used.contains(pool[candidateIndex].url), attempts < pool.count {
-                candidateIndex = (candidateIndex + 1) % pool.count
-                attempts += 1
-            }
-            let asset = pool[candidateIndex]
-            used.insert(asset.url)
-            return GallerySlot(id: slot, asset: asset)
-        }
-    }
-
-    private func deterministicValue(slot: Int) -> UInt64 {
-        var value = UInt64(bitPattern: Int64(sceneID &* 31 &+ slot))
-        value = value &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-        value ^= value >> 30
-        return value
-    }
-}
-
-private struct GallerySlot: Identifiable {
-    let id: Int
-    let asset: PhotoAsset
 }
 
 enum GalleryLayout {
@@ -189,108 +112,41 @@ enum GalleryLayout {
 }
 
 private struct HorizontalGallerySceneView: View {
-    let assets: [PhotoAsset]
-    let progress: Double
-    let gap: Double
-    let cornerRadius: Double
-
+    let presentation: WallScenePresentation
+    let settings: WallSettings
     var body: some View {
         GeometryReader { proxy in
-            let height = max(1, proxy.size.height - 2 * gap)
-            let widths = assets.map {
-                height * $0.aspectRatio
-            }
-            let spacing = CGFloat(gap)
-            let totalWidth = widths.reduce(0, +) + spacing * CGFloat(max(0, assets.count - 1))
-            let travel = proxy.size.width + totalWidth
-
-            HStack(spacing: spacing) {
-                ForEach(assets.enumerated(), id: \.element.id) { index, asset in
-                    PhotoImageView(asset: asset, contentMode: .fit)
-                        .frame(width: widths[index], height: height)
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                        .shadow(color: .black.opacity(0.4), radius: 12)
+            let height = max(1, proxy.size.height - 2 * settings.gap)
+            let totalWidth = presentation.scene.assets.reduce(0) { $0 + height * $1.aspectRatio + settings.gap }
+            HStack(spacing: settings.gap) {
+                ForEach(presentation.scene.assets) { asset in
+                    PhotoCard(asset: asset, settings: settings)
+                        .frame(width: height * asset.aspectRatio, height: height)
+                        .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
                 }
             }
-            .frame(width: totalWidth, height: height, alignment: .leading)
-            .offset(
-                x: proxy.size.width - CGFloat(progress) * travel,
-                y: gap
-            )
+            .frame(width: max(1, totalWidth - settings.gap), height: height, alignment: .leading)
+            .offset(x: settings.gap - presentation.scrollDistance, y: settings.gap)
         }
     }
 }
 
-private struct VerticalPanSceneView: View {
+private struct MotionSceneView: View {
     let asset: PhotoAsset
-    let progress: Double
+    let presentation: WallScenePresentation
     let settings: WallSettings
-
     var body: some View {
         GeometryReader { proxy in
-            let plan = WallMotionGeometry.plan(
-                for: .verticalPan,
-                asset: asset,
-                viewport: proxy.size,
-                settings: settings
-            )
-            let frame = plan.frame(at: progress)
-
-            PhotoImageView(asset: asset, contentMode: .fit)
+            let scene = presentation.scene
+            let plan = WallMotionGeometry.plan(for: scene.mode, asset: asset, viewport: proxy.size,
+                                                settings: settings, reverse: scene.reverse)
+            let frame = plan.frame(at: presentation.progress)
+            let eased = 0.5 - cos(presentation.progress * .pi) / 2
+            let scale = scene.mode == .zoom
+                ? (scene.reverse ? settings.maxZoom - eased * (settings.maxZoom - 1) : 1 + eased * (settings.maxZoom - 1)) : 1
+            PhotoCard(asset: asset, settings: settings)
                 .frame(width: frame.width, height: frame.height)
-                .shadow(color: .black.opacity(0.5), radius: 20)
-                .position(x: frame.midX, y: frame.midY)
-        }
-    }
-}
-
-private struct HorizontalPanSceneView: View {
-    let asset: PhotoAsset
-    let progress: Double
-    let settings: WallSettings
-
-    var body: some View {
-        GeometryReader { proxy in
-            let plan = WallMotionGeometry.plan(
-                for: .horizontalPan,
-                asset: asset,
-                viewport: proxy.size,
-                settings: settings,
-                reverse: asset.stableMotionDirection < 0
-            )
-            let frame = plan.frame(at: progress)
-
-            PhotoImageView(asset: asset, contentMode: .fit)
-                .frame(width: frame.width, height: frame.height)
-                .position(x: frame.midX, y: frame.midY)
-        }
-    }
-}
-
-private struct ZoomSceneView: View {
-    let asset: PhotoAsset
-    let progress: Double
-    let maxZoom: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            let plan = WallMotionGeometry.plan(
-                for: .zoom,
-                asset: asset,
-                viewport: proxy.size,
-                settings: {
-                    var value = WallSettings()
-                    value.maxZoom = maxZoom
-                    return value
-                }()
-            )
-            let frame = plan.frame(at: progress)
-            let easedProgress = 0.5 - cos(CGFloat(progress) * .pi) / 2
-            let scale = 1 + easedProgress * (maxZoom - 1)
-
-            PhotoImageView(asset: asset, contentMode: .fit)
-                .frame(width: frame.width, height: frame.height)
-                .scaleEffect(scale)
+                .scaleEffect(scale, anchor: UnitPoint(x: scene.zoomCenter.x, y: scene.zoomCenter.y))
                 .position(x: frame.midX, y: frame.midY)
         }
     }
