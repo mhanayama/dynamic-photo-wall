@@ -57,7 +57,7 @@ bash macos/scripts/package.sh
 
 `artifacts/macos-release/candidate/` にarm64専用archive、アドホック署名付きZIP／DMG、SHA256SUMSを生成します。署名とCPU構成も検査します。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できます。
 
-公開済み `macos-v1.0.0` は以前の実装です。修正候補v1.0.1（build 3）は正式Releaseしていません。コード・自動テストの合格に加えて、[Release前の実機受け入れ](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)を完了してから公開します。Spaces、実ログイン、画面抜差し、8時間運転の確認は自動テストの合格に含みません。
+[macOS v1.0.1（build 3）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)を2026-10-15にユーザー承認で公開しました。v1.0.0は以前の実装として保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
 
 ## アイコンと管理ファイル
 

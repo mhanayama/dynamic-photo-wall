@@ -4,7 +4,7 @@
 
 `[x]` は対象の実装と記載した自動検証が完了、`[~]` は実装済みで実機条件の確認が残る、`[ ]` は未完了。自動テストの成功をOS合成画面・実ログイン・長時間運転の合格に読み替えない。
 
-**Releaseは保留中。** フォルダー削除を含む既知のコード上の不足は修正した。下記の実機受け入れが残るため、まだ「Windowsと機能差分なしでRelease可能」とは判定していない。
+**macOS v1.0.1（build 3）を公開済み。** フォルダー削除を含む既知のコード上の不足を修正し、2026-10-15のユーザー承認により[更新版を公開](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)した。下記の実機受け入れは未完了のまま継続管理し、Windowsとの完全な機能同等性を実機確認済みとは扱わない。
 
 ## 許容するOS差分（ユーザー合意済み）
 
@@ -85,6 +85,6 @@
 
 最新の実行結果（2026-10-15、Xcode 27.0／arm64）: **単体74件・UI 3件合格**、C#共通fixture **704 assertions合格**、Releaseコンパイル成功。Swiftソースのconcurrency警告なし。AppIntents未使用のメタデータ通知と、XCTestホストのApple linkd接続通知は製品のSwiftコンパイルエラーとは分けて記録した。
 
-CLIのローカル配布候補は `bash macos/scripts/package.sh`。アドホック署名のarm64 archive／ZIP／DMGを作成する。Developer ID署名・公証・GitHub Release公開は含めない。上記チェックを残したまま正式Releaseを公開しない。
+CLIのローカル配布候補は `bash macos/scripts/package.sh`。アドホック署名のarm64 archive／ZIP／DMGを作成する。Developer ID署名・公証・GitHub Release公開は含めない。今回は実機チェックの残件をリリースノートに明記し、ユーザーの明示的な承認で公開した。残件の合格判定は引き続き実機で行う。
 
 2台3画面同期、LANペアリング、複数画面同時再生、設定／履歴同期は両版の将来機能であり、今回のパリティ不足には含めない。[クロスプラットフォーム計画](../docs/CROSS-PLATFORM-WALL-PLAN.md)で別管理する。Windowsにも残る実機未確認事項は、macOSだけの機能不足と混同しない。
