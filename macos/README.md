@@ -90,6 +90,8 @@ Releaseのpackagingは上記のCLI手順、またはXcodeのProduct → Archive�
 
 アプリアイコンはIcon Composerの `DynamicPhotoWall/PhotoWall.icon` を使用し、DefaultにLight、DarkにDark、MonoにLiquid Glass版のPNGを割り当てています。Debug／ReleaseともApp Icon名は `PhotoWall` です。編集方法は [アイコンリソース](../assets/app-icon/README.md) を参照してください。
 
+v1.0.1で、Windows版に合わせてモード名・設定の補足・メニュー名・写真上のキャプションを整理しました。キャプションはファイル名・解像度・取得可能な撮影日時（`yyyy/MM/dd HH:mm`）を1行で表示します。写真フォルダーはリストで選び「選択を削除」から解除できます。詳細は [機能差レビュー](WINDOWS_PARITY_REVIEW.md#uiとキャプションの追加確認2026-10-15) を参照してください。
+
 アプリ・テスト・アセット・Xcodeプロジェクト・共有スキーム・ドキュメントを親のGitリポジトリで管理します。`xcuserdata`、DerivedData、コンパイルキャッシュは個人環境の状態として除外します。
 
 [プロジェクト全体](../README.md) / [Windows版](../windows/README.md) / [クロスプラットフォーム計画](../docs/CROSS-PLATFORM-WALL-PLAN.md)

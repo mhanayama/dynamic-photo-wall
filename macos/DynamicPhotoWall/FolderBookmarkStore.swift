@@ -53,7 +53,7 @@ final class FolderBookmarkStore {
             do { folders = try JSONDecoder().decode([PhotoFolder].self, from: data) }
             catch {
                 storedDataIsInvalid = true
-                warning = "フォルダ登録情報を読み込めませんでした。元の情報を保持しています。"
+                warning = "フォルダー登録情報を読み込めませんでした。元の情報を保持しています。"
             }
         } else {
             var bookmarks = defaults.array(forKey: "photoFolderBookmarks") as? [Data] ?? []
@@ -80,10 +80,10 @@ final class FolderBookmarkStore {
                     // Never replace a valid old bookmark with a failed regeneration.
                     if let renewed = try? access.create(url) { folders[index].bookmark = renewed }
                 }
-                if !folders[index].isAccessible { warning = "未接続または再許可が必要なフォルダがあります。" }
+                if !folders[index].isAccessible { warning = "未接続または再許可が必要なフォルダーがあります。" }
             } catch {
                 folders[index].isAccessible = false
-                warning = "未接続または再許可が必要なフォルダがあります。登録情報は保持しています。"
+                warning = "未接続または再許可が必要なフォルダーがあります。登録情報は保持しています。"
             }
         }
         persist()
@@ -149,15 +149,15 @@ final class FolderBookmarkStore {
     private func persist() {
         guard !storedDataIsInvalid else { return }
         do { defaults.set(try JSONEncoder().encode(folders), forKey: Self.recordsKey) }
-        catch { warning = "フォルダ登録情報を保存できませんでした。" }
+        catch { warning = "フォルダー登録情報を保存できませんでした。" }
     }
 
     enum AccessError: LocalizedError {
         case denied, invalidStoredData
         var errorDescription: String? {
             switch self {
-            case .denied: "選択したフォルダへのアクセスを開始できませんでした。"
-            case .invalidStoredData: "保存済みのフォルダ情報が壊れています。元の情報を退避してから再登録してください。"
+            case .denied: "選択したフォルダーへのアクセスを開始できませんでした。"
+            case .invalidStoredData: "保存済みのフォルダー情報が壊れています。元の情報を退避してから再登録してください。"
             }
         }
     }

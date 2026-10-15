@@ -61,16 +61,28 @@ private struct PhotoCard: View {
     let asset: PhotoAsset
     let settings: WallSettings
     let images: PhotoImageStore
+    private static let captionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        return formatter
+    }()
+
+    private var caption: String {
+        let details = "\(asset.url.lastPathComponent)  ·  \(asset.pixelWidth)×\(asset.pixelHeight)"
+        guard let date = asset.takenAt else { return details }
+        Self.captionDateFormatter.timeZone = .current
+        return details + "  " + Self.captionDateFormatter.string(from: date)
+    }
     var body: some View {
         PhotoImageView(asset: asset, contentMode: .fit, images: images)
             .overlay(alignment: .bottomLeading) {
                 if settings.exifOverlay {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(asset.url.lastPathComponent) · \(asset.pixelWidth)×\(asset.pixelHeight)")
-                        if let date = asset.takenAt { Text(date, format: .dateTime.year().month().day().hour().minute()) }
-                    }
+                    Text(caption)
                     .font(.system(size: 16))
                     .lineLimit(1)
+                    .truncationMode(.tail)
                     .foregroundStyle(.white)
                     .padding(10)
                     .background(.black.opacity(0.5))

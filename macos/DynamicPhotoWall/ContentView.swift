@@ -70,6 +70,8 @@ private struct DisplaySettingsView: View {
                 Button("ディスプレイを再検出", systemImage: "arrow.clockwise") {
                     model.refreshScreens()
                 }
+                Text(model.displayConnectionMessage)
+                    .foregroundStyle(.secondary)
                 Toggle("アプリ起動時にスライドショーを開始", isOn: $model.settings.startOnLaunch)
             }
 
@@ -89,7 +91,7 @@ private struct DisplaySettingsView: View {
                             .disabled(model.isScanning)
                     }
                 }
-                Text("設定画面を閉じても再生は続きます。")
+                Text("設定画面を閉じても再生は続きます。終了はメニューバーのメニューから操作できます。")
                     .foregroundStyle(.secondary)
             }
         }
@@ -99,28 +101,39 @@ private struct DisplaySettingsView: View {
 
 private struct PhotoSettingsView: View {
     @Bindable var model: AppModel
+    @State private var selectedFolderIDs: Set<UUID> = []
 
     var body: some View {
         Form {
-            Section("写真フォルダ") {
-                List {
+            Section("写真フォルダー") {
+                List(selection: $selectedFolderIDs) {
                     ForEach(model.folders) { folder in
-                        Label(folder.path ?? "未解決の登録フォルダ", systemImage: folder.isAccessible ? "folder" : "exclamationmark.triangle")
+                        Label(folder.path ?? "未解決の登録フォルダー", systemImage: folder.isAccessible ? "folder" : "exclamationmark.triangle")
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .foregroundStyle(folder.isAccessible ? Color.primary : Color.orange)
+                            .tag(folder.id)
                     }
                     .onDelete(perform: model.removeFolders)
                 }
                 .frame(minHeight: 180)
+                .onChange(of: model.folders.map(\.id)) { _, ids in
+                    selectedFolderIDs.formIntersection(ids)
+                }
 
                 HStack {
-                    Button("フォルダを追加／再許可", systemImage: "plus", action: model.chooseFolder)
+                    Button("フォルダーを追加／再許可", systemImage: "plus", action: model.chooseFolder)
+                    Button("選択を削除", systemImage: "minus") {
+                        let offsets = IndexSet(model.folders.indices.filter { selectedFolderIDs.contains(model.folders[$0].id) })
+                        model.removeFolders(at: offsets)
+                        selectedFolderIDs.removeAll()
+                    }
+                    .disabled(selectedFolderIDs.isEmpty)
                     Button("再検索／アクセス再試行", systemImage: "arrow.clockwise", action: model.retryFolders)
                 }
                 if let warning = model.folderWarning { Text(warning).foregroundStyle(.orange) }
 
-                Toggle("サブフォルダも検索", isOn: $model.settings.recursive)
+                Toggle("サブフォルダーも検索", isOn: $model.settings.recursive)
                 Toggle("ランダムに再生", isOn: $model.settings.randomOrder)
 
                 LabeledContent("再表示を抑制する直近の写真数") {
@@ -143,13 +156,13 @@ private struct CompositionSettingsView: View {
         Form {
             Section("表示モード") {
                 Toggle("Gallery — 複数の写真を並べる", isOn: $settings.galleryEnabled)
-                Toggle("横スクロールGallery — 新しい写真が横から流れてくる", isOn: $settings.galleryScrollEnabled)
+                Toggle("Scrolling Gallery — 新しい写真が横から流れてくる", isOn: $settings.galleryScrollEnabled)
                 Toggle("Vertical Pan — 縦写真を下側から上側へ見せる", isOn: $settings.verticalPanEnabled)
-                Toggle("Horizontal Pan — 横長写真を左右に見せる", isOn: $settings.horizontalPanEnabled)
+                Toggle("Horizontal Pan — パノラマを左右に見せる", isOn: $settings.horizontalPanEnabled)
                 Toggle("Cinematic Zoom — ゆっくり拡大・縮小", isOn: $settings.zoomEnabled)
             }
 
-            Section("抽選ウェイト") {
+            Section("抽選ウェイト（0で抽選対象から除外）") {
                 NumericField(title: "Gallery", value: $settings.galleryWeight)
                 NumericField(title: "Pan（縦・横の合計）", value: $settings.panWeight)
                 NumericField(title: "Zoom", value: $settings.zoomWeight)
@@ -157,9 +170,9 @@ private struct CompositionSettingsView: View {
 
             Section("構成") {
                 NumericField(title: "Galleryの最大枚数（1〜5）", value: $settings.galleryMax)
-                DoubleField(title: "パンで許容する拡大率（1〜12倍）", value: $settings.maxPanUpscale)
-                DoubleField(title: "縦パンの表示幅（0.3〜1.0）", value: $settings.panWidthFraction)
-                Text("拡大率を超える写真はGalleryで表示します。")
+                DoubleField(title: "パンで許容する拡大率（1〜12倍、初期値4倍）", value: $settings.maxPanUpscale)
+                DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0）", value: $settings.panWidthFraction)
+                Text("画面より小さい画像もパンできます。粗さが気になる場合は許容拡大率を下げてください。拡大率を超える写真はGalleryで表示します。")
                     .foregroundStyle(.secondary)
             }
         }
@@ -174,7 +187,7 @@ private struct MotionSettingsView: View {
         Form {
             Section("ゆったりとしたモーション") {
                 DoubleField(title: "パン速度（物理px / 秒、5〜500）", value: $settings.panPixelsPerSecond)
-                DoubleField(title: "横スクロールGalleryの速度（px / 秒、5〜200）", value: $settings.galleryScrollPixelsPerSecond)
+                DoubleField(title: "Scrolling Galleryの速度（px / 秒、5〜200）", value: $settings.galleryScrollPixelsPerSecond)
                 DoubleField(title: "ズームの所要時間（秒、10〜600）", value: $settings.zoomSeconds)
                 DoubleField(title: "最大ズーム倍率（1.0〜1.15）", value: $settings.maxZoom)
                 DoubleField(title: "クロスフェード（秒、0.2〜10）", value: $settings.fadeSeconds)
@@ -192,14 +205,14 @@ private struct AppearanceSettingsView: View {
     var body: some View {
         Form {
             Section("写真の見せ方") {
-                Toggle("表示中の写真に追従するガラス風の背景", isOn: $settings.glassBackground)
-                LabeledContent("背景色") {
+                Toggle("写真をぼかしたガラス風の背景", isOn: $settings.glassBackground)
+                LabeledContent("背景色（例：#101116）") {
                     TextField("#101116", text: $settings.backgroundHex)
                         .frame(width: 120)
                 }
                 DoubleField(title: "写真の間隔（px）", value: $settings.gap)
                 DoubleField(title: "写真の角丸（px、0で無効）", value: $settings.cornerRadius)
-                Toggle("ファイル名・解像度を表示", isOn: $settings.exifOverlay)
+                Toggle("ファイル名・解像度・撮影日時を表示", isOn: $settings.exifOverlay)
                 NumericField(title: "画像キャッシュ予算（MiB、64〜1024）", value: $settings.cacheMegabytes)
             }
         }

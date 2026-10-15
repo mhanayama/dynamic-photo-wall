@@ -18,7 +18,7 @@ final class AppModel {
     private(set) var isScanning = false
     private(set) var wallAttached = false
     private(set) var desiredRunning = false
-    private(set) var statusMessage = "写真フォルダを選択してください。"
+    private(set) var statusMessage = "写真フォルダーを選択してください。"
     private(set) var folderWarning: String?
     private(set) var settingsWarning: String?
     private(set) var userPaused = false
@@ -77,6 +77,12 @@ final class AppModel {
     }
 
     var selectedScreen: ScreenDescriptor? { screens.first { $0.id == selectedScreenID } }
+    var displayConnectionMessage: String {
+        if selectedScreenID != nil, selectedScreen == nil {
+            return "保存済みのディスプレイは未接続です。再接続するか表示対象を選び直してください。"
+        }
+        return "\(screens.count)台接続中。選択画面だけに写真を表示します。"
+    }
     var canStart: Bool { selectedScreen != nil && !folders.isEmpty && !isScanning }
     var isPlaying: Bool { wallAttached && playback.currentScene != nil && !playback.isWaiting }
     var isWaiting: Bool { desiredRunning && (!wallAttached || playback.isWaiting) }
@@ -94,7 +100,7 @@ final class AppModel {
             ?? ((playback.waitingForImages || playback.waitingForScrollImage)
                 ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
     }
-    var currentMode: String? { playback.currentScene?.mode.rawValue }
+    var currentMode: String? { playback.currentScene?.mode.displayName }
 
     func refreshScreens() {
         screens = screenProvider()
@@ -104,7 +110,7 @@ final class AppModel {
 
     func chooseFolder() {
         let panel = NSOpenPanel()
-        panel.title = "写真フォルダを追加／再許可"
+        panel.title = "写真フォルダーを追加／再許可"
         panel.prompt = "追加"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -202,7 +208,7 @@ final class AppModel {
             isScanning = false
             photoAssets = []
             suspendWall()
-            statusMessage = self.folders.isEmpty ? "写真フォルダを選択してください。" : "写真フォルダ未接続 · 再接続を待機中"
+            statusMessage = self.folders.isEmpty ? "写真フォルダーを選択してください。" : "写真フォルダー未接続 · 再接続を待機中"
             return
         }
         isScanning = true

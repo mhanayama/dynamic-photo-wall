@@ -6,10 +6,10 @@ struct DynamicPhotoWallApp: App {
     @State private var model = AppModel.makeLaunchModel()
 
     var body: some Scene {
-        Window("Dynamic Photo Wall", id: "settings") {
+        Window("Dynamic Photo Wall — 設定", id: "settings") {
             ContentView(model: model)
         }
-        .defaultSize(width: 680, height: 430)
+        .defaultSize(width: 880, height: 760)
 
         MenuBarExtra("Dynamic Photo Wall", systemImage: "photo.on.rectangle.angled") {
             MenuBarControls(model: model)
@@ -33,16 +33,16 @@ private struct MenuBarControls: View {
                     .disabled(model.isScanning)
             } else {
                 Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
-                Button("次の構成", action: model.showNextScene)
+                Button("次の写真 / 構成", action: model.showNextScene)
                     .disabled(!model.canAdvance)
             }
-            Button("停止", action: model.stop)
+            Button("表示停止", action: model.stop)
         } else {
-            Button("表示開始", action: model.start)
+            Button("スライドショー開始", action: model.start)
                 .disabled(!model.canStart)
         }
 
-        Button("設定ウィンドウを表示") {
+        Button("設定を開く") {
             openWindow(id: "settings")
             NSApplication.shared.activate()
         }

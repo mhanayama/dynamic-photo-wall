@@ -3,6 +3,16 @@ import Foundation
 
 nonisolated enum WallMode: String, CaseIterable, Equatable, Sendable {
     case gallery, horizontalGallery, verticalPan, horizontalPan, zoom
+
+    var displayName: String {
+        switch self {
+        case .gallery: "Gallery"
+        case .horizontalGallery: "Scrolling Gallery"
+        case .verticalPan: "Vertical Pan"
+        case .horizontalPan: "Horizontal Pan"
+        case .zoom: "Cinematic Zoom"
+        }
+    }
 }
 
 nonisolated struct WallScene: Equatable, Sendable {
