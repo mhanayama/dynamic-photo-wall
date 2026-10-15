@@ -11,7 +11,7 @@ struct DesktopWallView: View {
                     // it between two conditional view trees would recreate NSViews.
                     ForEach(playback.layers()) { layer in
                         WallSceneLayer(presentation: layer.presentation, settings: playback.settings,
-                                       images: playback.imageStore ?? .shared)
+                                       images: playback.imageStore ?? .shared, viewport: playback.viewport, paused: playback.isPaused)
                             .opacity(layer.opacity)
                     }
                 }

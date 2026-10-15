@@ -105,7 +105,7 @@ struct ImageTransitionRegressionTests {
     }
 
     @Test func galleryKeepsSlotAndBackgroundPhotoUntilReplacementHasDecoded() async throws {
-        let decoder = HeldPhotoDecoder(blocked: [photos[2].url])
+        let decoder = HeldPhotoDecoder(blocked: Set(photos.dropFirst(2).map(\.url)))
         let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
         #expect(await images.prepare(Array(photos.prefix(2))))
         var settings = zoomOnly
@@ -124,10 +124,10 @@ struct ImageTransitionRegressionTests {
         #expect(playback.currentScene?.assets.first == photos[0])
         #expect(playback.slots[0].previousAsset == nil)
         #expect(images.image(for: photos[0]) === old)
-        await decoder.release(photos[2].url)
-        #expect(await images.prepare([photos[2]]))
+        for photo in photos.dropFirst(2) { await decoder.release(photo.url) }
+        #expect(await images.prepare(Array(photos.dropFirst(2))))
         playback.update(now: 7.5)
-        #expect(playback.slots[0].asset == photos[2])
+        #expect(photos.dropFirst(2).contains(playback.slots[0].asset))
         #expect(playback.slots[0].previousAsset == photos[0])
         #expect(playback.slots[0].changedAt == 7.5)
         #expect(images.image(for: photos[0]) === old)
@@ -242,12 +242,12 @@ struct ImageTransitionRegressionTests {
         playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
         #expect(!(await images.prepare([bad])))
         playback.update(now: 1)
-        #expect(await images.prepare([photos[3]]))
+        #expect(await images.prepare(Array(photos.dropFirst(3))))
         playback.update(now: 2)
         playback.update(now: 60)
         let streamed = try #require(playback.currentScene).assets
         #expect(!streamed.contains(bad))
-        #expect(streamed.last == photos[3])
+        #expect(photos.dropFirst(3).contains(try #require(streamed.last)))
         #expect(images.isReady(streamed))
     }
 
@@ -271,6 +271,27 @@ struct ImageTransitionRegressionTests {
         playback.update(now: 11)
         #expect(!playback.isWaiting)
         #expect(!playback.waitingForImages)
+    }
+
+    @Test func nextSceneBitmapIsPreloadedBeforeAutomaticTransition() async throws {
+        let decoder = HeldPhotoDecoder(blocked: [])
+        let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
+        #expect(await images.prepare([photos[0]]))
+        let playback = WallPlaybackController(imageStore: images)
+        defer { playback.stop() }
+        playback.start(assets: photos, settings: zoomOnly, viewport: viewport, seed: 42, now: 0)
+        playback.update(now: 1)
+        for _ in 0..<1000 {
+            if images.isReady([photos[1]]) { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(images.isReady([photos[1]]))
+        #expect(playback.currentScene?.assets == [photos[0]])
+        #expect(await decoder.calls == 2)
+        playback.update(now: 47)
+        #expect(playback.currentScene?.assets == [photos[1]])
+        #expect(!playback.waitingForImages)
+        #expect(playback.outgoing?.scene.assets == [photos[0]])
     }
 
 }

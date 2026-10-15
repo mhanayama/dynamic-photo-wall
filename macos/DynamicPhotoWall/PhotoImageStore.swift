@@ -66,6 +66,8 @@ final class PhotoImageStore {
     private(set) var displayedImages: [PhotoDecodeKey: NSImage] = [:]
     private(set) var failedKeys: Set<PhotoImageKey> = []
     @ObservationIgnored private let decode: Decode
+    @ObservationIgnored private let faceAnalyzer: PhotoFaceAnalyzer?
+    private(set) var analyzedFaces: [PhotoImageKey: [FaceRegion]] = [:]
     @ObservationIgnored private var pinnedPhotos: Set<PhotoImageKey> = []
     @ObservationIgnored private var desiredWidths: [PhotoImageKey: Int] = [:]
     @ObservationIgnored private var cache: [PhotoDecodeKey: (image: NSImage, bytes: Int)] = [:]
@@ -75,9 +77,22 @@ final class PhotoImageStore {
     @ObservationIgnored private var cachedBytes = 0
     @ObservationIgnored private var budgetBytes = 256 * 1024 * 1024
 
-    init(decode: Decode? = nil) {
+    init(decode: Decode? = nil, faceAnalyzer: PhotoFaceAnalyzer? = nil) {
         let decoder = PhotoImageDecoder()
         self.decode = decode ?? { await decoder.decode($0) }
+        self.faceAnalyzer = faceAnalyzer ?? (decode == nil ? .shared : nil)
+    }
+
+    var cacheByteCount: Int { cachedBytes }
+
+    func facesReady(_ assets: [PhotoAsset]) -> Bool {
+        faceAnalyzer == nil || assets.allSatisfy { analyzedFaces[PhotoImageKey($0)] != nil }
+    }
+
+    func assetWithFaces(_ asset: PhotoAsset) -> PhotoAsset {
+        var result = asset
+        if let faces = analyzedFaces[PhotoImageKey(asset)] { result.faces = faces }
+        return result
     }
 
     func request(for asset: PhotoAsset, desiredWidth: Int? = nil) -> PhotoDecodeRequest {
@@ -118,7 +133,7 @@ final class PhotoImageStore {
     }
 
     @discardableResult
-    func prepare(_ assets: [PhotoAsset], desiredWidths: [PhotoImageKey: Int]? = nil) async -> Bool {
+    func prepare(_ assets: [PhotoAsset], desiredWidths: [PhotoImageKey: Int]? = nil, detectFaces: Bool = false) async -> Bool {
         let requests = assets.map { request(for: $0, desiredWidth: desiredWidths?[PhotoImageKey($0)]) }
         let generation = failureGeneration
         for request in requests {
@@ -129,6 +144,7 @@ final class PhotoImageStore {
                 if pinnedPhotos.contains(key.photo), displayedImages[existing] == nil {
                     displayedImages[existing] = cache[existing]?.image
                 }
+                if detectFaces { await prepareFaces(request, generation: generation) }
                 continue
             }
             guard !failedKeys.contains(key.photo) else { return false }
@@ -143,7 +159,10 @@ final class PhotoImageStore {
             if inFlight[key]?.id == pending.id { inFlight.removeValue(forKey: key) }
             guard generation == failureGeneration else { return false }
             guard let decoded else {
-                if !pending.task.isCancelled { failedKeys.insert(key.photo) }
+                if !pending.task.isCancelled {
+                    failedKeys.insert(key.photo)
+                    WallLog.write("写真をデコードできません: \(request.asset.url.path)")
+                }
                 return false
             }
             let image = displayedImages[key] ?? cache[key]?.image ?? NSImage(cgImage: decoded.image,
@@ -155,8 +174,25 @@ final class PhotoImageStore {
             touch(key)
             if pinnedPhotos.contains(key.photo) { displayedImages[key] = image }
             evictIfNeeded()
+            if detectFaces { await prepareFaces(request, generation: generation) }
         }
         return !Task.isCancelled && requests.allSatisfy { readyKey(for: $0) != nil }
+            && (!detectFaces || facesReady(assets))
+    }
+
+    private func prepareFaces(_ request: PhotoDecodeRequest, generation: Int) async {
+        let key = request.key.photo
+        guard analyzedFaces[key] == nil, let faceAnalyzer, !Task.isCancelled,
+              let image = image(for: request.asset)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        let faces = await faceAnalyzer.analyze(request.asset, image: DecodedPhoto(image: image))
+        guard !Task.isCancelled, generation == failureGeneration else { return }
+        analyzedFaces[key] = faces
+        if analyzedFaces.count > 10_000 {
+            for old in analyzedFaces.keys where !pinnedPhotos.contains(old) {
+                analyzedFaces.removeValue(forKey: old)
+                if analyzedFaces.count <= 10_000 { break }
+            }
+        }
     }
 
     private func readyKey(for request: PhotoDecodeRequest) -> PhotoDecodeKey? {

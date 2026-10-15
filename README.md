@@ -5,7 +5,7 @@
 | プラットフォーム | 状態 | 開発・利用ガイド |
 |---|---|---|
 | Windows | WPF常駐アプリ。Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
-| macOS | SwiftUI / AppKit版を開発中。Windows版との差分対応が残る | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
+| macOS | SwiftUI / AppKit版。機能差分の修正と隔離自動テストに対応、実機受け入れを継続中 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
 
 ## ディレクトリ構成
 
@@ -55,6 +55,8 @@ Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` ス�
 ```sh
 open macos/DynamicPhotoWall.xcodeproj
 ```
+
+隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。正式Releaseは実機受け入れの完了後に行います。
 
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 

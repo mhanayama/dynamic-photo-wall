@@ -145,6 +145,9 @@ nonisolated struct WallMotionPlan: Equatable, Sendable {
     let toX: CGFloat
     let toY: CGFloat
     let seconds: TimeInterval
+    var fromScale: Double = 1
+    var toScale: Double = 1
+    var center: CGPoint = CGPoint(x: 0.5, y: 0.5)
 
     nonisolated func frame(at progress: Double) -> CGRect {
         let value = CGFloat(min(max(progress, 0), 1))
@@ -163,16 +166,26 @@ nonisolated enum WallMotionGeometry {
         asset: PhotoAsset,
         viewport: CGSize,
         settings: WallSettings,
-        reverse: Bool = false
+        reverse: Bool = false,
+        center: CGPoint = CGPoint(x: 0.5, y: 0.5)
     ) -> WallMotionPlan {
         switch mode {
         case .verticalPan:
-            let width = viewport.width * settings.panWidthFraction
+            let face = settings.stopAtFace ? asset.faces?.min(by: { $0.y < $1.y }) : nil
+            var width = viewport.width * settings.panWidthFraction
+            if let face { width = min(width, viewport.height * 0.92 * asset.aspectRatio / face.height) }
             let height = width / asset.aspectRatio
             let overflow = max(0, height - viewport.height)
+            var end: CGFloat = 0
+            if let face {
+                let half = face.height * height / 2
+                let lower = half + viewport.height * 0.04, upper = viewport.height - half - viewport.height * 0.04
+                let target = lower <= upper ? min(upper, max(lower, viewport.height * 0.3)) : viewport.height * 0.5
+                end = min(0, max(-overflow, target - (face.y + face.height * 0.5) * height))
+            }
             let left = (viewport.width - width) / 2
-            let seconds = overflow > 0
-                ? max(0.1, TimeInterval(overflow) / settings.panPixelsPerSecond)
+            let seconds = end + overflow > 0
+                ? max(0.1, TimeInterval(end + overflow) / settings.panPixelsPerSecond)
                 : 5
             return WallMotionPlan(
                 width: width,
@@ -180,7 +193,7 @@ nonisolated enum WallMotionGeometry {
                 fromX: left,
                 fromY: -overflow,
                 toX: left,
-                toY: 0,
+                toY: end,
                 seconds: seconds
             )
 
@@ -204,8 +217,17 @@ nonisolated enum WallMotionGeometry {
             )
             let width = max(viewport.width, CGFloat(asset.pixelWidth) * scale)
             let height = max(viewport.height, CGFloat(asset.pixelHeight) * scale)
-            let x = (viewport.width - width) / 2
-            let y = (viewport.height - height) / 2
+            var x = (viewport.width - width) / 2
+            var y = (viewport.height - height) / 2
+            var anchor = center
+            if settings.faceAwareFraming, let face = asset.faces?.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+                anchor = CGPoint(x: min(1, max(0, face.x + face.width / 2)), y: min(1, max(0, face.y + face.height / 2)))
+                x = min(0, max(viewport.width - width, viewport.width * 0.5 - anchor.x * width))
+                let half = face.height * height * settings.maxZoom / 2
+                let lower = half + viewport.height * 0.04, upper = viewport.height - half - viewport.height * 0.04
+                let target = lower <= upper ? min(upper, max(lower, viewport.height * 0.4)) : viewport.height * 0.5
+                y = min(0, max(viewport.height - height, target - anchor.y * height))
+            }
             return WallMotionPlan(
                 width: width,
                 height: height,
@@ -213,7 +235,10 @@ nonisolated enum WallMotionGeometry {
                 fromY: y,
                 toX: x,
                 toY: y,
-                seconds: settings.zoomSeconds
+                seconds: settings.zoomSeconds,
+                fromScale: reverse ? settings.maxZoom : 1,
+                toScale: reverse ? 1 : settings.maxZoom,
+                center: CGPoint(x: min(1, max(0, anchor.x)), y: min(1, max(0, anchor.y)))
             )
 
         case .gallery, .horizontalGallery:
@@ -235,7 +260,8 @@ nonisolated enum WallMotionGeometry {
         settings: WallSettings
     ) -> TimeInterval {
         guard let asset = scene.assets.first else { return 5 }
-        return duration(for: scene.mode, asset: asset, viewport: viewport, settings: settings)
+        let seconds = duration(for: scene.mode, asset: asset, viewport: viewport, settings: settings)
+        return seconds + (scene.mode == .verticalPan && settings.stopAtFace && !(asset.faces ?? []).isEmpty ? 3 : 0)
     }
 
     private nonisolated static func duration(

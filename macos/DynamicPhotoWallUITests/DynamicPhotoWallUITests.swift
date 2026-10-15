@@ -1,43 +1,95 @@
-//
-//  DynamicPhotoWallUITests.swift
-//  DynamicPhotoWallUITests
-//
-//  Created by Masato Hanayama on 2026/10/14.
-//
-
 import XCTest
 
 final class DynamicPhotoWallUITests: XCTestCase {
-
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
+    @MainActor
+    func testFolderDeletionPersistsThroughRelaunchIncludingLastSource() throws {
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
-    @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
         let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
         app.launch()
+        app.activate()
+        defer { app.terminate() }
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        func openPhotos() {
+            XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+            XCTAssertTrue(tab.waitForExistence(timeout: 5))
+            tab.click()
+        }
+        func removeButtons() -> XCUIElementQuery {
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
+        }
+        openPhotos()
+        XCTAssertTrue(removeButtons().firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(removeButtons().count, 2)
+        removeButtons().element(boundBy: 0).click()
+        XCTAssertEqual(removeButtons().count, 1)
+        app.buttons["保存して適用"].click()
+        app.terminate()
+        app.launch()
+        openPhotos()
+        XCTAssertEqual(removeButtons().count, 1)
+        removeButtons().firstMatch.click()
+        XCTAssertEqual(removeButtons().count, 0)
+        app.buttons["保存して適用"].click()
+        app.terminate()
+        app.launch()
+        openPhotos()
+        XCTAssertEqual(removeButtons().count, 0)
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        XCTAssertFalse(app.buttons["保存して表示開始"].isEnabled)
+    }
+    @MainActor
+    func testUnsavedFolderDeletionIsCancelledAndPlaybackControlsWork() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
+        app.launch(); app.activate()
+        defer { app.terminate() }
+        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+        XCTAssertTrue(photos.waitForExistence(timeout: 5)); photos.click()
+        let remove = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
+        XCTAssertEqual(remove.count, 2)
+        remove.firstMatch.click()
+        XCTAssertEqual(remove.count, 1)
+        app.buttons["変更を取り消す"].click()
+        XCTAssertEqual(remove.count, 2)
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.buttons["表示停止"].click()
+        let start = app.buttons["保存して表示開始"]
+        XCTAssertTrue(start.isEnabled); start.click()
+        let pause = app.buttons["一時停止"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 5)); XCTAssertTrue(pause.isEnabled)
+        pause.click()
+        XCTAssertTrue(app.buttons["再開"].exists)
+        app.buttons["次の構成"].click()
+        app.buttons["再開"].click()
+        XCTAssertTrue(pause.exists)
+        app.buttons["表示停止"].click()
+        XCTAssertFalse(pause.isEnabled)
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testClosingSettingsCancelsDraftAndReopensOnlyOneWindow() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
+        app.launch(); app.activate()
+        defer { app.terminate() }
+        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+        XCTAssertTrue(photos.waitForExistence(timeout: 5)); photos.click()
+        let remove = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
+        remove.firstMatch.click()
+        XCTAssertEqual(remove.count, 1)
+        app.windows.firstMatch.buttons["_XCUI:CloseWindow"].click()
+        XCTAssertEqual(app.windows.count, 0)
+        app.activate()
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(photos.waitForExistence(timeout: 5)); photos.click()
+        XCTAssertEqual(remove.count, 2)
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertEqual(app.windows.count, 1)
     }
+
 }

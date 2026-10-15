@@ -72,6 +72,9 @@ private struct DisplaySettingsView: View {
                 }
                 Text(model.displayConnectionMessage)
                     .foregroundStyle(.secondary)
+                Toggle("ログイン時にアプリを起動", isOn: $model.settings.autoStart)
+                Text(model.loginItemStatus).foregroundStyle(.secondary)
+                Button("システム設定のログイン項目を開く", action: LoginItemService.openSettings)
                 Toggle("アプリ起動時にスライドショーを開始", isOn: $model.settings.startOnLaunch)
             }
 
@@ -108,11 +111,21 @@ private struct PhotoSettingsView: View {
             Section("写真フォルダー") {
                 List(selection: $selectedFolderIDs) {
                     ForEach(model.folders) { folder in
-                        Label(folder.path ?? "未解決の登録フォルダー", systemImage: folder.isAccessible ? "folder" : "exclamationmark.triangle")
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundStyle(folder.isAccessible ? Color.primary : Color.orange)
-                            .tag(folder.id)
+                        HStack {
+                            Label(folder.path ?? "未解決の登録フォルダー", systemImage: folder.isAccessible ? "folder" : "exclamationmark.triangle")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(folder.isAccessible ? Color.primary : Color.orange)
+                            Spacer()
+                            Button(role: .destructive) { model.removeFolders(ids: [folder.id]) } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("このフォルダーを解除")
+                            .accessibilityLabel("フォルダーを削除: \(folder.path ?? "未解決の登録フォルダー")")
+                            .accessibilityIdentifier("remove-folder-\(folder.id)")
+                        }
+                        .tag(folder.id)
                     }
                     .onDelete(perform: model.removeFolders)
                 }
@@ -124,14 +137,16 @@ private struct PhotoSettingsView: View {
                 HStack {
                     Button("フォルダーを追加／再許可", systemImage: "plus", action: model.chooseFolder)
                     Button("選択を削除", systemImage: "minus") {
-                        let offsets = IndexSet(model.folders.indices.filter { selectedFolderIDs.contains(model.folders[$0].id) })
-                        model.removeFolders(at: offsets)
+                        model.removeFolders(ids: selectedFolderIDs)
                         selectedFolderIDs.removeAll()
                     }
                     .disabled(selectedFolderIDs.isEmpty)
                     Button("再検索／アクセス再試行", systemImage: "arrow.clockwise", action: model.retryFolders)
                 }
                 if let warning = model.folderWarning { Text(warning).foregroundStyle(.orange) }
+                if model.needsFolderRecovery {
+                    Button("壊れた登録情報を退避して再登録", action: model.recoverFolders)
+                }
 
                 Toggle("サブフォルダーも検索", isOn: $model.settings.recursive)
                 Toggle("ランダムに再生", isOn: $model.settings.randomOrder)
@@ -172,6 +187,8 @@ private struct CompositionSettingsView: View {
                 NumericField(title: "Galleryの最大枚数（1〜5）", value: $settings.galleryMax)
                 DoubleField(title: "パンで許容する拡大率（1〜12倍、初期値4倍）", value: $settings.maxPanUpscale)
                 DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0）", value: $settings.panWidthFraction)
+                Toggle("顔が見える位置で縦パンを止める", isOn: $settings.stopAtFace)
+                Toggle("全画面表示でも顔が見える位置を優先", isOn: $settings.faceAwareFraming)
                 Text("画面より小さい画像もパンできます。粗さが気になる場合は許容拡大率を下げてください。拡大率を超える写真はGalleryで表示します。")
                     .foregroundStyle(.secondary)
             }
@@ -205,7 +222,7 @@ private struct AppearanceSettingsView: View {
     var body: some View {
         Form {
             Section("写真の見せ方") {
-                Toggle("写真をぼかしたガラス風の背景", isOn: $settings.glassBackground)
+                Toggle("表示中の写真に追従するガラス風の背景", isOn: $settings.glassBackground)
                 LabeledContent("背景色（例：#101116）") {
                     TextField("#101116", text: $settings.backgroundHex)
                         .frame(width: 120)
@@ -254,6 +271,7 @@ private struct StatusAndSaveView: View {
             Text("\(model.displayStatusMessage) · ライブラリ \(model.photoAssets.count)枚 · \(model.currentMode ?? "—")")
                 .foregroundStyle(.secondary)
             Spacer()
+            Button("変更を取り消す", action: model.cancelDraft)
             Button("保存して適用", action: model.saveSettings)
                 .buttonStyle(.borderedProminent)
         }
@@ -261,5 +279,5 @@ private struct StatusAndSaveView: View {
 }
 
 #Preview {
-    ContentView(model: AppModel())
+    ContentView(model: AppModel.makeUITestModel(profile: "Preview"))
 }

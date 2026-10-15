@@ -7,6 +7,7 @@ struct ScreenDescriptor: Identifiable, Hashable {
     let frame: CGRect
     let pixelWidth: Int
     let pixelHeight: Int
+    var visibleFrame: CGRect? = nil
 
     var resolutionDescription: String {
         "\(pixelWidth) × \(pixelHeight)"
@@ -24,7 +25,8 @@ struct ScreenDescriptor: Identifiable, Hashable {
                 name: screen.localizedName,
                 frame: screen.frame,
                 pixelWidth: CGDisplayPixelsWide(displayID),
-                pixelHeight: CGDisplayPixelsHigh(displayID)
+                pixelHeight: CGDisplayPixelsHigh(displayID),
+                visibleFrame: screen.visibleFrame
             )
         }
     }

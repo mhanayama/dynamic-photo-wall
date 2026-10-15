@@ -1,13 +1,26 @@
 import CoreGraphics
 import Foundation
 
-nonisolated struct PhotoAsset: Identifiable, Equatable, Sendable {
+nonisolated struct FaceRegion: Codable, Equatable, Sendable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+    var isValid: Bool {
+        [x, y, width, height].allSatisfy(\.isFinite) && x >= 0 && y >= 0 && width > 0 && height > 0
+            && x + width <= 1.01 && y + height <= 1.01
+    }
+}
+
+nonisolated struct PhotoAsset: Identifiable, Codable, Equatable, Sendable {
     let url: URL
     let pixelWidth: Int
     let pixelHeight: Int
     var fileSize: Int64 = 0
     var modifiedAt: TimeInterval = 0
     var takenAt: Date? = nil
+    var orientation: Int = 1
+    var faces: [FaceRegion]? = nil
 
     nonisolated var id: URL {
         url

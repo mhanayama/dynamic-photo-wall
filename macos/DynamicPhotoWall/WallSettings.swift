@@ -5,6 +5,9 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     var randomOrder = true
     var recentCount = 30
     var startOnLaunch = true
+    var autoStart = false
+    var stopAtFace = true
+    var faceAwareFraming = true
 
     var galleryEnabled = true
     var galleryScrollEnabled = true
@@ -35,7 +38,7 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case recursive, randomOrder, recentCount, startOnLaunch, galleryEnabled, galleryScrollEnabled, verticalPanEnabled, horizontalPanEnabled, zoomEnabled, galleryWeight, panWeight, zoomWeight, galleryMax, panPixelsPerSecond, maxPanUpscale, panWidthFraction, galleryScrollPixelsPerSecond, glassBackground, zoomSeconds, maxZoom, fadeSeconds, galleryMinSeconds, galleryMaxSeconds, backgroundHex, gap, cornerRadius, exifOverlay, cacheMegabytes
+        case recursive, randomOrder, recentCount, startOnLaunch, autoStart, stopAtFace, faceAwareFraming, galleryEnabled, galleryScrollEnabled, verticalPanEnabled, horizontalPanEnabled, zoomEnabled, galleryWeight, panWeight, zoomWeight, galleryMax, panPixelsPerSecond, maxPanUpscale, panWidthFraction, galleryScrollPixelsPerSecond, glassBackground, zoomSeconds, maxZoom, fadeSeconds, galleryMinSeconds, galleryMaxSeconds, backgroundHex, gap, cornerRadius, exifOverlay, cacheMegabytes
     }
 
     init(from decoder: Decoder) throws {
@@ -45,6 +48,9 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
         randomOrder = try values.decodeIfPresent(Bool.self, forKey: .randomOrder) ?? randomOrder
         recentCount = try values.decodeIfPresent(Int.self, forKey: .recentCount) ?? recentCount
         startOnLaunch = try values.decodeIfPresent(Bool.self, forKey: .startOnLaunch) ?? startOnLaunch
+        autoStart = try values.decodeIfPresent(Bool.self, forKey: .autoStart) ?? autoStart
+        stopAtFace = try values.decodeIfPresent(Bool.self, forKey: .stopAtFace) ?? stopAtFace
+        faceAwareFraming = try values.decodeIfPresent(Bool.self, forKey: .faceAwareFraming) ?? faceAwareFraming
         galleryEnabled = try values.decodeIfPresent(Bool.self, forKey: .galleryEnabled) ?? galleryEnabled
         galleryScrollEnabled = try values.decodeIfPresent(Bool.self, forKey: .galleryScrollEnabled) ?? galleryScrollEnabled
         verticalPanEnabled = try values.decodeIfPresent(Bool.self, forKey: .verticalPanEnabled) ?? verticalPanEnabled

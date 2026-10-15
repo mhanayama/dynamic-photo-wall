@@ -5,55 +5,41 @@ struct WallSceneLayer: View {
     let settings: WallSettings
     let images: PhotoImageStore
 
+    let viewport: CGSize
+    let paused: Bool
+    @State private var ambient = AmbientSampler()
+
+    private var usesCardCaption: Bool { presentation.scene.mode == .gallery || presentation.scene.mode == .horizontalGallery }
+
     var body: some View {
         ZStack {
-            if settings.glassBackground {
-                AmbientBackgroundView(
-                    asset: presentation.scene.assets.first,
-                    previousAsset: presentation.slots.first?.previousAsset,
-                    progress: presentation.slots.first.map {
-                        min(1, max(0, (presentation.elapsed - $0.changedAt) / settings.fadeSeconds))
-                    } ?? 1,
-                    images: images
-                )
-            } else {
-                Color(hex: settings.backgroundHex)
+            Color(hex: settings.backgroundHex)
+            if settings.glassBackground, let image = ambient.image {
+                Image(nsImage: image).resizable().interpolation(.high)
+                    .overlay(Color.black.opacity(0.42))
             }
-            switch presentation.scene.mode {
-            case .gallery:
-                GallerySceneView(presentation: presentation, settings: settings, images: images)
-            case .horizontalGallery:
-                HorizontalGallerySceneView(presentation: presentation, settings: settings, images: images)
-            case .verticalPan, .horizontalPan, .zoom:
-                if let asset = presentation.scene.assets.first {
-                    MotionSceneView(asset: asset, presentation: presentation, settings: settings, images: images)
-                }
+            let placements = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport)
+            ForEach(Array(placements.enumerated()), id: \.offset) { _, item in
+                PhotoCard(asset: item.asset, settings: settings, images: images, showCaption: usesCardCaption)
+                    .frame(width: item.frame.width, height: item.frame.height)
+                    .clipShape(RoundedRectangle(cornerRadius: item.cornerRadius))
+                    .position(x: item.frame.midX, y: item.frame.midY)
+                    .opacity(item.opacity)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            // Windows adds motion captions to the scene Canvas, outside the
+            // moving image. Keep them visible throughout Pan and Zoom.
+            if settings.exifOverlay, !usesCardCaption, let asset = presentation.scene.assets.first {
+                PhotoCaption(asset: asset)
             }
         }
         .clipped()
-    }
-}
-
-private struct AmbientBackgroundView: View {
-    let asset: PhotoAsset?
-    let previousAsset: PhotoAsset?
-    let progress: Double
-    let images: PhotoImageStore
-    var body: some View {
-        ZStack {
-            Color.black
-            if let asset {
-                ForEach(previousAsset.map { [$0, asset] } ?? [asset]) { photo in
-                    PhotoImageView(asset: photo, contentMode: .fill, images: images)
-                        .blur(radius: 48)
-                        .scaleEffect(1.15)
-                        .overlay(Color.black.opacity(0.42))
-                        .opacity(photo == asset && previousAsset != nil ? progress : 1)
-                }
-            }
-            LinearGradient(colors: [.white.opacity(0.08), .clear, .black.opacity(0.2)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        .onChange(of: Int(presentation.elapsed * 8), initial: true) {
+            if settings.glassBackground { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: paused) }
         }
+        .onChange(of: paused) { _, paused in if paused { ambient.stop() } }
+        .onDisappear { ambient.stop() }
     }
 }
 
@@ -61,66 +47,46 @@ private struct PhotoCard: View {
     let asset: PhotoAsset
     let settings: WallSettings
     let images: PhotoImageStore
-    private static let captionDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
-        return formatter
+    let showCaption: Bool
+
+    var body: some View {
+        PhotoImageView(asset: asset, contentMode: .fit, images: images)
+            .overlay(alignment: .bottomLeading) {
+                if settings.exifOverlay && showCaption { PhotoCaption(asset: asset) }
+            }
+    }
+}
+
+private struct PhotoCaption: View {
+    let asset: PhotoAsset
+    private static let formatter: DateFormatter = {
+        let value = DateFormatter()
+        value.locale = Locale(identifier: "en_US_POSIX")
+        value.calendar = Calendar(identifier: .gregorian)
+        value.dateFormat = "yyyy/MM/dd HH:mm"
+        return value
     }()
 
     private var caption: String {
         let details = "\(asset.url.lastPathComponent)  ·  \(asset.pixelWidth)×\(asset.pixelHeight)"
         guard let date = asset.takenAt else { return details }
-        Self.captionDateFormatter.timeZone = .current
-        return details + "  " + Self.captionDateFormatter.string(from: date)
+        Self.formatter.timeZone = .current
+        return details + "  " + Self.formatter.string(from: date)
     }
+
     var body: some View {
-        PhotoImageView(asset: asset, contentMode: .fit, images: images)
-            .overlay(alignment: .bottomLeading) {
-                if settings.exifOverlay {
-                    Text(caption)
-                    .font(.system(size: 16))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .background(.black.opacity(0.5))
-                }
-            }
+        Text(caption)
+            .font(.system(size: 16))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .foregroundStyle(.white)
+            .padding(10)
+            .background(.black.opacity(130.0 / 255))
+            .frame(maxWidth: 1200, alignment: .leading)
     }
 }
 
-private struct GallerySceneView: View {
-    let presentation: WallScenePresentation
-    let settings: WallSettings
-    let images: PhotoImageStore
-    var body: some View {
-        GeometryReader { proxy in
-            let frames = GalleryLayout.frames(assets: presentation.slots.map(\.asset), in: proxy.size, gap: settings.gap)
-            ForEach(presentation.slots) { slot in
-                if frames.indices.contains(slot.id) {
-                    let frame = frames[slot.id]
-                    ZStack {
-                        // Keep the old card's identity when it moves from current
-                        // to outgoing, just as we do for full-screen scenes.
-                        ForEach(slot.previousAsset.map { [$0, slot.asset] } ?? [slot.asset]) { asset in
-                            PhotoCard(asset: asset, settings: settings, images: images)
-                                .opacity(asset == slot.asset && slot.previousAsset != nil
-                                    ? min(1, max(0, (presentation.elapsed - slot.changedAt) / settings.fadeSeconds)) : 1)
-                        }
-                    }
-                    .frame(width: frame.width, height: frame.height)
-                    .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
-                    .position(x: frame.midX, y: frame.midY)
-                    .animation(.easeInOut(duration: settings.fadeSeconds), value: presentation.scene.assets)
-                }
-            }
-        }
-    }
-}
-
-enum GalleryLayout {
+nonisolated enum GalleryLayout {
     static func frames(assets: [PhotoAsset], in size: CGSize, gap: CGFloat) -> [CGRect] {
         guard !assets.isEmpty else {
             return []
@@ -139,49 +105,6 @@ enum GalleryLayout {
             let width = height * asset.aspectRatio
             defer { x += width + safeGap }
             return CGRect(x: x, y: (size.height - height) / 2, width: width, height: height)
-        }
-    }
-}
-
-private struct HorizontalGallerySceneView: View {
-    let presentation: WallScenePresentation
-    let settings: WallSettings
-    let images: PhotoImageStore
-    var body: some View {
-        GeometryReader { proxy in
-            let height = max(1, proxy.size.height - 2 * settings.gap)
-            let totalWidth = presentation.scene.assets.reduce(0) { $0 + height * $1.aspectRatio + settings.gap }
-            HStack(spacing: settings.gap) {
-                ForEach(presentation.scene.assets) { asset in
-                    PhotoCard(asset: asset, settings: settings, images: images)
-                        .frame(width: height * asset.aspectRatio, height: height)
-                        .clipShape(RoundedRectangle(cornerRadius: settings.cornerRadius))
-                }
-            }
-            .frame(width: max(1, totalWidth - settings.gap), height: height, alignment: .leading)
-            .offset(x: settings.gap - presentation.scrollDistance, y: settings.gap)
-        }
-    }
-}
-
-private struct MotionSceneView: View {
-    let asset: PhotoAsset
-    let presentation: WallScenePresentation
-    let settings: WallSettings
-    let images: PhotoImageStore
-    var body: some View {
-        GeometryReader { proxy in
-            let scene = presentation.scene
-            let plan = WallMotionGeometry.plan(for: scene.mode, asset: asset, viewport: proxy.size,
-                                                settings: settings, reverse: scene.reverse)
-            let frame = plan.frame(at: presentation.progress)
-            let eased = 0.5 - cos(presentation.progress * .pi) / 2
-            let scale = scene.mode == .zoom
-                ? (scene.reverse ? settings.maxZoom - eased * (settings.maxZoom - 1) : 1 + eased * (settings.maxZoom - 1)) : 1
-            PhotoCard(asset: asset, settings: settings, images: images)
-                .frame(width: frame.width, height: frame.height)
-                .scaleEffect(scale, anchor: UnitPoint(x: scene.zoomCenter.x, y: scene.zoomCenter.y))
-                .position(x: frame.midX, y: frame.midY)
         }
     }
 }

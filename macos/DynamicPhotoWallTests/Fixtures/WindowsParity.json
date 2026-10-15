@@ -1,0 +1,3280 @@
+{
+  "motion": [
+    {
+      "name": "VerticalPan-0",
+      "mode": "verticalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1843.1999999999998,
+        "height": 5529.599999999999,
+        "fromX": 38.40000000000009,
+        "fromY": -4449.599999999999,
+        "toX": 38.40000000000009,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 37.08
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": true,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-1",
+      "mode": "horizontalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 360,
+        "height": 1080,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": true,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-2",
+      "mode": "zoom",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1920,
+        "height": 5760,
+        "fromX": 0,
+        "fromY": -496.79999999999995,
+        "toX": 0,
+        "toY": -496.79999999999995,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.225,
+        "centerY": 0.18,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": true,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-3",
+      "mode": "verticalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1843.1999999999998,
+        "height": 368.64,
+        "fromX": 38.40000000000009,
+        "fromY": -0,
+        "toX": 38.40000000000009,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-4",
+      "mode": "horizontalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 5400,
+        "height": 1080,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -3480,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 29
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-5",
+      "mode": "zoom",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 5400,
+        "height": 1080,
+        "fromX": -1740,
+        "fromY": 0,
+        "toX": -1740,
+        "toY": 0,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-6",
+      "mode": "verticalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1843.1999999999998,
+        "height": 1228.8,
+        "fromX": 38.40000000000009,
+        "fromY": -148.79999999999995,
+        "toX": 38.40000000000009,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 1.2399999999999995
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-7",
+      "mode": "horizontalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1620,
+        "height": 1080,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-8",
+      "mode": "zoom",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1920,
+        "height": 1280,
+        "fromX": 0,
+        "fromY": -100,
+        "toX": 0,
+        "toY": -100,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-9",
+      "mode": "verticalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1843.1999999999998,
+        "height": 1842.076782449726,
+        "fromX": 38.40000000000009,
+        "fromY": -762.0767824497259,
+        "toX": 38.40000000000009,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 6.350639853747716
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-10",
+      "mode": "horizontalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1080.6585365853657,
+        "height": 1080,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-11",
+      "mode": "zoom",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1920,
+        "height": 1918.8299817184643,
+        "fromX": 0,
+        "fromY": -419.41499085923215,
+        "toX": 0,
+        "toY": -419.41499085923215,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-12",
+      "mode": "verticalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3686.3999999999996,
+        "height": 11059.199999999999,
+        "fromX": 76.80000000000018,
+        "fromY": -8899.199999999999,
+        "toX": 76.80000000000018,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 74.16
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-13",
+      "mode": "horizontalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 720,
+        "height": 2160,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-14",
+      "mode": "zoom",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3840,
+        "height": 11520,
+        "fromX": 0,
+        "fromY": -993.5999999999999,
+        "toX": 0,
+        "toY": -993.5999999999999,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.225,
+        "centerY": 0.18,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-15",
+      "mode": "verticalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3686.3999999999996,
+        "height": 737.28,
+        "fromX": 76.80000000000018,
+        "fromY": -0,
+        "toX": 76.80000000000018,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-16",
+      "mode": "horizontalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 10800,
+        "height": 2160,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -6960,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 58
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-17",
+      "mode": "zoom",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 10800,
+        "height": 2160,
+        "fromX": -3480,
+        "fromY": 0,
+        "toX": -3480,
+        "toY": 0,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-18",
+      "mode": "verticalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3686.3999999999996,
+        "height": 2457.6,
+        "fromX": 76.80000000000018,
+        "fromY": -297.5999999999999,
+        "toX": 76.80000000000018,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 2.479999999999999
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-19",
+      "mode": "horizontalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3240,
+        "height": 2160,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-20",
+      "mode": "zoom",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3840,
+        "height": 2560,
+        "fromX": 0,
+        "fromY": -200,
+        "toX": 0,
+        "toY": -200,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-21",
+      "mode": "verticalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3686.3999999999996,
+        "height": 3684.153564899452,
+        "fromX": 76.80000000000018,
+        "fromY": -1524.1535648994518,
+        "toX": 76.80000000000018,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 12.701279707495432
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-22",
+      "mode": "horizontalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 2161.3170731707314,
+        "height": 2160,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-23",
+      "mode": "zoom",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 3840,
+        "height": 2160,
+        "aspect": 1.7777777777777777
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3840,
+        "height": 3837.6599634369286,
+        "fromX": 0,
+        "fromY": -838.8299817184643,
+        "toX": 0,
+        "toY": -838.8299817184643,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-24",
+      "mode": "verticalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3302.4,
+        "height": 9907.2,
+        "fromX": 68.79999999999995,
+        "fromY": -8467.2,
+        "toX": 68.79999999999995,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 70.56
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-25",
+      "mode": "horizontalPan",
+      "width": 800,
+      "height": 2400,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 480,
+        "height": 1440,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-26",
+      "mode": "zoom",
+      "width": 800,
+      "height": 2400,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3440,
+        "height": 10320,
+        "fromX": 0,
+        "fromY": -1137.6,
+        "toX": 0,
+        "toY": -1137.6,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.225,
+        "centerY": 0.18,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": false,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-27",
+      "mode": "verticalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3302.4,
+        "height": 660.48,
+        "fromX": 68.79999999999995,
+        "fromY": -0,
+        "toX": 68.79999999999995,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-28",
+      "mode": "horizontalPan",
+      "width": 6000,
+      "height": 1200,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 7200,
+        "height": 1440,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -3760,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 31.333333333333332
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-29",
+      "mode": "zoom",
+      "width": 6000,
+      "height": 1200,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 7200,
+        "height": 1440,
+        "fromX": -1880,
+        "fromY": 0,
+        "toX": -1880,
+        "toY": 0,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": true,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-30",
+      "mode": "verticalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3302.4,
+        "height": 2201.6,
+        "fromX": 68.79999999999995,
+        "fromY": -761.5999999999999,
+        "toX": 68.79999999999995,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 6.346666666666666
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-31",
+      "mode": "horizontalPan",
+      "width": 2400,
+      "height": 1600,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 2160,
+        "height": 1440,
+        "fromX": -0,
+        "fromY": 0,
+        "toX": 0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-32",
+      "mode": "zoom",
+      "width": 2400,
+      "height": 1600,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": false,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3440,
+        "height": 2293.3333333333335,
+        "fromX": 0,
+        "fromY": -426.66666666666674,
+        "toX": 0,
+        "toY": -426.66666666666674,
+        "fromScale": 1,
+        "toScale": 1.08,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "VerticalPan-33",
+      "mode": "verticalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": false,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3302.4,
+        "height": 3300.387568555759,
+        "fromX": 68.79999999999995,
+        "fromY": -1860.3875685557591,
+        "toX": 68.79999999999995,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 15.50322973796466
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "HorizontalPan-34",
+      "mode": "horizontalPan",
+      "width": 1641,
+      "height": 1640,
+      "faces": [
+        {
+          "x": 0.1,
+          "y": 0.03,
+          "width": 0.25,
+          "height": 0.3
+        },
+        {
+          "x": 0.6,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.15
+        }
+      ],
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": false,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 1440.8780487804877,
+        "height": 1440,
+        "fromX": 0,
+        "fromY": 0,
+        "toX": -0,
+        "toY": 0,
+        "fromScale": 1,
+        "toScale": 1,
+        "centerX": 0.5,
+        "centerY": 0.5,
+        "seconds": 5
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    },
+    {
+      "name": "Zoom-35",
+      "mode": "zoom",
+      "width": 1641,
+      "height": 1640,
+      "faces": null,
+      "viewport": {
+        "width": 3440,
+        "height": 1440,
+        "aspect": 2.388888888888889
+      },
+      "settings": {
+        "monitorId": null,
+        "folders": [],
+        "recursive": true,
+        "randomOrder": true,
+        "recentCount": 30,
+        "autoStart": false,
+        "startOnLaunch": true,
+        "hideTaskbar": true,
+        "galleryEnabled": true,
+        "galleryScrollEnabled": true,
+        "verticalPanEnabled": true,
+        "horizontalPanEnabled": true,
+        "zoomEnabled": true,
+        "galleryWeight": 45,
+        "panWeight": 35,
+        "zoomWeight": 20,
+        "galleryMax": 5,
+        "panPixelsPerSecond": 120,
+        "maxPanUpscale": 4,
+        "panWidthFraction": 0.96,
+        "stopAtFace": true,
+        "faceAwareFraming": true,
+        "galleryScrollPixelsPerSecond": 40,
+        "glassBackground": true,
+        "zoomSeconds": 45,
+        "maxZoom": 1.08,
+        "fadeSeconds": 1.2,
+        "galleryMinSeconds": 30,
+        "galleryMaxSeconds": 60,
+        "background": "#101116",
+        "gap": 8,
+        "cornerRadius": 8,
+        "exifOverlay": false,
+        "cacheMegabytes": 256
+      },
+      "reverse": true,
+      "centerX": 0.37,
+      "centerY": 0.63,
+      "expected": {
+        "width": 3440,
+        "height": 3437.903717245582,
+        "fromX": 0,
+        "fromY": -998.951858622791,
+        "toX": 0,
+        "toY": -998.951858622791,
+        "fromScale": 1.08,
+        "toScale": 1,
+        "centerX": 0.37,
+        "centerY": 0.63,
+        "seconds": 45
+      },
+      "eligible": {
+        "gallery": true,
+        "verticalPan": false,
+        "horizontalPan": false,
+        "zoom": true,
+        "galleryScroll": true
+      }
+    }
+  ],
+  "layout": [
+    {
+      "gap": 0,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 690,
+          "y": 0,
+          "width": 540,
+          "height": 1080
+        }
+      ]
+    },
+    {
+      "gap": 0,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 0,
+          "y": 156,
+          "width": 384,
+          "height": 768
+        },
+        {
+          "x": 384,
+          "y": 156,
+          "width": 1152,
+          "height": 768
+        },
+        {
+          "x": 1536,
+          "y": 156,
+          "width": 384,
+          "height": 768
+        }
+      ]
+    },
+    {
+      "gap": 0,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 0,
+          "y": 326.66666666666663,
+          "width": 213.33333333333334,
+          "height": 426.6666666666667
+        },
+        {
+          "x": 213.33333333333334,
+          "y": 326.66666666666663,
+          "width": 640,
+          "height": 426.6666666666667
+        },
+        {
+          "x": 853.3333333333334,
+          "y": 326.66666666666663,
+          "width": 213.33333333333334,
+          "height": 426.6666666666667
+        },
+        {
+          "x": 1066.6666666666667,
+          "y": 326.66666666666663,
+          "width": 640,
+          "height": 426.6666666666667
+        },
+        {
+          "x": 1706.6666666666667,
+          "y": 326.66666666666663,
+          "width": 213.33333333333334,
+          "height": 426.6666666666667
+        }
+      ]
+    },
+    {
+      "gap": 8,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 694,
+          "y": 8,
+          "width": 532,
+          "height": 1064
+        }
+      ]
+    },
+    {
+      "gap": 8,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 8,
+          "y": 162.39999999999998,
+          "width": 377.6,
+          "height": 755.2
+        },
+        {
+          "x": 393.6,
+          "y": 162.39999999999998,
+          "width": 1132.8000000000002,
+          "height": 755.2
+        },
+        {
+          "x": 1534.4,
+          "y": 162.39999999999998,
+          "width": 377.6,
+          "height": 755.2
+        }
+      ]
+    },
+    {
+      "gap": 8,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 8,
+          "y": 332,
+          "width": 208,
+          "height": 416
+        },
+        {
+          "x": 224,
+          "y": 332,
+          "width": 624,
+          "height": 416
+        },
+        {
+          "x": 856,
+          "y": 332,
+          "width": 208,
+          "height": 416
+        },
+        {
+          "x": 1072,
+          "y": 332,
+          "width": 624,
+          "height": 416
+        },
+        {
+          "x": 1704,
+          "y": 332,
+          "width": 208,
+          "height": 416
+        }
+      ]
+    },
+    {
+      "gap": 200,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 790,
+          "y": 200,
+          "width": 340,
+          "height": 680
+        }
+      ]
+    },
+    {
+      "gap": 200,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 200,
+          "y": 316,
+          "width": 224,
+          "height": 448
+        },
+        {
+          "x": 624,
+          "y": 316,
+          "width": 672,
+          "height": 448
+        },
+        {
+          "x": 1496,
+          "y": 316,
+          "width": 224,
+          "height": 448
+        }
+      ]
+    },
+    {
+      "gap": 200,
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "photos": [
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        },
+        {
+          "width": 2400,
+          "height": 1600
+        },
+        {
+          "width": 800,
+          "height": 1600
+        }
+      ],
+      "expected": [
+        {
+          "x": 200,
+          "y": 460,
+          "width": 80,
+          "height": 160
+        },
+        {
+          "x": 480,
+          "y": 460,
+          "width": 240,
+          "height": 160
+        },
+        {
+          "x": 920,
+          "y": 460,
+          "width": 80,
+          "height": 160
+        },
+        {
+          "x": 1200,
+          "y": 460,
+          "width": 240,
+          "height": 160
+        },
+        {
+          "x": 1640,
+          "y": 460,
+          "width": 80,
+          "height": 160
+        }
+      ]
+    }
+  ],
+  "selection": [
+    {
+      "photos": [
+        "/c.jpg",
+        "/a.jpg",
+        "/b.jpg"
+      ],
+      "recentCount": 0,
+      "excluded": [
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ]
+      ],
+      "expected": [
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg"
+      ]
+    },
+    {
+      "photos": [
+        "/c.jpg",
+        "/a.jpg",
+        "/b.jpg"
+      ],
+      "recentCount": 30,
+      "excluded": [
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ],
+        [
+          "/c.jpg"
+        ]
+      ],
+      "expected": [
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg",
+        "/a.jpg",
+        "/b.jpg"
+      ]
+    }
+  ]
+}

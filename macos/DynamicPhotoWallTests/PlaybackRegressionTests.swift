@@ -171,4 +171,29 @@ struct PlaybackRegressionTests {
         invalid.horizontalPanEnabled = false
         #expect(throws: WallSettings.ValidationError.self) { try invalid.validate() }
     }
+    @Test func nextAtExpiredSceneAdvancesOnlyOnce() throws {
+        var settings = WallSettings()
+        settings.galleryEnabled = false; settings.galleryScrollEnabled = false
+        settings.verticalPanEnabled = false; settings.horizontalPanEnabled = false
+        let assets = (0..<5).map { PhotoAsset(url: URL(filePath: "/boundary/\($0).jpg"), pixelWidth: 1920, pixelHeight: 1080) }
+        let playback = WallPlaybackController()
+        defer { playback.stop() }
+        playback.start(assets: assets, settings: settings, viewport: CGSize(width: 1920, height: 1080), seed: 42, now: 0)
+        playback.next(now: settings.zoomSeconds + settings.fadeSeconds)
+        #expect(playback.currentScene?.id == 1)
+    }
+
+    @Test func fadeUsesWindowsSineEaseAndShortFacePanIsVerticallyCentered() throws {
+        #expect(abs(WallAnimation.ease(0.25) - 0.1464466094067262) < 1e-12)
+        #expect(abs(WallAnimation.ease(0.75) - 0.8535533905932737) < 1e-12)
+        let viewport = CGSize(width: 1920, height: 1080)
+        let photo = PhotoAsset(url: URL(filePath: "/face-close.jpg"), pixelWidth: 800, pixelHeight: 2400,
+            faces: [FaceRegion(x: 0, y: 0, width: 1, height: 1)])
+        let p = WallScenePresentation(scene: WallScene(id: 0, mode: .verticalPan, assets: [photo]), progress: 0, elapsed: 0, slots: [], scrollDistance: 0)
+        let placement = try #require(ForegroundGeometry.placements(p, settings: WallSettings(), viewport: viewport).first)
+        #expect(abs(placement.frame.midY - viewport.height / 2) < 1e-7)
+        let plan = WallMotionGeometry.plan(for: .verticalPan, asset: photo, viewport: viewport, settings: WallSettings())
+        #expect(WallMotionGeometry.duration(for: p.scene, viewport: viewport, settings: WallSettings()) == plan.seconds + 3)
+    }
+
 }

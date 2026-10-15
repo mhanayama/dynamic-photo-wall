@@ -163,6 +163,8 @@ struct AppModelRegressionTests {
         try await awaitScan(model)
         #expect(model.isPlaying)
         model.removeFolders(at: [0])
+        #expect(model.isPlaying) // Removal remains a draft until Save.
+        model.saveSettings()
         #expect(!model.isPlaying)
         #expect(model.photoAssets.isEmpty)
         #expect(model.playback.currentScene == nil)

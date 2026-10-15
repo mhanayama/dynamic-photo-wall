@@ -50,8 +50,12 @@ final class FolderBookmarkStore {
         self.defaults = defaults
         self.access = access ?? .system
         if let data = defaults.data(forKey: Self.recordsKey) {
-            do { folders = try JSONDecoder().decode([PhotoFolder].self, from: data) }
+            do {
+                folders = try JSONDecoder().decode([PhotoFolder].self, from: data)
+                guard Set(folders.map(\.id)).count == folders.count else { throw CocoaError(.coderReadCorrupt) }
+            }
             catch {
+                folders = []
                 storedDataIsInvalid = true
                 warning = "フォルダー登録情報を読み込めませんでした。元の情報を保持しています。"
             }
@@ -61,6 +65,17 @@ final class FolderBookmarkStore {
             folders = bookmarks.map { PhotoFolder(bookmark: $0) }
         }
         refreshAccess()
+    }
+
+    var hasInvalidStoredData: Bool { storedDataIsInvalid }
+
+    func recoverInvalidStoredData() {
+        guard storedDataIsInvalid else { return }
+        if let data = defaults.data(forKey: Self.recordsKey) { defaults.set(data, forKey: Self.recordsKey + ".invalid") }
+        storedDataIsInvalid = false
+        folders = []
+        warning = "壊れた登録情報を退避しました。写真フォルダーを再登録して保存してください。"
+        persist()
     }
 
     var accessibleURLs: [URL] { folders.filter(\.isAccessible).compactMap(\.url) }
@@ -111,6 +126,35 @@ final class FolderBookmarkStore {
             if !alreadyAccessing { access.stop(url) }
             throw error
         }
+    }
+
+    func makeDraftFolder(_ selectedURL: URL) throws -> PhotoFolder {
+        guard !storedDataIsInvalid else { throw AccessError.invalidStoredData }
+        let url = selectedURL.standardizedFileURL
+        let alreadyAccessing = scopes.contains(url)
+        guard alreadyAccessing || access.start(url) else { throw AccessError.denied }
+        do {
+            let bookmark = try access.create(url)
+            scopes.insert(url)
+            retiredScopes.remove(url)
+            let id = folders.first(where: { $0.url == url || $0.path == url.path })?.id ?? UUID()
+            return PhotoFolder(id: id, bookmark: bookmark, path: url.path, url: url, isAccessible: access.isReadable(url))
+        } catch {
+            if !alreadyAccessing { access.stop(url) }
+            throw error
+        }
+    }
+
+    func replace(with records: [PhotoFolder]) {
+        folders = records
+        storedDataIsInvalid = false
+        refreshAccess()
+        discardDraft()
+    }
+
+    func discardDraft() {
+        retiredScopes.formUnion(scopes.subtracting(folders.compactMap(\.url)))
+        releaseRetiredScopes()
     }
 
     func remove(at offsets: IndexSet) {
