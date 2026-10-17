@@ -65,6 +65,8 @@ open macos/DynamicPhotoWall.xcodeproj
 
 2026-10-17に追加したWindowsのマルチディスプレイ・グループ・設定UI・即時テスト表示・顔によるパン方向・モード別の画面単位描画・スパン中の顔境界回避・小画像の縦パン自動ミラーのMac移植は、[差分引き継ぎ資料](macos/WINDOWS_DELTA_HANDOVER.md)を基準に進めます。Galleryは滑らかに再配置し、顔の境界回避は最終配置へ適用します。
 
+WindowsのGalleryは、写真列を詰める配置と、キャッシュ済みの顔位置による再抽選で、顔回避に伴う余白や縮小を抑えます。Macへの移植条件も同資料のD09へ記載します。
+
 ## 生成物の置き場所
 
 配布物は両OS共通の `release/` 配下へ置きます。Windowsは `release/windows/win-x64/`、Macは `release/macos/arm64/`。ログ・検証画像・archive・DerivedData・staging等は `artifacts/<OS>/` へ置き、プロジェクトルート直下へ一時ファイルやEXE・ショートカットを出しません。[共通規則](docs/GENERATED-FILES.md)と[開発エージェント向け指示](AGENTS.md)を参照してください。

@@ -48,6 +48,7 @@ internal static class Program
             if (args.Contains("--group-deletion")) await Test("group delete buttons preserve screens and survive refresh, save and reopen", GroupDeletionAsync);
             if (args.Contains("--per-display-modes")) await Test("per-mode display routing, face-safe rendering and lifecycle", PerDisplayModesAsync);
             if (args.Contains("--mirror-gallery")) await Test("automatic same-photo vertical mirrors and smooth face-safe Gallery reflow", MirrorGalleryAsync);
+            if (args.Contains("--gallery-fill")) await Test("cached faces improve Gallery filling at start and replacement", GalleryFillAsync);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -97,6 +98,39 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("Gallery compacts rows and resamples only known face geometry", () => Sync(() =>
+        {
+            var viewport = new Viewport(800, 300); FrameRect[] displays = [new(0, 0, 400, 300), new(400, 0, 400, 300)];
+            var a = Photo("portrait", 400, 800) with { Faces = [new(.25, .1, .5, .3)] };
+            var bad = Photo("center-face", 1600, 800) with { Faces = [new(.25, .1, .5, .3)] };
+            var good = bad with { Path = "right-face", Faces = [new(.6, .1, .2, .3)] };
+            var frames = FaceSafeLayout.Gallery(new[] { a, bad }, viewport, 8, displays);
+            Check(Math.Abs(frames[1].X - frames[0].X - frames[0].Width - 8) < .001 && frames[0].Y == frames[1].Y,
+                "a feasible compact row preserves spacing and a common baseline");
+            var replacement = GalleryComposition.Improve(new[] { a, bad }, new[] { good }, viewport, 8, displays, 1);
+            Check(replacement is { Index: 1 } && replacement.Photo.Path == good.Path, "choose a cached face position that avoids shrinking the row");
+            Check(GalleryComposition.Loss(new[] { a, good }, viewport, 8, displays) < GalleryComposition.Loss(new[] { a, bad }, viewport, 8, displays) - .02,
+                "chosen candidate improves spacing, size or balance materially");
+            Check(GalleryComposition.Improve(new[] { a, good }, new[] { bad }, viewport, 8, displays) == null, "a good arrangement is not rerolled");
+            Check(GalleryComposition.Improve(new[] { a, bad }, new[] { good with { Faces = null } }, viewport, 8, displays) == null,
+                "an unknown face cache is not interpreted as no faces");
+            Check(GalleryComposition.Improve(new[] { a, bad }, new[] { good with { Faces = [] } }, viewport, 8, displays, 1) != null,
+                "a cached no-face result is a valid candidate");
+            Check(GalleryComposition.Improve(new[] { a, bad }, new[] { good with { Path = bad.Path.ToUpperInvariant() } }, viewport, 8, displays) == null,
+                "trials never duplicate a displayed path");
+            Check(GalleryComposition.Improve(new[] { a, bad }, Enumerable.Repeat(good with { Faces = null }, 12).Append(good).ToArray(), viewport, 8, displays) == null,
+                "trial work is bounded to twelve candidates");
+            using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+            try { GalleryComposition.Improve(new[] { a, bad }, new[] { good }, viewport, 8, displays, token: cancellation.Token); Check(false, "cancelled layout trials must stop"); }
+            catch (OperationCanceledException) { }
+            var selector = new PhotoSelector(new Random(10)); var settings = new WallSettings();
+            var sample = selector.Sample(new[] { a, bad, good }, settings, new HashSet<string> { a.Path }, 12);
+            Check(sample.Count == 2 && sample.All(p => p.Path != a.Path), "bounded candidate sampling respects active exclusions");
+            selector.Remember(good, settings);
+            Check(selector.Sample(new[] { a, bad, good }, settings, new HashSet<string>(), 12).All(p => p.Path != good.Path), "candidate sampling respects recent selections");
+            settings.RandomOrder = false;
+            Check(selector.Sample(new[] { a, bad, good }, settings, new HashSet<string>(), 12).Count == 0, "sequential playback is never rerolled");
+        }));
         await Test("small vertical photos mirror only when all local viewports fit", () => Sync(() =>
         {
             var s = new WallSettings { GalleryEnabled = false, GalleryScrollEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false };
@@ -469,6 +503,79 @@ internal static class Program
             if (child is T match) yield return match;
             foreach (var descendant in VisualDescendants<T>(child)) yield return descendant;
         }
+    }
+    private static async Task GalleryFillAsync()
+    {
+        var previousData = Log.DataDirectory; Log.DataDirectory = Path.Combine(root, "gallery-fill-profile");
+        Directory.CreateDirectory(Log.DataDirectory);
+        try
+        {
+            var folder = Path.Combine(root, "gallery-fill-photos"); Directory.CreateDirectory(folder);
+            foreach (var entry in new[] { ("a-portrait.png", 400, 800), ("b-center.png", 1600, 800), ("c-right.png", 1600, 800) })
+                File.Copy(Fixture(entry.Item1, entry.Item2, entry.Item3), Path.Combine(folder, entry.Item1), true);
+            var photos = Directory.GetFiles(folder).OrderBy(p => p).Select(MetadataExtractor.Read).ToArray();
+            var cached = photos.ToDictionary(p => $"{p.Path}|{p.Length}|{p.ModifiedTicks}",
+                p => p.Path.EndsWith("c-right.png") ? new[] { new FaceRegion(.6, .1, .2, .3) } : new[] { new FaceRegion(.25, .1, .5, .3) });
+            var cachePath = Path.Combine(Log.DataDirectory, "faces.json"); File.WriteAllText(cachePath, JsonSerializer.Serialize(cached));
+            var analyzer = new FaceAnalyzer();
+            Check(analyzer.WithCachedFaces(photos[0]).Faces?.Count == 1, "existing face rectangles can be read without decoding");
+            Check(analyzer.WithCachedFaces(photos[0] with { Length = photos[0].Length + 1 }).Faces == null
+                && analyzer.WithCachedFaces(photos[0] with { ModifiedTicks = photos[0].ModifiedTicks + 1 }).Faces == null,
+                "size and modification changes invalidate cached candidates");
+            var monitors = MonitorManager.Enumerate().Take(2).ToArray(); Check(monitors.Length == 2, "two displays required");
+            var settings = new WallSettings { StartOnLaunch = false, Folders = [folder], RandomOrder = false, GalleryMax = 2,
+                GalleryScrollEnabled = false, VerticalPanEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false,
+                GlassBackground = false, FadeSeconds = .2, GalleryMinSeconds = 5, GalleryMaxSeconds = 5,
+                Displays = monitors.Select((m, i) => new DisplayPlacement { Id = m.Id, X = i == 0 ? 0 : monitors[0].Width,
+                    Width = m.Width, Height = m.Height, GroupId = "gallery-fill", HideTaskbar = false }).ToList() };
+            var wall = new WallLayout(settings.Displays);
+            await using var controller = new WallController(settings); await controller.InitializeAsync(); await controller.StartAsync();
+            await Until(() => controller.CurrentMode == CompositionMode.Gallery, 15000);
+            SceneVisual Scene() => Application.Current.Windows.OfType<PhotoRenderer>().Single(w => w.Current?.Mode == CompositionMode.Gallery).Current!;
+            var ordered = Scene(); await Until(() => ordered.Canvas.Opacity > .999, 5000);
+            Check(ordered.Photos.Select(p => Path.GetFileName(p.Path)).SequenceEqual(new[] { "a-portrait.png", "b-center.png" }),
+                "ordered playback retains its original selection instead of rerolling");
+            var orderedLoss = GalleryComposition.Loss(ordered.Photos, wall.Viewport, settings.Gap, wall.Regions.Values.ToArray());
+            Check(orderedLoss > .02, "fixture creates a measurable face-protection layout cost");
+            void Save(SceneVisual scene, string name)
+            {
+                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(Snapshot(scene.Canvas, (int)wall.Viewport.Width, (int)wall.Viewport.Height)));
+                using var stream = File.Create(Path.Combine(root, name)); encoder.Save(stream);
+            }
+            Save(ordered, "gallery-fill-before.png");
+            var randomSettings = SettingsManager.Clone(settings); randomSettings.RandomOrder = true;
+            await controller.ApplyAsync(randomSettings); await controller.StartAsync();
+            await Until(() => controller.CurrentMode == CompositionMode.Gallery, 15000);
+            var improved = Scene(); await Until(() => improved.Canvas.Opacity > .999, 5000);
+            var improvedLoss = GalleryComposition.Loss(improved.Photos, wall.Viewport, settings.Gap, wall.Regions.Values.ToArray());
+            Check(improved.Photos.Any(p => p.Path.EndsWith("c-right.png")) && improvedLoss < orderedLoss - .02,
+                "actual random session chooses a cached face position with better filling and balanced margins");
+            var original = CompositionEngine.GalleryLayout(improved.Photos, wall.Viewport, settings.Gap);
+            Check(improved.Slots.Select((s, i) => Math.Abs(s.Height - original[i].Height) < .001).All(b => b),
+                "better photo geometry preserves full photograph size");
+            for (var i = 1; i < improved.Slots.Count; i++)
+                Check(Math.Abs(Canvas.GetLeft(improved.Slots[i]) - Canvas.GetLeft(improved.Slots[i - 1]) - improved.Slots[i - 1].Width - settings.Gap) < .001,
+                    "actual scene retains the normal inter-photo gap");
+            Save(improved, "gallery-fill-after.png");
+            var firstPath = improved.Photos[0].Path;
+            await Until(() => improved.Photos[0].Path != firstPath, 12000);
+            Check(improved.Photos[0].Path != firstPath && improved.Photos.Select(p => p.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() == improved.Photos.Count,
+                "timed Gallery replacements still advance and exclude all active photos");
+            await Task.Delay(350);
+            for (var i = 0; i < improved.Photos.Count; i++) foreach (var face in improved.Photos[i].Faces ?? [])
+            {
+                var slot = improved.Slots[i]; var x = Canvas.GetLeft(slot) + face.X * slot.Width; var y = Canvas.GetTop(slot) + face.Y * slot.Height;
+                Check(wall.Regions.Values.Any(r => x >= r.X && y >= r.Y && x + face.Width * slot.Width <= r.X + r.Width
+                    && y + face.Height * slot.Height <= r.Y + r.Height), "replacement finishes with every face inside a connected display");
+            }
+            controller.TogglePause(); Check(controller.GroupStates.Single().IsPaused, "improved Gallery retains group pause"); controller.TogglePause();
+            controller.Next(); await Until(() => Scene() != improved, 10000); Check(Scene() != improved, "Next replaces an optimized Gallery");
+            await controller.StopAsync(); Check(!controller.IsRunning, "optimized Gallery stops cleanly");
+            Check(JsonSerializer.Deserialize<Dictionary<string, FaceRegion[]>>(File.ReadAllText(cachePath))!.Count == cached.Count,
+                "cache-backed trials do not add face analyses for unrelated images");
+            File.WriteAllText(Path.Combine(root, "gallery-fill-metrics.json"), JsonSerializer.Serialize(new { OrderedLoss = orderedLoss, ImprovedLoss = improvedLoss }));
+        }
+        finally { Log.DataDirectory = previousData; }
     }
     private static async Task MirrorGalleryAsync()
     {

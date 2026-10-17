@@ -21,13 +21,16 @@ public sealed class FaceAnalyzer
         try
         {
             if (File.Exists(CachePath)) foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, FaceRegion[]>>(File.ReadAllText(CachePath)) ?? [])
-                if (pair.Value != null && pair.Value.All(f => f != null && f.X >= 0 && f.Y >= 0 && f.Width > 0 && f.Height > 0 && f.X + f.Width <= 1.01 && f.Y + f.Height <= 1.01)) cache[pair.Key] = pair.Value;
+                if (pair.Value != null && pair.Value.All(f => f != null && double.IsFinite(f.X + f.Y + f.Width + f.Height)
+                    && f.X >= 0 && f.Y >= 0 && f.Width > 0 && f.Height > 0 && f.X + f.Width <= 1.000001 && f.Y + f.Height <= 1.000001)) cache[pair.Key] = pair.Value;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { Log.Write("顔位置キャッシュを再生成します。", e); }
     }
+    private static string Key(PhotoInfo photo) => $"{photo.Path}|{photo.Length}|{photo.ModifiedTicks}";
+    public PhotoInfo WithCachedFaces(PhotoInfo photo) => cache.TryGetValue(Key(photo), out var found) ? photo with { Faces = found } : photo;
     public async Task<PhotoInfo> AnalyzeAsync(PhotoInfo photo, BitmapSource source, CancellationToken token)
     {
-        var key = $"{photo.Path}|{photo.Length}|{photo.ModifiedTicks}";
+        var key = Key(photo);
         if (cache.TryGetValue(key, out var found)) return photo with { Faces = found };
         await gate.WaitAsync(token);
         try

@@ -15,7 +15,7 @@ public static class FaceSafeLayout
         return new(left, top, faces.Max(f => f.X + f.Width) - left, faces.Max(f => f.Y + f.Height) - top);
     }
     private static double Margin(FrameRect r) => Math.Min(24, Math.Min(r.Width, r.Height) * .03);
-    private sealed record Range(double Left, double Right, double Y);
+    private sealed record Range(double Left, double Right, double Top, double Bottom);
 
     public static IReadOnlyList<FrameRect> Gallery(IReadOnlyList<PhotoInfo> photos, Viewport viewport, double gap, IReadOnlyList<FrameRect> displays)
     {
@@ -27,12 +27,11 @@ public static class FaceSafeLayout
         {
             var widths = photos.Select(p => height * p.Aspect).ToArray();
             var ranges = new List<Range>[photos.Count];
-            var minimums = new double[photos.Count]; var cursor = gap;
             for (var i = 0; i < photos.Count; i++)
             {
                 ranges[i] = [];
                 var face = Bounds(photos[i]);
-                if (face == null) ranges[i].Add(new(gap, viewport.Width - gap - widths[i], (viewport.Height - height) / 2));
+                if (face == null) ranges[i].Add(new(gap, viewport.Width - gap - widths[i], gap, viewport.Height - gap - height));
                 else foreach (var display in displays)
                 {
                     var margin = Margin(display);
@@ -40,8 +39,33 @@ public static class FaceSafeLayout
                     var right = Math.Min(viewport.Width - gap - widths[i], display.X + display.Width - margin - (face.X + face.Width) * widths[i]);
                     var top = Math.Max(gap, display.Y + margin - face.Y * height);
                     var bottom = Math.Min(viewport.Height - gap - height, display.Y + display.Height - margin - (face.Y + face.Height) * height);
-                    if (left <= right && top <= bottom) ranges[i].Add(new(left, right, Math.Clamp((viewport.Height - height) / 2, top, bottom)));
+                    if (left <= right && top <= bottom) ranges[i].Add(new(left, right, top, bottom));
                 }
+            }
+            // Move the entire row before separating individual photos. Intersect
+            // the allowed wall positions of every face, preserving the normal
+            // gap, a common baseline and the current photograph size.
+            var rowWidth = widths.Sum() + gap * (photos.Count - 1);
+            var centeredX = (viewport.Width - rowWidth) / 2; var centeredY = (viewport.Height - height) / 2;
+            var rows = new List<Range> { new(gap, viewport.Width - gap - rowWidth, gap, viewport.Height - gap - height) };
+            var offset = 0d;
+            for (var i = 0; i < photos.Count && rows.Count > 0; i++)
+            {
+                rows = rows.SelectMany(row => ranges[i].Select(r => new Range(Math.Max(row.Left, r.Left - offset),
+                    Math.Min(row.Right, r.Right - offset), Math.Max(row.Top, r.Top), Math.Min(row.Bottom, r.Bottom))))
+                    .Where(r => r.Left <= r.Right && r.Top <= r.Bottom).Distinct()
+                    .OrderBy(r => Math.Abs(Math.Clamp(centeredX, r.Left, r.Right) - centeredX)
+                        + Math.Abs(Math.Clamp(centeredY, r.Top, r.Bottom) - centeredY)).Take(128).ToList();
+                offset += widths[i] + gap;
+            }
+            if (rows.Count > 0)
+            {
+                var row = rows[0]; var x = Math.Clamp(centeredX, row.Left, row.Right); var y = Math.Clamp(centeredY, row.Top, row.Bottom);
+                return widths.Select(w => { var frame = new FrameRect(x, y, w, height); x += w + gap; return frame; }).ToArray();
+            }
+            var minimums = new double[photos.Count]; var cursor = gap;
+            for (var i = 0; i < photos.Count; i++)
+            {
                 var possible = ranges[i].Where(r => Math.Max(cursor, r.Left) <= r.Right).ToArray();
                 if (possible.Length == 0) return null;
                 minimums[i] = possible.Min(r => Math.Max(cursor, r.Left));
@@ -56,7 +80,7 @@ public static class FaceSafeLayout
             for (var i = photos.Count - 1; i >= 0; i--)
             {
                 var options = ranges[i].Select(r => (r, Left: Math.Max(r.Left, minimums[i]), Right: Math.Min(r.Right, next - widths[i])))
-                    .Where(r => r.Left <= r.Right).Select(r => new FrameRect(Math.Clamp(desired[i], r.Left, r.Right), r.r.Y, widths[i], height))
+                    .Where(r => r.Left <= r.Right).Select(r => new FrameRect(Math.Clamp(desired[i], r.Left, r.Right), Math.Clamp(centeredY, r.r.Top, r.r.Bottom), widths[i], height))
                     .OrderBy(r => Math.Abs(r.X - desired[i]) + Math.Abs(r.Y - (viewport.Height - height) / 2)).ToArray();
                 if (options.Length == 0) return null;
                 result[i] = options[0]; next = result[i].X - gap;

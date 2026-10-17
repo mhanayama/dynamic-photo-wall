@@ -210,6 +210,23 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         if (!Settings.IsPerDisplay(plan.Mode))
         {
             var single = await PreparePartAsync(plan, layout.Viewport, token);
+            if (single != null && plan.Mode == CompositionMode.Gallery && Settings.AvoidFaceDisplayBoundaries)
+            {
+                var displayRegions = regions.Select(r => r.Region).ToArray();
+                // Two bounded passes can repair more than one awkward face
+                // position while retaining most of the original random draw.
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    var better = await GalleryReplacementAsync(single.Plan.Photos, layout.Viewport, displayRegions, excluded, null, token);
+                    if (better == null) break;
+                    var replacement = await PreparePartAsync(new(CompositionMode.Gallery, new[] { better.Photo }), layout.Viewport, token);
+                    if (replacement == null) continue;
+                    var chosen = single.Plan.Photos.ToArray(); var images = single.Images.ToArray();
+                    chosen[better.Index] = replacement.Plan.Photos[0]; images[better.Index] = replacement.Images[0];
+                    single = single with { Plan = single.Plan with { Photos = chosen }, Images = images };
+                    selector.Remember(better.Photo, Settings);
+                }
+            }
             return single == null ? null : new(plan.Mode, new[] { single });
         }
         var parts = new List<Prepared>();
@@ -274,6 +291,19 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         finally { try { await preload; } catch (OperationCanceledException) { } }
     }
     private readonly SemaphoreSlim galleryUpdates = new(1, 1);
+    private async Task<GalleryComposition.Replacement?> GalleryReplacementAsync(IReadOnlyList<PhotoInfo> photos, Viewport viewport,
+        IReadOnlyList<FrameRect> displayRegions, ISet<string>? excluded, int? onlyIndex, CancellationToken token)
+    {
+        if (!Settings.RandomOrder || !Settings.AvoidFaceDisplayBoundaries || !FaceSafeLayout.RequiresProtection(viewport, displayRegions)) return null;
+        var blocked = new HashSet<string>(excluded ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
+        foreach (var photo in photos) blocked.Add(photo.Path);
+        var known = library.Photos.Where(p => !failed.Contains(p.Path)).Select(faces.WithCachedFaces).Where(p => p.Faces != null).ToArray();
+        var candidates = selector.Sample(known, Settings, blocked, GalleryComposition.CandidateLimit);
+        if (candidates.Count == 0) return null;
+        // Face/layout trials run outside the UI thread and never decode or
+        // detect unexamined candidates. The cache miss path stays lazy.
+        return await Task.Run(() => GalleryComposition.Improve(photos, candidates, viewport, Settings.Gap, displayRegions, onlyIndex, token), token);
+    }
     private async Task UpdateGalleryAsync(PhotoRenderer activeRenderer, SceneVisual scene, int slot, CancellationToken token)
     {
         try
@@ -293,6 +323,14 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
                         if (bitmap != null)
                         {
                             if (scene.DisplayRegions.Count > 0) photo = await faces.AnalyzeAsync(photo, bitmap, token);
+                            var proposed = scene.Photos.ToArray(); proposed[slot] = photo;
+                            var better = await GalleryReplacementAsync(proposed, scene.Viewport, scene.DisplayRegions, excluded, slot, token);
+                            if (better != null)
+                            {
+                                var replacement = await cache.LoadAsync(better.Photo, (int)(scene.Viewport.Height * better.Photo.Aspect), token);
+                                if (replacement != null) { photo = better.Photo; bitmap = replacement; selector.Remember(photo, Settings); }
+                                else failed.Add(better.Photo.Path);
+                            }
                             await activeRenderer.ReplaceSlotAsync(scene, slot, photo, bitmap, token);
                         }
                         else failed.Add(photo.Path);

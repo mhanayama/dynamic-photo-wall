@@ -1,5 +1,20 @@
 # 実施した検証
 
+## 2026-10-17 — 顔矩形キャッシュによるGalleryの余白改善
+
+- 各写真の許容位置の共通範囲を求め、通常Gap・共通の高さと基準線を保った写真列を優先する。無理な場合は従来の写真別配置・必要時の縮小を維持する。顔の包含・非重複・写真全体の表示を保つ。
+- ランダムのスパンGalleryで顔回避に伴う縮小・追加Gap・余白の偏りを評価し、キャッシュ済みの最大12候補から0.02以上改善する写真を採用する。開始時は最大2回、更新時は交換するslotだけ。試算はUIスレッド外で行い、候補を追加解析しない。
+- コアで通常Gapと基準線、改善する矩形の選択、改善なし、未解析と顔なしの区別、同じパスの除外、12候補上限、取消、表示中除外・直近履歴・名前順を確認した。
+- 合成写真3枚と保存済み顔キャッシュを用いた実2画面セッションで、名前順は元の選択、ランダム時は改善する選択となることを確認。開始後の定期交換・非重複・顔の包含・pause／Next／停止、サイズ／更新日時が変わったキャッシュの無効化も確認した。顔矩形は合成データで、検出器の精度検証とは分けている。
+- 最終のコア20項目と統合5項目（余白改善、既存画面別描画、背景、復旧、自動ミラー／Gallery再配置）が成功。共通fixture704 assertionsも成功。Releaseビルド・単一EXE発行はエラー0、既知のNU1900情報取得警告あり。MacへのD09引き継ぎを更新した。
+
+結果: `artifacts/windows/gallery-fill-final/test-results.json`、`gallery-fill-metrics.json`、`gallery-fill-{before,after}.png`。既存回帰は`artifacts/windows/gallery-fill-regression/test-results.json`。配置の比較PNGを確認した。候補不足・未解析が多い場合は従来配置へ戻るため、すべての写真で余白をなくせる保証はない。写真の切り取り、YOLO化、他部位検出、全件の事前解析は追加していない。実機のfps測定・混在DPI・ケーブル抜差し・長時間運転は未実施。
+
+```powershell
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/gallery-fill-final --scan-only --gallery-fill
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/gallery-fill-regression --per-display-modes --mirror-gallery --ambient --retry-recovery
+```
+
 ## 2026-10-17 — 小画像の縦Pan自動ミラーとGalleryの滑らかな再配置
 
 - スパン幅への必要拡大率が上限を超え、同じ写真が全接続画面の縦Pan適性を満たす場合だけ、自動ミラーへ切り替える。画面別チェックや設定ファイルを書き換えない。大きな写真はスパン、手動の画面別表示は別々の写真という動作を維持する。
