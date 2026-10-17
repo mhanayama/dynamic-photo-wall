@@ -12,7 +12,15 @@ Apple Silicon搭載Mac、macOS 27.0以降、Xcode 27.0向けです。SwiftUI＋A
 open macos/DynamicPhotoWall.xcodeproj
 ```
 
-`DynamicPhotoWall` スキームでRunし、写真フォルダーと対象画面を選んで「保存して表示開始」を押します。JPEG／PNG／WebP／HEIC／HEIFを扱います。
+`DynamicPhotoWall` スキームでRunし、写真フォルダーまたは写真アプリのアルバムと対象画面を選んで「保存して適用」を押すと再生を開始します。フォルダーはJPEG／PNG／WebP／HEIC／HEIFを扱います。
+
+Photosタブの「アルバムを追加」から、システム写真ライブラリの通常アルバム・スマートアルバム（お気に入りなど）を複数選べます。初回はmacOSの写真アクセスを許可してください。フォルダーとの併用、アルバムだけでの再生が可能です。同じ写真が複数のアルバムにある場合は重複を除外し、動画・非表示の写真は除きます。Live Photosは静止画として表示します。編集済みの写真を使用し、iCloudにだけある写真は表示・先読み時にPhotoKitでダウンロードします。
+
+アルバムの追加・削除も「保存して適用」までドラフトです。選択は再起動後に復元し、写真の追加・削除・編集は変更通知と5分ごとの照合で反映します。削除されたアルバムやアクセス拒否は警告を表示し、登録自体は保持します。許可し直した後は「再検索」で再試行できます。PhotoKitが扱うのはシステム写真ライブラリで、任意の `.photoslibrary` ファイルの指定には対応していません。
+
+アルバムを追加すると自動で写真をスキャンし、選択したアルバム全体の枚数を表示します。この時点では現在の再生を変更しません。「保存して適用」を押すと、選択時のスキャン結果を使って再生を開始します。スキャン中に押した場合も、完了後に自動で開始します。停止中・一時停止中からも適用で再生を開始するため、別途「保存して表示開始」を押す必要はありません。
+
+アルバム選択・保存・取消・再起動・アクセス失敗からの再試行はfakeの写真一覧で自動検証します。実際の写真アクセス許可、変更通知、iCloudからの取得は実機受け入れの残件です。
 
 フォルダーは行のゴミ箱、または複数選択して「選択を削除」で解除できます。画面・フォルダー・各設定は「保存して適用」までドラフトです。「変更を取り消す」または設定ウィンドウを閉じると、未保存の変更を破棄します。メニューからの開始は適用済みの設定を使います。
 
@@ -26,7 +34,7 @@ Dock／メニューバーの表示はmacOS側の設定に従います。これ�
 
 本番データはsandbox内のApplication Supportの `DynamicPhotoWall/` に保存します。
 
-- `settings.json`: 画面・設定・フォルダーブックマークの原子的保存。直前の保存は `.previous`、破損原本は `.invalid-UUID` へ退避。
+- `settings.json`: 画面・設定・フォルダーブックマーク・写真アルバムIDの原子的保存。直前の保存は `.previous`、破損原本は `.invalid-UUID` へ退避。
 - `metadata.json`／`faces.json`: ファイル更新情報に基づくキャッシュ。顔キャッシュは最大10,000件。
 - `app.log`／`app.log.1`: 約2MBで1世代のログ。写真のパスやエラーを含むローカル診断情報。
 
@@ -59,7 +67,9 @@ xcodebuild build-for-testing \
 bash macos/scripts/package.sh
 ```
 
-`release/macos/arm64/` にアドホック署名付きZIP／DMG、SHA256SUMSを生成します。arm64専用archive・DerivedData・ログ・DMG stagingは `artifacts/macos/package/` へ分けます。署名とCPU構成も検査します。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
+`release/macos/arm64/` にアドホック署名付きZIP／DMG、SHA256SUMSを生成します。arm64専用archive・DerivedData・ログは `artifacts/macos/package/` へ分けます。DMG stagingはOS標準の一時ディレクトリを使います。署名とCPU構成も検査します。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
+
+DMG用の一時フォルダはプロジェクト外に作成し、終了時に削除します。DMG内の `/Applications` リンクをエディタがたどって大量のファイルを検索することを防ぎます。VS Codeのワークスペース設定でもビルド生成物をファイル一覧・検索・監視から除外しています。
 
 [macOS v1.0.1（build 3）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)を2026-10-15にユーザー承認で公開しました。v1.0.0は以前の実装として保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
 

@@ -5,6 +5,25 @@ nonisolated struct SettingsSnapshot: Codable {
     var settings: WallSettings
     var screenID: UInt32?
     var folders: [PhotoFolder]
+    var photoAlbums: [PhotoAlbum] = []
+
+    private enum CodingKeys: String, CodingKey { case schemaVersion, settings, screenID, folders, photoAlbums }
+
+    init(settings: WallSettings, screenID: UInt32?, folders: [PhotoFolder], photoAlbums: [PhotoAlbum] = []) {
+        self.settings = settings
+        self.screenID = screenID
+        self.folders = folders
+        self.photoAlbums = photoAlbums
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        settings = try values.decode(WallSettings.self, forKey: .settings)
+        screenID = try values.decodeIfPresent(UInt32.self, forKey: .screenID)
+        folders = try values.decode([PhotoFolder].self, forKey: .folders)
+        photoAlbums = try values.decodeIfPresent([PhotoAlbum].self, forKey: .photoAlbums) ?? []
+    }
 }
 
 /// A single atomic document keeps settings, display and sandbox grants together.
@@ -49,7 +68,8 @@ final class SettingsRepository {
             writable = false
             throw NSError(domain: "DynamicPhotoWall.UnsupportedSettingsVersion", code: value.schemaVersion)
         }
-        guard Set(value.folders.map(\.id)).count == value.folders.count else {
+        guard Set(value.folders.map(\.id)).count == value.folders.count,
+              Set(value.photoAlbums.map(\.id)).count == value.photoAlbums.count else {
             throw CocoaError(.coderReadCorrupt)
         }
         return value
@@ -58,6 +78,7 @@ final class SettingsRepository {
     func save(_ value: SettingsSnapshot) throws {
         guard writable else { throw CocoaError(.fileWriteNoPermission) }
         guard value.schemaVersion == 1, Set(value.folders.map(\.id)).count == value.folders.count else { throw CocoaError(.coderInvalidValue) }
+        guard Set(value.photoAlbums.map(\.id)).count == value.photoAlbums.count else { throw CocoaError(.coderInvalidValue) }
         let data = try JSONEncoder().encode(value)
         if let file {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

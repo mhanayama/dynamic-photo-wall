@@ -1,0 +1,17 @@
+{
+  "files.exclude": {
+    "**/artifacts": true,
+    "**/DerivedData": true,
+    "**/*.noindex": true,
+    "**/bin": true,
+    "**/obj": true
+  },
+  "files.watcherExclude": {
+    "**/artifacts/**": true,
+    "**/DerivedData/**": true,
+    "**/*.noindex/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true
+  },
+  "search.followSymlinks": false
+}

@@ -6,7 +6,7 @@
 
 両OS共通の[生成物の規則](../docs/GENERATED-FILES.md)とルートの[AGENTS.md](../AGENTS.md)を守る。配布物はルート配下の **release/** へ統一し、Windowsは`release/windows/win-x64/`、Macは`release/macos/arm64/`。今回Windowsのビルド／起動／ショートカットとMacのpackage／verifyスクリプトを新パスへ変更した。
 
-Mac側はZIP・DMG・SHA256SUMSだけを`release/macos/arm64/`へ置き、archive・DerivedData・archive.log・DMG stagingは`artifacts/macos/package/`、検証ログは`artifacts/macos/verification/`へ置く。その他の一時ファイル・キャプチャ・診断結果は`artifacts/macos/<作業名>/`またはOS標準一時領域へ出す。OS差分で出るファイルを含め、ルート直下へAPP・ZIP・DMG・ショートカット・ログ・一時ファイルを生成／コピーしない。
+Mac側はZIP・DMG・SHA256SUMSだけを`release/macos/arm64/`へ置き、archive・DerivedData・archive.logは`artifacts/macos/package/`、検証ログは`artifacts/macos/verification/`へ置く。DMG stagingはOS標準一時領域に作成し、終了時に削除する。その他の一時ファイル・キャプチャ・診断結果は`artifacts/macos/<作業名>/`またはOS標準一時領域へ出す。OS差分で出るファイルを含め、ルート直下へAPP・ZIP・DMG・ショートカット・ログ・一時ファイルを生成／コピーしない。
 
 - [ ] Mac実機で変更後の`verify.sh`／`package.sh`を実行し、完成物と作業ファイルが上記の場所へ分かれることを確認する。
 - [ ] 実行前後のルート直下ファイル一覧を比較する。ignore済みのファイルも確認し、ルートへ生成物が増えていないことを記録する。

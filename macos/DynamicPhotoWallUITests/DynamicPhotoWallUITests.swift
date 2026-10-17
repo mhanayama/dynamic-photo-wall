@@ -2,6 +2,50 @@ import XCTest
 
 final class DynamicPhotoWallUITests: XCTestCase {
     @MainActor
+    func testAlbumSelectionCanBeCancelledAndSavedWithoutFolders() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
+        app.launch(); app.activate()
+        defer { app.terminate() }
+        func openPhotos() {
+            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+            XCTAssertTrue(tab.waitForExistence(timeout: 5)); tab.click()
+        }
+        func addAlbum() {
+            app.buttons["アルバムを追加"].click()
+            let album = app.staticTexts["旅行（テスト）"].firstMatch
+            XCTAssertTrue(album.waitForExistence(timeout: 5)); album.click()
+            app.buttons["選択したアルバムを追加"].click()
+        }
+        openPhotos()
+        addAlbum()
+        XCTAssertTrue(app.staticTexts["選択したアルバムの写真: 1枚"].waitForExistence(timeout: 5))
+        let removeAlbum = app.buttons["アルバムを削除: 旅行（テスト）"]
+        XCTAssertTrue(removeAlbum.exists)
+        app.buttons["変更を取り消す"].click()
+        XCTAssertFalse(removeAlbum.exists)
+        addAlbum()
+        let removeFolders = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
+        removeFolders.firstMatch.click()
+        removeFolders.firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.buttons["表示停止"].click()
+        openPhotos()
+        app.buttons["保存して適用"].click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        let pause = app.buttons["一時停止"]
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: pause)
+        waitForExpectations(timeout: 5)
+        app.terminate(); app.launch(); app.activate()
+        openPhotos()
+        XCTAssertTrue(removeAlbum.waitForExistence(timeout: 5))
+        XCTAssertEqual(removeFolders.count, 0)
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        XCTAssertTrue(app.buttons["保存して表示開始"].isEnabled)
+    }
+
+    @MainActor
     func testFolderDeletionPersistsThroughRelaunchIncludingLastSource() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

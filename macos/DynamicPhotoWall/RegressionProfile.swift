@@ -28,6 +28,13 @@ extension AppModel {
             screenProvider: { [ScreenDescriptor(id: 1, name: "Test Display",
                 frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), pixelWidth: 1920, pixelHeight: 1080)] },
             scanner: { folder, _ in [PhotoAsset(url: folder.appending(path: "test.jpg"), pixelWidth: 2400, pixelHeight: 1600)] },
-            observeEnvironment: false)
+            observeEnvironment: false,
+            albumsClient: PhotosAlbumClient(catalog: {
+                PhotoAlbumCatalog(albums: [PhotoAlbum(id: "test-album", title: "旅行（テスト）")])
+            }, scan: { albums in
+                PhotoAlbumScan(assets: albums.isEmpty ? [] : [PhotosAlbumLibrary.makeAsset(
+                    identifier: "test-photo/L0/001", width: 2400, height: 1600,
+                    modifiedAt: nil, takenAt: nil, filename: "test.heic")])
+            }))
     }
 }

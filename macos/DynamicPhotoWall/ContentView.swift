@@ -105,6 +105,7 @@ private struct DisplaySettingsView: View {
 private struct PhotoSettingsView: View {
     @Bindable var model: AppModel
     @State private var selectedFolderIDs: Set<UUID> = []
+    @State private var showingAlbums = false
 
     var body: some View {
         Form {
@@ -149,6 +150,42 @@ private struct PhotoSettingsView: View {
                 }
 
                 Toggle("サブフォルダーも検索", isOn: $model.settings.recursive)
+
+                Text("JPEG / PNG / WebP / HEIC / HEIF対応。")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("写真アプリのアルバム") {
+                ForEach(model.photoAlbums) { album in
+                    HStack {
+                        Label(album.title, systemImage: "photo.stack")
+                        Spacer()
+                        Button(role: .destructive) { model.removePhotoAlbum(id: album.id) } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("アルバムを削除: \(album.title)")
+                    }
+                }
+                HStack {
+                    Button("アルバムを追加", systemImage: "plus") { showingAlbums = true }
+                    Button("再検索", systemImage: "arrow.clockwise", action: model.rescanPhotoAlbums)
+                        .disabled(model.isScanning || model.isScanningAlbums)
+                }
+                if model.isScanningAlbums {
+                    ProgressView("アルバムの写真を検索しています…")
+                } else if let count = model.albumPhotoCount, !model.photoAlbums.isEmpty {
+                    Text("選択したアルバムの写真: \(count)枚")
+                        .foregroundStyle(.secondary)
+                }
+                if let warning = model.displayPhotoAlbumsWarning { Text(warning).foregroundStyle(.orange) }
+                Text("アルバムを追加すると自動で写真を検索します。「保存して適用」で再生を開始します。")
+                    .foregroundStyle(.secondary)
+                Text("写真アプリのシステム写真ライブラリから選択します。フォルダーと併用できます。iCloud上の写真は表示時にダウンロードします。")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("再生する写真") {
                 Toggle("ランダムに再生", isOn: $model.settings.randomOrder)
 
                 LabeledContent("再表示を抑制する直近の写真数") {
@@ -156,11 +193,66 @@ private struct PhotoSettingsView: View {
                         .frame(width: 100)
                 }
 
-                Text("JPEG / PNG / WebP / HEIC / HEIF対応。写真はMac内で処理されます。")
+                Text("画像の表示・顔の解析はMac内で処理されます。")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingAlbums) { PhotoAlbumPicker(model: model) }
+    }
+}
+
+private struct PhotoAlbumPicker: View {
+    @Bindable var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedIDs: Set<String> = []
+    @State private var query = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("写真アプリのアルバムを追加").font(.title2)
+            Text("初回はmacOSで写真へのアクセスを許可してください。選択は「保存して適用」で保存されます。")
+                .foregroundStyle(.secondary)
+            TextField("アルバム名で検索", text: $query)
+            if model.isLoadingAlbums {
+                ProgressView("アルバムを読み込んでいます…")
+                    .frame(maxWidth: .infinity, minHeight: 240)
+            } else {
+                List(selection: $selectedIDs) {
+                    ForEach(model.availablePhotoAlbums.filter { query.isEmpty || $0.title.localizedStandardContains(query) }) { album in
+                        HStack {
+                            Label(album.title, systemImage: "photo.stack")
+                            Spacer()
+                            if model.photoAlbums.contains(where: { $0.id == album.id }) {
+                                Text("追加済み").foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(album.id)
+                    }
+                }
+                .frame(minHeight: 240)
+                if model.availablePhotoAlbums.isEmpty && model.photoAlbumsWarning == nil {
+                    Text("アルバムがありません。写真アプリでアルバムを作成してから再読み込みしてください。")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let warning = model.photoAlbumsWarning { Text(warning).foregroundStyle(.orange) }
+            HStack {
+                Button("再読み込み") { Task { await model.loadPhotoAlbums() } }
+                    .disabled(model.isLoadingAlbums)
+                Spacer()
+                Button("キャンセル", role: .cancel) { dismiss() }
+                Button("選択したアルバムを追加") {
+                    model.addPhotoAlbums(ids: selectedIDs)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedIDs.isEmpty || model.isLoadingAlbums)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+        .task { await model.loadPhotoAlbums() }
     }
 }
 

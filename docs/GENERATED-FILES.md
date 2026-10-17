@@ -6,7 +6,7 @@
 |---|---|---|
 | 配布用完成物 | `release/windows/win-x64/` | `release/macos/arm64/` |
 | 内容 | 単一EXE、README・ライセンス・関連資料、起動ショートカット | ZIP、DMG、SHA256SUMS |
-| パッケージ作業 | 必要な作業ファイルは`artifacts/windows/` | `artifacts/macos/package/`にarchive・DerivedData・ログ・DMG staging |
+| パッケージ作業 | 必要な作業ファイルは`artifacts/windows/` | `artifacts/macos/package/`にarchive・DerivedData・ログ。DMG stagingはOS標準一時領域 |
 | 検証・診断 | `artifacts/windows/<検証名>/` | `artifacts/macos/verification/`など |
 | その他の一時ファイル | `artifacts/windows/tmp/`またはOS標準一時領域 | `artifacts/macos/tmp/`またはOS標準一時領域 |
 
@@ -32,7 +32,7 @@ bash macos/scripts/verify.sh
 bash macos/scripts/package.sh
 ```
 
-Macは検証結果を`artifacts/macos/verification/`、配布用ZIP／DMGを`release/macos/arm64/`へ出力する。archiveやstagingは`artifacts/macos/package/`に残し、完成した配布物へ混ぜない。GitHub Releaseへのアップロードは別操作。
+Macは検証結果を`artifacts/macos/verification/`、配布用ZIP／DMGを`release/macos/arm64/`へ出力する。archiveは`artifacts/macos/package/`に残し、完成した配布物へ混ぜない。DMG stagingはOS標準一時領域に作成し、終了時に削除する。GitHub Releaseへのアップロードは別操作。
 
 ## 変更・移行時の確認
 

@@ -68,7 +68,7 @@ private struct PhotoCaption: View {
     }()
 
     private var caption: String {
-        let details = "\(asset.url.lastPathComponent)  ·  \(asset.pixelWidth)×\(asset.pixelHeight)"
+        let details = "\(asset.displayName)  ·  \(asset.pixelWidth)×\(asset.pixelHeight)"
         guard let date = asset.takenAt else { return details }
         Self.formatter.timeZone = .current
         return details + "  " + Self.formatter.string(from: date)

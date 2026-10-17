@@ -8,7 +8,7 @@ nonisolated struct PhotoImageKey: Hashable, Sendable {
     let fileSize: Int64
     let modifiedAt: TimeInterval
     init(_ asset: PhotoAsset) {
-        url = asset.url.standardizedFileURL
+        url = asset.sourceURL
         fileSize = asset.fileSize
         modifiedAt = asset.modifiedAt
     }
@@ -41,7 +41,10 @@ nonisolated struct DecodedPhoto: @unchecked Sendable {
 }
 
 actor PhotoImageDecoder {
-    func decode(_ request: PhotoDecodeRequest) -> DecodedPhoto? {
+    func decode(_ request: PhotoDecodeRequest) async -> DecodedPhoto? {
+        if request.asset.photosIdentifier != nil {
+            return await PhotosAlbumLibrary.decode(request)
+        }
         guard !Task.isCancelled,
               let source = CGImageSourceCreateWithURL(request.asset.url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [

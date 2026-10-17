@@ -13,12 +13,19 @@ final class AppModel {
     var screens: [ScreenDescriptor] = []
     var selectedScreenID: CGDirectDisplayID?
     var folders: [PhotoFolder] = []
+    var photoAlbums: [PhotoAlbum] = []
+    private(set) var availablePhotoAlbums: [PhotoAlbum] = []
+    private(set) var isLoadingAlbums = false
+    private(set) var photoAlbumsWarning: String?
+    private(set) var isScanningAlbums = false
+    private(set) var albumPhotoCount: Int?
+    private(set) var albumPreviewWarning: String?
     var photoAssets: [PhotoAsset] = []
     var settings = WallSettings()
     private(set) var isScanning = false
     private(set) var wallAttached = false
     private(set) var desiredRunning = false
-    private(set) var statusMessage = "写真フォルダーを選択してください。"
+    private(set) var statusMessage = "写真フォルダーまたはアルバムを選択してください。"
     private(set) var folderWarning: String?
     private(set) var settingsWarning: String?
     private(set) var userPaused = false
@@ -34,6 +41,14 @@ final class AppModel {
     @ObservationIgnored private let folderStore: FolderBookmarkStore
     @ObservationIgnored private let screenProvider: @MainActor () -> [ScreenDescriptor]
     @ObservationIgnored private let scanner: Scanner
+    @ObservationIgnored private let albumsClient: PhotosAlbumClient
+    @ObservationIgnored private let observeEnvironment: Bool
+    @ObservationIgnored private var appliedPhotoAlbums: [PhotoAlbum] = []
+    @ObservationIgnored private var albumsWatcher: PhotosAlbumWatcher?
+    @ObservationIgnored private var albumsChangeTask: Task<Void, Never>?
+    @ObservationIgnored private var albumPreview: (albums: [PhotoAlbum], task: Task<PhotoAlbumScan, Never>)?
+    @ObservationIgnored private var albumPreviewCompletion: Task<Void, Never>?
+    @ObservationIgnored private var albumPreviewGeneration = 0
     @ObservationIgnored private var appliedSettings = WallSettings()
     @ObservationIgnored private var appliedScreenID: CGDirectDisplayID?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
@@ -49,7 +64,8 @@ final class AppModel {
          folderStore: FolderBookmarkStore? = nil,
          screenProvider: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
          scanner: @escaping Scanner = { await PhotoLibrary.scan(folderURL: $0, recursive: $1) },
-         observeEnvironment: Bool = true, settingsFile: URL? = nil, loginItems: LoginItemService? = nil) {
+         observeEnvironment: Bool = true, settingsFile: URL? = nil, loginItems: LoginItemService? = nil,
+         albumsClient: PhotosAlbumClient = .system) {
         self.loginItems = loginItems ?? (observeEnvironment ? .system : .isolated)
         self.defaults = defaults
         self.repository = SettingsRepository(defaults: defaults, file: settingsFile)
@@ -58,10 +74,13 @@ final class AppModel {
         self.folderStore = folderStore ?? FolderBookmarkStore(defaults: defaults)
         self.screenProvider = screenProvider
         self.scanner = scanner
+        self.albumsClient = albumsClient
+        self.observeEnvironment = observeEnvironment
         let snapshot = repository.load()
         if let snapshot {
             settings = snapshot.settings
             self.folderStore.replace(with: snapshot.folders)
+            photoAlbums = snapshot.photoAlbums
         } else { restoreSettings() }
         settingsWarning = repository.warning ?? settingsWarning
         // Read the saved ID before enumeration. Disconnection never overwrites it.
@@ -72,8 +91,9 @@ final class AppModel {
         if selectedScreenID == nil { selectedScreenID = screens.first?.id }
         appliedScreenID = savedID
         appliedSettings = settings
+        appliedPhotoAlbums = photoAlbums
         syncFolders()
-        desiredRunning = savedID != nil && settings.startOnLaunch && !folders.isEmpty
+        desiredRunning = savedID != nil && settings.startOnLaunch && (!folders.isEmpty || !photoAlbums.isEmpty)
         loginItemStatus = self.loginItems.status()
         if observeEnvironment {
             watcher = PhotoFolderWatcher { [weak self] in self?.retryFolders() }
@@ -104,8 +124,8 @@ final class AppModel {
         }
         return "\(screens.count)台接続中。選択画面だけに写真を表示します。"
     }
-    var canStart: Bool { selectedScreen != nil && !folders.isEmpty && !isScanning }
-    var canStartApplied: Bool { appliedScreenID != nil && !folderStore.folders.isEmpty && !isScanning }
+    var canStart: Bool { selectedScreen != nil && (!folders.isEmpty || !photoAlbums.isEmpty) && !isScanning }
+    var canStartApplied: Bool { appliedScreenID != nil && (!folderStore.folders.isEmpty || !appliedPhotoAlbums.isEmpty) && !isScanning }
     var isPlaying: Bool { wallAttached && playback.currentScene != nil && !playback.isWaiting }
     var isWaiting: Bool { desiredRunning && (!wallAttached || playback.isWaiting) }
     var canAdvance: Bool { desiredRunning && wallAttached }
@@ -124,6 +144,7 @@ final class AppModel {
                 ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
     }
     var currentMode: String? { playback.currentScene?.mode.displayName }
+    var displayPhotoAlbumsWarning: String? { albumPreview == nil ? photoAlbumsWarning : albumPreviewWarning }
 
     func refreshScreens() {
         screens = screenProvider()
@@ -156,8 +177,77 @@ final class AppModel {
         for index in offsets.sorted(by: >) where folders.indices.contains(index) { folders.remove(at: index) }
     }
 
+    func loadPhotoAlbums() async {
+        guard !isLoadingAlbums, !terminated else { return }
+        isLoadingAlbums = true
+        let catalog = await albumsClient.catalog()
+        isLoadingAlbums = false
+        guard !terminated else { return }
+        availablePhotoAlbums = catalog.albums
+        photoAlbumsWarning = catalog.warning
+        updateAlbumsWatcher()
+    }
+
+    func addPhotoAlbums(ids: Set<String>) {
+        let previous = photoAlbums
+        for album in availablePhotoAlbums where ids.contains(album.id) && !photoAlbums.contains(where: { $0.id == album.id }) {
+            photoAlbums.append(album)
+        }
+        if photoAlbums != previous { scanSelectedAlbums() }
+    }
+
+    func removePhotoAlbum(id: String) {
+        guard photoAlbums.contains(where: { $0.id == id }) else { return }
+        photoAlbums.removeAll { $0.id == id }
+        scanSelectedAlbums()
+    }
+
+    func rescanPhotoAlbums() {
+        if photoAlbums == appliedPhotoAlbums {
+            clearAlbumPreview()
+            reloadPhotos()
+        } else { scanSelectedAlbums() }
+    }
+
+    private func scanSelectedAlbums() {
+        clearAlbumPreview()
+        guard !terminated, !photoAlbums.isEmpty else { albumPhotoCount = 0; return }
+        let albums = photoAlbums
+        let client = albumsClient
+        let generation = albumPreviewGeneration
+        let task = Task { await client.scan(albums) }
+        albumPreview = (albums, task)
+        isScanningAlbums = true
+        albumPreviewCompletion = Task { [weak self] in
+            let result = await task.value
+            guard let self, !Task.isCancelled, !self.terminated,
+                  self.albumPreviewGeneration == generation, self.photoAlbums == albums else { return }
+            self.albumPhotoCount = result.assets.count
+            self.albumPreviewWarning = result.warning
+            self.isScanningAlbums = false
+        }
+    }
+
+    private func clearAlbumPreview(cancelScan: Bool = true) {
+        albumPreviewGeneration += 1
+        if cancelScan { albumPreview?.task.cancel() }
+        albumPreviewCompletion?.cancel()
+        albumPreviewCompletion = nil
+        albumPreview = nil
+        isScanningAlbums = false
+        albumPhotoCount = nil
+        albumPreviewWarning = nil
+    }
+
+    static func uniquePhotos(_ photos: [PhotoAsset]) -> [PhotoAsset] {
+        Dictionary(grouping: photos, by: \.sourceURL).compactMap(\.value.first)
+            .sorted { $0.url.absoluteString < $1.url.absoluteString }
+    }
+
     func cancelDraft() {
+        clearAlbumPreview()
         settings = appliedSettings
+        photoAlbums = appliedPhotoAlbums
         selectedScreenID = appliedScreenID ?? screens.first?.id
         folderStore.discardDraft()
         syncFolders()
@@ -176,14 +266,16 @@ final class AppModel {
         removeFolders(at: IndexSet(folders.indices.filter { ids.contains(folders[$0].id) }))
     }
 
-    func saveSettings() { applySettings(startRequested: false) }
+    func saveSettings() {
+        applySettings(startRequested: selectedScreenID != nil && (!folders.isEmpty || !photoAlbums.isEmpty))
+    }
     func start() {
         guard !isScanning else { return }
         applySettings(startRequested: true)
     }
 
     func startApplied() {
-        guard !isScanning, appliedScreenID != nil, !folderStore.folders.isEmpty else { return }
+        guard canStartApplied else { return }
         desiredRunning = true
         userPaused = false
         reloadPhotos()
@@ -197,7 +289,7 @@ final class AppModel {
             try normalized.validate()
             let previousAutoStart = appliedSettings.autoStart
             try loginItems.setEnabled(normalized.autoStart)
-            do { try repository.save(SettingsSnapshot(settings: normalized, screenID: selectedScreenID, folders: folders)) }
+            do { try repository.save(SettingsSnapshot(settings: normalized, screenID: selectedScreenID, folders: folders, photoAlbums: photoAlbums)) }
             catch { try? loginItems.setEnabled(previousAutoStart); throw error }
             loginItemStatus = loginItems.status()
             folderStore.replace(with: folders)
@@ -209,10 +301,14 @@ final class AppModel {
             settings = normalized
             settingsWarning = nil
             appliedSettings = normalized
+            appliedPhotoAlbums = photoAlbums
             appliedScreenID = selectedScreenID
+            // Reuse the selection scan even when Apply is pressed before it finishes.
+            let preparedAlbums = albumPreview?.albums == photoAlbums ? albumPreview?.task : nil
+            clearAlbumPreview(cancelScan: preparedAlbums == nil)
             if startRequested { desiredRunning = true; userPaused = false }
             suspendWall()
-            reloadPhotos()
+            reloadPhotos(preparedAlbums: preparedAlbums)
         } catch {
             statusMessage = error.localizedDescription
             WallLog.write("設定を適用できません。", error: error)
@@ -246,17 +342,25 @@ final class AppModel {
 
     /// All writers use a generation token, including scans that ignore cancellation.
     func reloadPhotos() {
+        reloadPhotos(preparedAlbums: nil)
+    }
+
+    private func reloadPhotos(preparedAlbums: Task<PhotoAlbumScan, Never>?) {
         guard !terminated else { return }
         scanGeneration += 1
         let generation = scanGeneration
         scanTask?.cancel()
         let folders = folderStore.accessibleURLs
+        let albums = appliedPhotoAlbums
+        let albumsClient = albumsClient
+        updateAlbumsWatcher()
         watcher?.watch(folders)
-        guard !folders.isEmpty else {
+        guard !folders.isEmpty || !albums.isEmpty else {
             isScanning = false
             photoAssets = []
             suspendWall()
-            statusMessage = self.folders.isEmpty ? "写真フォルダーを選択してください。" : "写真フォルダー未接続 · 再接続を待機中"
+            photoAlbumsWarning = nil
+            statusMessage = folderStore.folders.isEmpty ? "写真フォルダーまたはアルバムを選択してください。" : "写真フォルダー未接続 · 再接続を待機中"
             return
         }
         isScanning = true
@@ -266,6 +370,10 @@ final class AppModel {
         let store = folderStore
         let lease = store.beginScan()
         scanTask = Task { [weak self] in
+            async let albumScan: PhotoAlbumScan = withTaskCancellationHandler {
+                if let preparedAlbums { return await preparedAlbums.value }
+                return await albumsClient.scan(albums)
+            } onCancel: { preparedAlbums?.cancel() }
             let photos = await withTaskGroup(of: [PhotoAsset].self) { group in
                 for folder in folders { group.addTask { await scanner(folder, recursive) } }
                 var result: [PhotoAsset] = []
@@ -274,10 +382,14 @@ final class AppModel {
             }
             // Even obsolete scans must release their scope lease after all work ends.
             store.endScan(lease)
+            let albumResult = await albumScan
             guard let self, !Task.isCancelled, !self.terminated,
                   self.scanGeneration == generation else { return }
-            let unique = Dictionary(grouping: photos, by: { $0.url.standardizedFileURL })
-            let updated = unique.compactMap(\.value.first).sorted { $0.url.path < $1.url.path }
+            let updated = Self.uniquePhotos(photos + albumResult.assets)
+            self.photoAlbumsWarning = albumResult.warning
+            if self.albumPreview == nil, self.photoAlbums == albums {
+                self.albumPhotoCount = albumResult.assets.count
+            }
             self.photoAssets = updated
             self.isScanning = false
             self.scanTask = nil
@@ -301,7 +413,7 @@ final class AppModel {
         }
         guard !photoAssets.isEmpty else {
             if wallAttached { playback.updateLibrary(assets: [], retryFailed: false) }
-            statusMessage = "画像がありません · 写真の追加を待機中"
+            statusMessage = photoAlbumsWarning ?? "画像がありません · 写真の追加を待機中"
             return
         }
         let viewport = CGSize(width: screen.pixelWidth, height: screen.pixelHeight)
@@ -337,6 +449,25 @@ final class AppModel {
     private func syncFolders() {
         folders = folderStore.folders
         folderWarning = folderStore.warning
+    }
+
+    private func updateAlbumsWatcher() {
+        guard observeEnvironment, !appliedPhotoAlbums.isEmpty, PhotosAlbumLibrary.hasAccess else {
+            albumsWatcher?.stop()
+            albumsWatcher = nil
+            return
+        }
+        guard albumsWatcher == nil else { return }
+        albumsWatcher = PhotosAlbumWatcher { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, !self.terminated else { return }
+                self.albumsChangeTask?.cancel()
+                self.albumsChangeTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                    self?.reloadPhotos()
+                }
+            }
+        }
     }
 
     private func restoreSettings() {
@@ -402,9 +533,13 @@ final class AppModel {
         desiredRunning = false
         scanGeneration += 1
         scanTask?.cancel()
+        clearAlbumPreview()
         healthTask?.cancel()
         reconciliationTask?.cancel()
         watcher?.stop()
+        albumsChangeTask?.cancel()
+        albumsWatcher?.stop()
+        albumsWatcher = nil
         for (center, observer) in observers { center.removeObserver(observer) }
         observers.removeAll()
         suspendWall()

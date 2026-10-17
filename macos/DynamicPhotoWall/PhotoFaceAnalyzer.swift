@@ -15,7 +15,8 @@ actor PhotoFaceAnalyzer {
     }
 
     func analyze(_ asset: PhotoAsset, image: DecodedPhoto) -> [FaceRegion] {
-        let key = "\(asset.url.path)|\(asset.fileSize)|\(asset.modifiedAt)"
+        let source = asset.url.isFileURL ? asset.url.path : asset.url.absoluteString
+        let key = "\(source)|\(asset.fileSize)|\(asset.modifiedAt)"
         if let found = cache[key] { return found }
         guard !Task.isCancelled else { return [] }
         do {

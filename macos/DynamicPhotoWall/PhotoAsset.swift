@@ -21,6 +21,11 @@ nonisolated struct PhotoAsset: Identifiable, Codable, Equatable, Sendable {
     var takenAt: Date? = nil
     var orientation: Int = 1
     var faces: [FaceRegion]? = nil
+    var photosIdentifier: String? = nil
+    var originalFilename: String? = nil
+
+    var displayName: String { originalFilename ?? url.lastPathComponent }
+    var sourceURL: URL { url.isFileURL ? url.standardizedFileURL : url }
 
     nonisolated var id: URL {
         url

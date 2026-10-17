@@ -11,6 +11,223 @@ private final class FakeWallHost: DesktopWallHosting {
     func close() { closed += 1 }
 }
 
+extension AppModelRegressionTests {
+    private var album: PhotoAlbum { PhotoAlbum(id: "test-album/L0/040", title: "旅行") }
+    private var albumPhoto: PhotoAsset {
+        PhotosAlbumLibrary.makeAsset(identifier: "photo-a/L0/001", width: 2400, height: 1600,
+                                    modifiedAt: Date(timeIntervalSince1970: 100), takenAt: nil, filename: "IMG_001.HEIC")
+    }
+
+    @Test func albumOnlySourceCanStartAndIsRestoredAfterSaving() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let album = album, photo = albumPhoto
+        let client = PhotosAlbumClient(catalog: { PhotoAlbumCatalog(albums: [album]) },
+                                       scan: { $0.isEmpty ? PhotoAlbumScan() : PhotoAlbumScan(assets: [photo]) })
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             screenProvider: { [first] }, observeEnvironment: false, albumsClient: client)
+        defer { model.shutdown() }
+        #expect(!model.canStart)
+        await model.loadPhotoAlbums()
+        model.addPhotoAlbums(ids: [album.id])
+        model.addPhotoAlbums(ids: [album.id])
+        #expect(model.photoAlbums == [album])
+        #expect(model.canStart)
+        #expect(!model.canStartApplied)
+        #expect(model.photoAssets.isEmpty)
+        try await awaitAlbumPreview(model)
+        #expect(model.albumPhotoCount == 1)
+        #expect(!model.desiredRunning)
+        model.saveSettings()
+        try await awaitScan(model)
+        #expect(model.photoAssets == [photo])
+        #expect(model.isPlaying)
+        #expect(model.folders.isEmpty)
+        model.stop()
+        model.saveSettings()
+        try await awaitScan(model)
+        #expect(model.isPlaying)
+        let restored = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                                screenProvider: { [first] }, observeEnvironment: false, albumsClient: client)
+        defer { restored.shutdown() }
+        try await awaitScan(restored)
+        #expect(restored.photoAlbums == [album])
+        #expect(restored.photoAssets == [photo])
+        #expect(restored.isPlaying)
+    }
+
+    @Test func albumDraftRemovalDoesNotAffectAppliedPlaybackAndCanBeCancelled() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let album = album, photo = albumPhoto
+        try SettingsRepository(defaults: defaults).save(SettingsSnapshot(settings: WallSettings(), screenID: 1, folders: [], photoAlbums: [album]))
+        let client = PhotosAlbumClient(catalog: { PhotoAlbumCatalog(albums: [album]) },
+                                       scan: { $0.isEmpty ? PhotoAlbumScan() : PhotoAlbumScan(assets: [photo]) })
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             screenProvider: { [first] }, observeEnvironment: false, albumsClient: client)
+        defer { model.shutdown() }
+        try await awaitScan(model)
+        model.removePhotoAlbum(id: album.id)
+        #expect(!model.canStart)
+        #expect(model.canStartApplied)
+        model.reloadPhotos()
+        try await awaitScan(model)
+        #expect(model.photoAssets == [photo])
+        model.cancelDraft()
+        #expect(model.photoAlbums == [album])
+        model.removePhotoAlbum(id: album.id)
+        model.saveSettings()
+        try await awaitScan(model)
+        #expect(model.photoAssets.isEmpty)
+        #expect(!model.wallAttached)
+        #expect(!model.canStartApplied)
+        #expect(SettingsRepository(defaults: defaults).load()?.photoAlbums == [])
+    }
+
+    @Test func unavailableAlbumKeepsSelectionAndReportsWarningWithoutBlockingFolderPhotos() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        try installFolder(in: defaults)
+        let photo = photo
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
+                             screenProvider: { [first] }, scanner: { _, _ in [photo] }, observeEnvironment: false,
+                             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog() }, scan: {
+                                 PhotoAlbumScan(warning: $0.isEmpty ? nil : "アクセス拒否")
+                             }))
+        defer { model.shutdown() }
+        try await awaitScan(model)
+        model.photoAlbums = [album]
+        model.start()
+        try await awaitScan(model)
+        #expect(model.photoAssets == [photo])
+        #expect(model.photoAlbums == [album])
+        #expect(model.photoAlbumsWarning == "アクセス拒否")
+        #expect(model.isPlaying)
+    }
+
+    @Test func obsoleteAlbumScanCannotReplaceNewerLibrary() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        try SettingsRepository(defaults: defaults).save(SettingsSnapshot(settings: WallSettings(), screenID: 1, folders: [], photoAlbums: [album]))
+        let gate = ScanGate()
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             screenProvider: { [first] }, observeEnvironment: false,
+                             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog() }, scan: { _ in
+                                 PhotoAlbumScan(assets: await gate.scan())
+                             }))
+        defer { model.shutdown() }
+        try await awaitRequests(gate, count: 1)
+        model.reloadPhotos()
+        try await awaitRequests(gate, count: 2)
+        await gate.finish(2, photos: [albumPhoto])
+        try await awaitScan(model)
+        await gate.finish(1, photos: [photo])
+        try await Task.sleep(for: .milliseconds(10))
+        #expect(model.photoAssets == [albumPhoto])
+    }
+
+    @Test func unavailableAlbumCanRecoverOnRetryWithoutLosingSelection() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        try SettingsRepository(defaults: defaults).save(SettingsSnapshot(settings: WallSettings(), screenID: 1, folders: [], photoAlbums: [album]))
+        let gate = ScanGate()
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             screenProvider: { [first] }, observeEnvironment: false,
+                             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog() }, scan: { _ in
+                                 let photos = await gate.scan()
+                                 return PhotoAlbumScan(assets: photos, warning: photos.isEmpty ? "写真へのアクセス拒否" : nil)
+                             }))
+        defer { model.shutdown() }
+        try await awaitRequests(gate, count: 1)
+        await gate.finish(1, photos: [])
+        try await awaitScan(model)
+        #expect(model.isWaiting)
+        #expect(model.displayStatusMessage == "写真へのアクセス拒否")
+        #expect(model.photoAlbums == [album])
+        model.retryPlayback()
+        try await awaitRequests(gate, count: 2)
+        await gate.finish(2, photos: [albumPhoto])
+        try await awaitScan(model)
+        #expect(model.photoAlbumsWarning == nil)
+        #expect(model.isPlaying)
+    }
+
+    private func awaitAlbumPreview(_ model: AppModel) async throws {
+        for _ in 0..<1000 {
+            if !model.isScanningAlbums { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        throw NSError(domain: "RegressionTests.AlbumPreviewTimeout", code: 1)
+    }
+
+    @Test func applyingDuringAlbumSelectionScanStartsAfterCompletionWithoutScanningTwice() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let gate = ScanGate(), album = album
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             screenProvider: { [first] }, observeEnvironment: false,
+                             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog(albums: [album]) }, scan: { albums in
+                                 guard !albums.isEmpty else { return PhotoAlbumScan() }
+                                 return PhotoAlbumScan(assets: await gate.scan())
+                             }))
+        defer { model.shutdown() }
+        await model.loadPhotoAlbums()
+        model.addPhotoAlbums(ids: [album.id])
+        try await awaitRequests(gate, count: 1)
+        #expect(model.isScanningAlbums)
+        #expect(model.albumPhotoCount == nil)
+        #expect(!model.desiredRunning)
+        model.saveSettings()
+        #expect(model.desiredRunning)
+        #expect(model.isScanning)
+        await gate.finish(1, photos: [albumPhoto])
+        try await awaitScan(model)
+        #expect(model.isPlaying)
+        #expect(model.photoAssets == [albumPhoto])
+        #expect(await gate.count == 1)
+    }
+
+    @Test func changedOrCancelledAlbumPreviewCannotChangeAppliedPlayback() async throws {
+        let (defaults, name) = profile()
+        defer { defaults.removePersistentDomain(forName: name) }
+        try installFolder(in: defaults)
+        defaults.set(1, forKey: "selectedScreenID")
+        let gate = ScanGate(), album = album, photo = photo
+        let otherAlbum = PhotoAlbum(id: "other-album", title: "家族")
+        let model = AppModel(defaults: defaults, host: FakeWallHost(), playback: WallPlaybackController(),
+                             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
+                             screenProvider: { [first] }, scanner: { _, _ in [photo] }, observeEnvironment: false,
+                             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog(albums: [album, otherAlbum]) }, scan: { albums in
+                                 guard !albums.isEmpty else { return PhotoAlbumScan() }
+                                 return PhotoAlbumScan(assets: await gate.scan())
+                             }))
+        defer { model.shutdown() }
+        try await awaitScan(model)
+        let scene = model.playback.currentScene
+        await model.loadPhotoAlbums()
+        model.addPhotoAlbums(ids: [album.id])
+        try await awaitRequests(gate, count: 1)
+        model.removePhotoAlbum(id: album.id)
+        model.addPhotoAlbums(ids: [otherAlbum.id])
+        try await awaitRequests(gate, count: 2)
+        await gate.finish(2, photos: [albumPhoto])
+        try await awaitAlbumPreview(model)
+        #expect(model.albumPhotoCount == 1)
+        await gate.finish(1, photos: [photo, albumPhoto])
+        try await Task.sleep(for: .milliseconds(10))
+        #expect(model.albumPhotoCount == 1)
+        #expect(model.photoAlbums == [otherAlbum])
+        #expect(model.photoAssets == [photo])
+        #expect(model.playback.currentScene == scene)
+        model.cancelDraft()
+        #expect(model.photoAlbums.isEmpty)
+        #expect(model.albumPhotoCount == nil)
+        #expect(model.photoAssets == [photo])
+        #expect(model.isPlaying)
+    }
+}
+
 @MainActor
 private final class FakeScreenInventory {
     var screens: [ScreenDescriptor]
