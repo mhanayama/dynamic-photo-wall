@@ -19,6 +19,11 @@ public sealed record MotionPlan(double Width, double Height, double FromX, doubl
 public sealed class WallSettings
 {
     public string? MonitorId { get; set; }
+    public List<DisplayPlacement> Displays { get; set; } = [];
+    public List<string> DisplayGroupNames { get; set; } = [];
+    public bool DisplayTestPattern { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasDisplaySelection => Displays.Count > 0 || MonitorId != null;
     public List<string> Folders { get; set; } = [];
     public bool Recursive { get; set; } = true;
     public bool RandomOrder { get; set; } = true;
@@ -39,6 +44,7 @@ public sealed class WallSettings
     public double MaxPanUpscale { get; set; } = 4;
     public double PanWidthFraction { get; set; } = .96;
     public bool StopAtFace { get; set; } = true;
+    public bool FaceAwarePanDirection { get; set; } = true;
     public bool FaceAwareFraming { get; set; } = true;
     public double GalleryScrollPixelsPerSecond { get; set; } = 40;
     public bool GlassBackground { get; set; } = true;
@@ -54,6 +60,10 @@ public sealed class WallSettings
     public int CacheMegabytes { get; set; } = 256;
     public void Normalize()
     {
+        Displays = (Displays ?? []).Where(d => !string.IsNullOrWhiteSpace(d.Id)).DistinctBy(d => d.Id).ToList();
+        foreach (var display in Displays) display.GroupId = string.IsNullOrWhiteSpace(display.GroupId) ? null : display.GroupId.Trim();
+        DisplayGroupNames = (DisplayGroupNames ?? []).Concat(Displays.Select(d => d.GroupId!))
+            .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()).Distinct(StringComparer.Ordinal).ToList();
         Folders = (Folders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         RecentCount = Math.Clamp(RecentCount, 0, 10000);
         GalleryMax = Math.Clamp(GalleryMax, 1, 5);

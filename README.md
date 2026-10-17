@@ -4,7 +4,7 @@
 
 | プラットフォーム | 状態 | 開発・利用ガイド |
 |---|---|---|
-| Windows | WPF常駐アプリ。Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
+| Windows | WPF常駐アプリ。複数画面をつなぐ表示・配置設定、Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
 | macOS | SwiftUI / AppKit版。機能差分の修正と隔離自動テストに対応、実機受け入れを継続中 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
 
 ## ディレクトリ構成
@@ -62,4 +62,4 @@ open macos/DynamicPhotoWall.xcodeproj
 
 ## 共通の計画
 
-[Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)。macOS単体版の完成後に、Windowsの複数画面表示とPC間同期へ進む計画です。
+[Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)。Windows内の複数画面表示と配置設定を実装済み。MacとのPC間同期は今後の段階です。

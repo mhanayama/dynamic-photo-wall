@@ -13,7 +13,7 @@ public sealed class SettingsManager
         {
             if (!File.Exists(FilePath)) return new();
             var result = JsonSerializer.Deserialize<WallSettings>(File.ReadAllText(FilePath)) ?? throw new JsonException("設定がnullです。");
-            result.Normalize(); return result;
+            result.Normalize(); result.DisplayTestPattern = false; return result;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
         {

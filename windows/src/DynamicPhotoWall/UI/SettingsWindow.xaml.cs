@@ -11,23 +11,44 @@ public partial class SettingsWindow : Window
     private readonly SettingsManager manager;
     private readonly WallSettings draft;
     private readonly ObservableCollection<string> folders;
+    private readonly DisplayLayoutEditor displayEditor = new();
     public SettingsWindow(WallController controller, SettingsManager manager)
     {
         InitializeComponent(); this.controller = controller; this.manager = manager;
         draft = SettingsManager.Clone(controller.Settings); folders = new(draft.Folders);
-        DataContext = draft; FolderList.ItemsSource = folders; LoadMonitors();
+        draft.DisplayTestPattern = false;
+        DataContext = draft; FolderList.ItemsSource = folders; DisplayEditorHost.Content = displayEditor;
+        DisplaySelectionHost.Content = displayEditor.SelectionView; TaskbarSettingsHost.Content = displayEditor.TaskbarView; LoadMonitors();
         controller.Changed += UpdateStatus; Closed += (_, _) => controller.Changed -= UpdateStatus;
         UpdateStatus();
     }
     private void LoadMonitors()
     {
-        var id = MonitorPicker.SelectedValue as string ?? draft.MonitorId;
-        var monitors = MonitorManager.Enumerate(); MonitorPicker.ItemsSource = monitors;
-        MonitorPicker.SelectedItem = monitors.FirstOrDefault(m => m.Id == id) ?? (id == null ? monitors.OrderByDescending(m => (double)m.Width / m.Height).FirstOrDefault() : null);
-        ConnectionStatus.Text = id != null && monitors.All(m => m.Id != id) ? "保存済みのディスプレイは未接続です。再接続するか表示対象を選び直してください。" : $"{monitors.Count}台接続中。選択画面だけに写真を表示します。";
+        displayEditor.Load(draft);
+        ConnectionStatus.Text = $"{MonitorManager.Enumerate().Count}台接続中。保存済みの未接続画面は、再接続時に復帰します。";
     }
     private void RefreshDisplays(object sender, RoutedEventArgs e) => LoadMonitors();
-    private void UpdateStatus() => StatusText.Text = $"{controller.Status}  ·  ライブラリ {controller.PhotoCount}枚";
+    private void UpdateStatus()
+    {
+        StatusText.Text = $"{controller.Status}  ·  ライブラリ {controller.PhotoCount}枚";
+        TestPatternButton.Content = controller.TestPatternVisible ? "表示停止" : "表示";
+    }
+    private async void TestPatternClicked(object sender, RoutedEventArgs e)
+    {
+        TestPatternButton.IsEnabled = false;
+        try
+        {
+            if (controller.TestPatternVisible) await controller.HideTestPatternAsync();
+            else
+            {
+                if (HasErrors(this)) throw new InvalidOperationException("座標を正しく入力してください。");
+                var preview = SettingsManager.Clone(draft); preview.Displays = displayEditor.SelectedPlacements();
+                await controller.ShowTestPatternAsync(preview);
+            }
+        }
+        catch (Exception error) { Log.Write("テストパターンを切り替えられません。", error); StatusText.Text = error.Message; }
+        finally { TestPatternButton.IsEnabled = true; TestPatternButton.Content = controller.TestPatternVisible ? "表示停止" : "表示"; }
+    }
     private void AddFolder(object sender, RoutedEventArgs e)
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog { Description = "写真フォルダーを選択", UseDescriptionForTitle = true };
@@ -45,7 +66,11 @@ public partial class SettingsWindow : Window
         try
         {
             if (HasErrors(this)) throw new InvalidOperationException("数値を正しく入力してください。");
-            draft.Folders = folders.ToList(); draft.MonitorId = MonitorPicker.SelectedValue as string ?? draft.MonitorId;
+            draft.Folders = folders.ToList(); draft.Displays = displayEditor.SelectedPlacements();
+            draft.DisplayGroupNames = displayEditor.GroupNames.ToList(); draft.DisplayTestPattern = false;
+            if (draft.Displays.Count == 0) throw new InvalidOperationException("表示する画面を1台以上選択してください。");
+            foreach (var group in DisplayGroups.Create(draft.Displays)) _ = new WallLayout(group.Displays);
+            draft.MonitorId = draft.Displays[0].Id;
             if (!((draft.GalleryEnabled || draft.GalleryScrollEnabled) && draft.GalleryWeight > 0 || (draft.VerticalPanEnabled || draft.HorizontalPanEnabled) && draft.PanWeight > 0 || draft.ZoomEnabled && draft.ZoomWeight > 0))
                 throw new InvalidOperationException("少なくとも1つの表示モードを有効にして、ウェイトを1以上にしてください。");
             _ = new BrushConverter().ConvertFromString(draft.Background);

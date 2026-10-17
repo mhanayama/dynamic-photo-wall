@@ -33,6 +33,47 @@ public sealed class PhotoRenderer : Window
         Content = new Viewbox { Stretch = Stretch.Fill, Child = layers };
     }
     public static Brush ParseBrush(string value) { try { var b = (Brush)new BrushConverter().ConvertFromString(value)!; b.Freeze(); return b; } catch (Exception e) when (e is FormatException or NotSupportedException) { return Brushes.Black; } }
+    public void SetDisplayRegion(FrameRect region)
+    {
+        // Keep the single animated tree attached to the first display. Other
+        // outputs sample this same tree, including its common blurred background.
+        ((Viewbox)Content).Child = null;
+        if (VisualTreeHelper.GetParent(layers) is Panel previous) previous.Children.Remove(layers);
+        var crop = new Canvas { Width = region.Width, Height = region.Height, ClipToBounds = true, Background = Background };
+        var positioned = new Canvas { Width = viewport.Width, Height = viewport.Height };
+        Canvas.SetLeft(positioned, -region.X); Canvas.SetTop(positioned, -region.Y);
+        positioned.Children.Add(layers); crop.Children.Add(positioned);
+        Content = new Viewbox { Stretch = Stretch.Fill, Child = crop };
+    }
+    public FrameworkElement CreateDisplayRegion(FrameRect region)
+    {
+        var brush = new VisualBrush(layers) { ViewboxUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(region.X, region.Y, region.Width, region.Height), Stretch = Stretch.Fill,
+            AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
+        return new System.Windows.Shapes.Rectangle { Fill = brush };
+    }
+    public void ShowTestPattern(WallLayout layout, string? groupName = null, IReadOnlyList<string>? displayOrder = null)
+    {
+        layers.Children.Clear();
+        for (var x = 0; x <= viewport.Width; x += 120)
+            layers.Children.Add(new System.Windows.Shapes.Line { X1 = x, X2 = x, Y2 = viewport.Height, Stroke = Brushes.SlateGray, StrokeThickness = 1 });
+        for (var y = 0; y <= viewport.Height; y += 120)
+            layers.Children.Add(new System.Windows.Shapes.Line { Y1 = y, Y2 = y, X2 = viewport.Width, Stroke = Brushes.SlateGray, StrokeThickness = 1 });
+        layers.Children.Add(new System.Windows.Shapes.Line { X2 = viewport.Width, Y2 = viewport.Height, Stroke = Brushes.Cyan, StrokeThickness = 3 });
+        layers.Children.Add(new System.Windows.Shapes.Line { X1 = viewport.Width, Y2 = viewport.Height, Stroke = Brushes.Cyan, StrokeThickness = 3 });
+        var diameter = Math.Min(viewport.Width, viewport.Height) * .8;
+        var circle = new System.Windows.Shapes.Ellipse { Width = diameter, Height = diameter, Stroke = Brushes.Gold, StrokeThickness = 3 };
+        Canvas.SetLeft(circle, (viewport.Width - diameter) / 2); Canvas.SetTop(circle, (viewport.Height - diameter) / 2); layers.Children.Add(circle);
+        var number = 0;
+        foreach (var entry in layout.Regions)
+        {
+            var region = entry.Value;
+            var index = displayOrder?.ToList().IndexOf(entry.Key) ?? -1;
+            var title = $"{(index >= 0 ? index + 1 : ++number)}" + (groupName == null ? "" : $" · {groupName}");
+            var label = new TextBlock { Text = $"{title}   {region.Width} × {region.Height}\n壁座標 ({region.X}, {region.Y})", FontSize = 32, Foreground = Brushes.White, Background = Brushes.Black, Padding = new Thickness(16) };
+            Canvas.SetLeft(label, region.X + 32); Canvas.SetTop(label, region.Y + 32); layers.Children.Add(label);
+        }
+    }
     public SceneVisual Build(CompositionPlan plan, IReadOnlyList<BitmapSource> bitmaps, Random random)
     {
         var scene = new SceneVisual { Canvas = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true, Opacity = 0 },

@@ -87,7 +87,7 @@ internal static class Program
                     if (Directory.Exists(folder)) settings.Folders.Add(folder);
                 }
                 controller = new(settings); tray = new(controller, manager);
-                if (!args.Contains("--tray") || settings.MonitorId == null) tray.OpenSettings();
+                if (!args.Contains("--tray") || !settings.HasDisplaySelection) tray.OpenSettings();
                 await controller.InitializeAsync();
             }
             catch (Exception e) { Log.Write("起動に失敗しました。", e); MessageBox.Show(e.Message, "Dynamic Photo Wall"); if (tray != null) await tray.ExitAsync(); else app.Shutdown(1); }
