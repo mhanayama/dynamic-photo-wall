@@ -9,7 +9,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         app.launch(); app.activate()
         defer { app.terminate() }
         func openPhotos() {
-            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "写真")).firstMatch
             XCTAssertTrue(tab.waitForExistence(timeout: 5)); tab.click()
         }
         func addAlbum() {
@@ -29,11 +29,11 @@ final class DynamicPhotoWallUITests: XCTestCase {
         let removeFolders = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
         removeFolders.firstMatch.click()
         removeFolders.firstMatch.click()
-        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "一般")).firstMatch.click()
         app.buttons["表示停止"].click()
         openPhotos()
         app.buttons["保存して適用"].click()
-        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "一般")).firstMatch.click()
         let pause = app.buttons["一時停止"]
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: pause)
         waitForExpectations(timeout: 5)
@@ -41,7 +41,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         openPhotos()
         XCTAssertTrue(removeAlbum.waitForExistence(timeout: 5))
         XCTAssertEqual(removeFolders.count, 0)
-        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "一般")).firstMatch.click()
         XCTAssertTrue(app.buttons["保存して表示開始"].isEnabled)
     }
 
@@ -56,7 +56,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
 
         func openPhotos() {
             XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+            let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "写真")).firstMatch
             XCTAssertTrue(tab.waitForExistence(timeout: 5))
             tab.click()
         }
@@ -80,7 +80,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         app.launch()
         openPhotos()
         XCTAssertEqual(removeButtons().count, 0)
-        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "一般")).firstMatch.click()
         XCTAssertFalse(app.buttons["保存して表示開始"].isEnabled)
     }
     @MainActor
@@ -90,7 +90,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
         app.launch(); app.activate()
         defer { app.terminate() }
-        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "写真")).firstMatch
         XCTAssertTrue(photos.waitForExistence(timeout: 5)); photos.click()
         let remove = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
         XCTAssertEqual(remove.count, 2)
@@ -98,7 +98,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         XCTAssertEqual(remove.count, 1)
         app.buttons["変更を取り消す"].click()
         XCTAssertEqual(remove.count, 2)
-        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Display")).firstMatch.click()
+        app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "一般")).firstMatch.click()
         app.buttons["表示停止"].click()
         let start = app.buttons["保存して表示開始"]
         XCTAssertTrue(start.isEnabled); start.click()
@@ -120,7 +120,7 @@ final class DynamicPhotoWallUITests: XCTestCase {
         app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
         app.launch(); app.activate()
         defer { app.terminate() }
-        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "Photos")).firstMatch
+        let photos = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "写真")).firstMatch
         XCTAssertTrue(photos.waitForExistence(timeout: 5)); photos.click()
         let remove = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "remove-folder-"))
         remove.firstMatch.click()
@@ -134,6 +134,61 @@ final class DynamicPhotoWallUITests: XCTestCase {
         XCTAssertEqual(remove.count, 2)
         app.typeKey(",", modifierFlags: .command)
         XCTAssertEqual(app.windows.count, 1)
+    }
+
+    @MainActor
+    func testDisplayGroupsDeleteEmptyAndLastGroupsAndPreviewRemainsAcrossSettingsClose() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
+        app.launch(); app.activate()
+        defer { app.terminate() }
+        func tab(_ name: String) {
+            let item = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", name)).firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5)); item.click()
+        }
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        tab("使用ディスプレイ")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "display-enabled-2").firstMatch.waitForExistence(timeout: 5))
+        app.descendants(matching: .any).matching(identifier: "display-enabled-2").firstMatch.click()
+        tab("画面グルーピング")
+        app.buttons["グループを追加"].click()
+        capture("group-settings")
+        XCTAssertTrue(app.buttons["delete-group-グループ1"].exists)
+        app.buttons["delete-group-グループ1"].click()
+        XCTAssertFalse(app.buttons["delete-group-グループ1"].exists)
+        app.buttons["グループを追加"].click()
+        app.buttons["保存して適用"].click()
+        app.terminate(); app.launch(); app.activate()
+        tab("画面グルーピング")
+        XCTAssertTrue(app.buttons["delete-group-グループ1"].exists)
+        let preview = app.buttons["test-pattern-toggle"]
+        app.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -1000)
+        XCTAssertTrue(preview.waitForExistence(timeout: 5)); preview.click()
+        XCTAssertEqual(preview.label, "表示停止")
+        capture("test-pattern-active")
+        app.windows.firstMatch.buttons["_XCUI:CloseWindow"].click()
+        app.activate(); app.typeKey(",", modifierFlags: .command)
+        tab("画面グルーピング")
+        app.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -1000)
+        XCTAssertEqual(preview.label, "表示停止")
+        preview.click(); XCTAssertEqual(preview.label, "表示")
+        app.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: 1000)
+        app.buttons["delete-group-グループ1"].click()
+        app.buttons["保存して適用"].click()
+        app.terminate(); app.launch(); app.activate()
+        tab("画面グルーピング")
+        XCTAssertFalse(app.buttons["delete-group-グループ1"].exists)
+        tab("表示モード")
+        for id in ["galleryPerDisplay", "galleryScrollPerDisplay", "verticalPanPerDisplay", "horizontalPanPerDisplay", "zoomPerDisplay"] {
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists)
+        }
+        capture("per-display-mode-settings")
+        tab("動き")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "faceAwarePanDirection").firstMatch.exists)
     }
 
 }

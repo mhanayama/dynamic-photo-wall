@@ -5,7 +5,7 @@
 | プラットフォーム | 状態 | 開発・利用ガイド |
 |---|---|---|
 | Windows | WPF常駐アプリ。複数画面をつなぐ表示・配置設定、Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
-| macOS | SwiftUI / AppKit版。機能差分の修正と隔離自動テストに対応、実機受け入れを継続中 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
+| macOS | SwiftUI / AppKit版。複数画面・独立グループ・顔境界回避・画面単位モード・小画像ミラー・Gallery余白改善を実装。隔離自動テストと実機受け入れを継続 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
 
 ## ディレクトリ構成
 
@@ -59,7 +59,7 @@ Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` ス�
 open macos/DynamicPhotoWall.xcodeproj
 ```
 
-隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。macOS v1.0.1（build 3）は[GitHub Release](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)で公開済みです。実機受け入れの残件はTODOで継続管理します。
+隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。macOS v1.1.0（build 4）は[GitHub Release](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)からダウンロードできます。実機受け入れの残件はTODOで継続管理します。
 
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 

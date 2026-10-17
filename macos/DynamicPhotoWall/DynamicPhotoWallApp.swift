@@ -50,17 +50,17 @@ final class WallApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
             let event = NSAppleEventManager.shared().currentAppleEvent
             let loginLaunch = event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil ||
                 event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsServiceItem)) != nil
-            if !loginLaunch || model.folders.isEmpty || !model.hasSavedScreen { showSettings() }
+            if !loginLaunch || (model.folders.isEmpty && model.photoAlbums.isEmpty) || !model.hasSavedScreen { showSettings() }
         }
     }
 
     func showSettings() {
         NSApplication.shared.setActivationPolicy(.regular)
         if settingsWindow == nil {
-            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 880, height: 760),
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1040, height: 800),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "Dynamic Photo Wall — 設定"
-            window.contentMinSize = CGSize(width: 760, height: 640)
+            window.contentMinSize = CGSize(width: 900, height: 680)
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.contentViewController = NSHostingController(rootView: ContentView(model: model))
@@ -105,7 +105,11 @@ private struct MenuBarControls: View {
     var body: some View {
         Text(model.displayStatusMessage)
         Divider()
-        if model.desiredRunning {
+        if model.testPatternVisible {
+            Button("テスト表示を停止", action: model.toggleTestPattern)
+            Button("スライドショー開始", action: model.startApplied).disabled(!model.canStartApplied)
+            Button("表示停止", action: model.stop)
+        } else if model.desiredRunning {
             if model.isWaiting {
                 Button("再検索して再試行", action: model.retryPlayback).disabled(model.isScanning)
             } else {

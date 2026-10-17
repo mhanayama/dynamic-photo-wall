@@ -8,6 +8,14 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     var autoStart = false
     var stopAtFace = true
     var faceAwareFraming = true
+    var faceAwarePanDirection = true
+    var avoidFaceDisplayBoundaries = true
+    var galleryPerDisplay = false
+    var galleryScrollPerDisplay = false
+    var verticalPanPerDisplay = false
+    var horizontalPanPerDisplay = false
+    var zoomPerDisplay = false
+
 
     var galleryEnabled = true
     var galleryScrollEnabled = true
@@ -38,7 +46,7 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case recursive, randomOrder, recentCount, startOnLaunch, autoStart, stopAtFace, faceAwareFraming, galleryEnabled, galleryScrollEnabled, verticalPanEnabled, horizontalPanEnabled, zoomEnabled, galleryWeight, panWeight, zoomWeight, galleryMax, panPixelsPerSecond, maxPanUpscale, panWidthFraction, galleryScrollPixelsPerSecond, glassBackground, zoomSeconds, maxZoom, fadeSeconds, galleryMinSeconds, galleryMaxSeconds, backgroundHex, gap, cornerRadius, exifOverlay, cacheMegabytes
+        case faceAwarePanDirection, avoidFaceDisplayBoundaries, galleryPerDisplay, galleryScrollPerDisplay, verticalPanPerDisplay, horizontalPanPerDisplay, zoomPerDisplay, recursive, randomOrder, recentCount, startOnLaunch, autoStart, stopAtFace, faceAwareFraming, galleryEnabled, galleryScrollEnabled, verticalPanEnabled, horizontalPanEnabled, zoomEnabled, galleryWeight, panWeight, zoomWeight, galleryMax, panPixelsPerSecond, maxPanUpscale, panWidthFraction, galleryScrollPixelsPerSecond, glassBackground, zoomSeconds, maxZoom, fadeSeconds, galleryMinSeconds, galleryMaxSeconds, backgroundHex, gap, cornerRadius, exifOverlay, cacheMegabytes
     }
 
     init(from decoder: Decoder) throws {
@@ -75,7 +83,24 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
         cornerRadius = try values.decodeIfPresent(Double.self, forKey: .cornerRadius) ?? cornerRadius
         exifOverlay = try values.decodeIfPresent(Bool.self, forKey: .exifOverlay) ?? exifOverlay
         cacheMegabytes = try values.decodeIfPresent(Int.self, forKey: .cacheMegabytes) ?? cacheMegabytes
+        faceAwarePanDirection = try values.decodeIfPresent(Bool.self, forKey: .faceAwarePanDirection) ?? faceAwarePanDirection
+        avoidFaceDisplayBoundaries = try values.decodeIfPresent(Bool.self, forKey: .avoidFaceDisplayBoundaries) ?? avoidFaceDisplayBoundaries
+        galleryPerDisplay = try values.decodeIfPresent(Bool.self, forKey: .galleryPerDisplay) ?? galleryPerDisplay
+        galleryScrollPerDisplay = try values.decodeIfPresent(Bool.self, forKey: .galleryScrollPerDisplay) ?? galleryScrollPerDisplay
+        verticalPanPerDisplay = try values.decodeIfPresent(Bool.self, forKey: .verticalPanPerDisplay) ?? verticalPanPerDisplay
+        horizontalPanPerDisplay = try values.decodeIfPresent(Bool.self, forKey: .horizontalPanPerDisplay) ?? horizontalPanPerDisplay
+        zoomPerDisplay = try values.decodeIfPresent(Bool.self, forKey: .zoomPerDisplay) ?? zoomPerDisplay
         normalize()
+    }
+
+    func perDisplay(_ mode: WallMode) -> Bool {
+        switch mode {
+        case .gallery: galleryPerDisplay
+        case .horizontalGallery: galleryScrollPerDisplay
+        case .verticalPan: verticalPanPerDisplay
+        case .horizontalPan: horizontalPanPerDisplay
+        case .zoom: zoomPerDisplay
+        }
     }
 
     var hasEnabledMode: Bool {

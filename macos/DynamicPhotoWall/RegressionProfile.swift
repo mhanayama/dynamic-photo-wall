@@ -26,7 +26,9 @@ extension AppModel {
         return AppModel(defaults: defaults, host: RegressionWallHost(), playback: WallPlaybackController(),
             folderStore: FolderBookmarkStore(defaults: defaults, access: access),
             screenProvider: { [ScreenDescriptor(id: 1, name: "Test Display",
-                frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), pixelWidth: 1920, pixelHeight: 1080)] },
+                frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), pixelWidth: 1920, pixelHeight: 1080),
+                ScreenDescriptor(id: 2, name: "Test Retina Display", frame: CGRect(x: 1920, y: 0, width: 960, height: 540), pixelWidth: 1920, pixelHeight: 1080),
+                ScreenDescriptor(id: 3, name: "Test Independent Display", frame: CGRect(x: -1920, y: 0, width: 1920, height: 1080), pixelWidth: 1920, pixelHeight: 1080)] },
             scanner: { folder, _ in [PhotoAsset(url: folder.appending(path: "test.jpg"), pixelWidth: 2400, pixelHeight: 1600)] },
             observeEnvironment: false,
             albumsClient: PhotosAlbumClient(catalog: {

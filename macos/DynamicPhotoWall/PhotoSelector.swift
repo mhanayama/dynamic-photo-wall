@@ -43,13 +43,23 @@ final class PhotoSelector {
             } ?? candidates[0]
         }
 
+        remember(result, settings: settings)
+        return result
+    }
+
+    func sample(from assets: [PhotoAsset], settings: WallSettings, excluding: Set<URL>, count: Int) -> [PhotoAsset] {
+        guard settings.randomOrder, count > 0 else { return [] }
+        let available = assets.filter { !excluding.contains($0.url) }
+        var fresh = available.filter { !recentURLs.contains($0.url) }
+        if fresh.isEmpty { fresh = available.min { recentIndex(of: $0.url) < recentIndex(of: $1.url) }.map { [$0] } ?? [] }
+        return Array(fresh.shuffled(using: &generator).prefix(count))
+    }
+
+    func remember(_ result: PhotoAsset, settings: WallSettings) {
         sequentialAfter = result.url
         recentURLs.removeAll { $0 == result.url }
         recentURLs.append(result.url)
-        if recentURLs.count > settings.recentCount {
-            recentURLs.removeFirst(recentURLs.count - settings.recentCount)
-        }
-        return result
+        if recentURLs.count > settings.recentCount { recentURLs.removeFirst(recentURLs.count - settings.recentCount) }
     }
 
     func reset() {
