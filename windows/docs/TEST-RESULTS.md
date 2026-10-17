@@ -1,5 +1,21 @@
 # 実施した検証
 
+## 2026-10-17 — 小画像の縦Pan自動ミラーとGalleryの滑らかな再配置
+
+- スパン幅への必要拡大率が上限を超え、同じ写真が全接続画面の縦Pan適性を満たす場合だけ、自動ミラーへ切り替える。画面別チェックや設定ファイルを書き換えない。大きな写真はスパン、手動の画面別表示は別々の写真という動作を維持する。
+- コアで異なる画面寸法、拡大率の境界、EXIF補正後の幅、候補除外、単独画面、未接続領域、設定した表示幅の違いを検証した。
+- 実際の2画面セッションで同じ写真と同じbitmapの共有、各画面の物理寸法、pause／Next、上限変更によるスパン復帰、手動個別表示、1台未接続、停止を確認した。写真は専用フォルダーへ生成し、設定・タスクバーを通常版と分離した。
+- Galleryは安全な最終配置へ既存slotを移動・伸縮し、交換写真だけフェードする。アニメーション中の顔の境界通過を許容する。WPFで中間位置を通ること、slotを作り直さないこと、pause中の固定、完了と取消後の最終値確定・clock解除を検証した。前・途中・後のPNGも確認した。初回の統合試験はWPFのclock解除が反映される前の検査で失敗したため、反映を待つ検査へ修正して再実行した。
+- 最終のコア19項目と、画面別モード・背景・復旧・自動ミラー／Gallery再配置の統合4項目が成功。共通fixtureの704 assertionsも成功。Releaseビルド・単一EXEの発行はエラー0、既知のNU1900情報取得警告あり。
+- Macアプリ自体は変更・実行せず、D08の自動ミラーとD07の「Gallery移動中は境界通過可」をhandoverへ反映した。実機でのフレームレート測定・混在DPI・ケーブル抜差し・長時間運転は未実施。
+
+結果: `artifacts/windows/mirror-gallery-final/test-results.json`、`gallery-{before,moving,after}.png`、`mirror-display-{0,1}.png`、`mirror-state.json`。既存回帰は`artifacts/windows/mirror-gallery-regression/test-results.json`。
+
+```powershell
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/mirror-gallery-final --scan-only --mirror-gallery
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/mirror-gallery-regression --per-display-modes --ambient --retry-recovery
+```
+
 ## 2026-10-17 — モード別の画面単位表示と、スパン中の顔境界回避
 
 - 全5モードに「ディスプレイごとに表示」を追加。旧設定はスパンのまま、画面別モードは各画面の物理解像度で適性・写真・配置・背景を作り、モード・pause・Next・切替時刻をグループで共有する。

@@ -1,6 +1,11 @@
 namespace DynamicPhotoWall.Core;
 
-public sealed record CompositionPlan(CompositionMode Mode, IReadOnlyList<PhotoInfo> Photos);
+public sealed record CompositionPlan(CompositionMode Mode, IReadOnlyList<PhotoInfo> Photos)
+{
+    // Automatic fallback repeats one photograph, unlike the user's per-display
+    // mode which selects a separate photograph for each output.
+    public bool MirrorPerDisplay { get; init; }
+}
 public interface ICompositionPolicy
 {
     bool Suitable(PhotoInfo photo, Viewport viewport, CompositionMode mode, WallSettings settings);
@@ -26,14 +31,20 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
         IReadOnlyList<Viewport>? displayViewports = null)
     {
         var modes = new List<(CompositionMode Mode, PhotoInfo[] Photos, double Weight)>();
+        bool Mirror(PhotoInfo p) => !s.VerticalPanPerDisplay && displayViewports?.Count > 0
+            && displayViewports.Any(v => v.Width < viewport.Width)
+            && viewport.Width * s.PanWidthFraction / p.Width > s.MaxPanUpscale
+            && displayViewports.All(v => policy.Suitable(p, v, CompositionMode.VerticalPan, s));
+        bool Suitable(PhotoInfo p, Viewport v, CompositionMode m) => policy.Suitable(p, v, m, s)
+            || m == CompositionMode.VerticalPan && Mirror(p);
         void Add(CompositionMode m, bool enabled, double weight)
         {
             if (!enabled || weight <= 0) return;
             var targets = s.IsPerDisplay(m) && displayViewports?.Count > 0 ? displayViewports : new[] { viewport };
             // A group chooses one mode. Every connected display must have a
             // suitable candidate for that mode at its own physical dimensions.
-            if (targets.Any(v => !photos.Any(p => policy.Suitable(p, v, m, s) && (excluded == null || !excluded.Contains(p.Path))))) return;
-            var suitable = photos.Where(p => policy.Suitable(p, targets[0], m, s) && (excluded == null || !excluded.Contains(p.Path))).ToArray();
+            if (targets.Any(v => !photos.Any(p => Suitable(p, v, m) && (excluded == null || !excluded.Contains(p.Path))))) return;
+            var suitable = photos.Where(p => Suitable(p, targets[0], m) && (excluded == null || !excluded.Contains(p.Path))).ToArray();
             if (suitable.Length > 0) modes.Add((m, suitable, weight));
         }
         Add(CompositionMode.Gallery, s.GalleryEnabled, s.GalleryWeight);
@@ -53,7 +64,8 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
         repeats = previous == chosen.Mode ? repeats + 1 : 1;
         previous = chosen.Mode;
         var target = s.IsPerDisplay(chosen.Mode) && displayViewports?.Count > 0 ? displayViewports[0] : viewport;
-        return SelectPhotos(chosen.Mode, chosen.Photos, target, s, excluded);
+        var plan = SelectPhotos(chosen.Mode, chosen.Photos, target, s, excluded);
+        return plan?.Mode == CompositionMode.VerticalPan && Mirror(plan.Photos[0]) ? plan with { MirrorPerDisplay = true } : plan;
     }
     public CompositionPlan? ForMode(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, CompositionMode mode, ISet<string>? excluded = null)
     {

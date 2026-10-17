@@ -47,6 +47,7 @@ internal static class Program
             if (args.Contains("--test-pattern-toggle")) await Test("test pattern button previews draft without saving and restores playback", TestPatternToggleAsync);
             if (args.Contains("--group-deletion")) await Test("group delete buttons preserve screens and survive refresh, save and reopen", GroupDeletionAsync);
             if (args.Contains("--per-display-modes")) await Test("per-mode display routing, face-safe rendering and lifecycle", PerDisplayModesAsync);
+            if (args.Contains("--mirror-gallery")) await Test("automatic same-photo vertical mirrors and smooth face-safe Gallery reflow", MirrorGalleryAsync);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -96,6 +97,27 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("small vertical photos mirror only when all local viewports fit", () => Sync(() =>
+        {
+            var s = new WallSettings { GalleryEnabled = false, GalleryScrollEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false };
+            var engine = new CompositionEngine(new PhotoSelector(new Random(4)), new Random(4));
+            var wall = new Viewport(4800, 1080); Viewport[] displays = [new(1920, 1080), new(2880, 1440)];
+            var small = Photo("small", 800, 2400);
+            CompositionPlan? Plan(PhotoInfo p, IReadOnlyList<Viewport>? local = null) => engine.Next(new[] { p }, wall, s, displayViewports: local);
+            Check(Plan(small, displays)?.MirrorPerDisplay == true, "a photo rejected at wall width is eligible as one shared mirror");
+            Check(Plan(Photo("large", 1600, 4800), displays)?.MirrorPerDisplay == false, "large photos keep spanning");
+            Check(Plan(Photo("limit", 1152, 3456), displays)?.MirrorPerDisplay == false, "exactly the upscale limit still spans");
+            Check(Plan(Photo("tiny", 400, 1200), displays) == null, "the same photo must meet the limit on every display");
+            Check(Plan(small) == null && Plan(small, new[] { wall }) == null, "no fallback without a narrower connected output");
+            Check(Plan(small, displays.Take(1).ToArray())?.MirrorPerDisplay == true, "a saved wall with one surviving output can mirror locally");
+            Check(Plan(small with { RawWidth = 2400, RawHeight = 800, Orientation = 6 }, displays)?.MirrorPerDisplay == true, "use oriented source width");
+            Check(Plan(Photo("landscape", 2400, 800), displays) == null, "fallback does not turn landscapes into vertical Pan");
+            Check(engine.Next(new[] { small }, wall, s, new HashSet<string> { small.Path }, displays) == null, "mirror candidates respect exclusions");
+            s.VerticalPanPerDisplay = true;
+            Check(Plan(small, displays)?.MirrorPerDisplay == false, "explicit per-display mode keeps separate photo selection");
+            s.VerticalPanPerDisplay = false; s.PanWidthFraction = .6;
+            Check(Plan(small, displays)?.MirrorPerDisplay == false, "configured narrower Pan can avoid fallback");
+        }));
         await Test("spanning face-safe Gallery and vertical Pan avoid display seams", () => Sync(FaceBoundaryGeometry));
         await Test("mode-specific physical viewports, selection and settings compatibility", () => Sync(() =>
         {
@@ -448,6 +470,111 @@ internal static class Program
             foreach (var descendant in VisualDescendants<T>(child)) yield return descendant;
         }
     }
+    private static async Task MirrorGalleryAsync()
+    {
+        static void Save(FrameworkElement element, string name, int width, int height)
+        {
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(Snapshot(element, width, height)));
+            using var stream = File.Create(Path.Combine(root, name)); encoder.Save(stream);
+        }
+        var settings = new WallSettings { FadeSeconds = 1.2, GlassBackground = false };
+        FrameRect[] regions = [new(0, 0, 400, 300), new(400, 0, 400, 300)];
+        var scheduler = new AnimationScheduler(); var transitions = new TransitionController();
+        var renderer = new PhotoRenderer(new(800, 300), settings, transitions, scheduler, regions);
+        var a = Photo("a", 400, 800) with { Faces = [new(.25, .1, .5, .3)] };
+        var b = a with { Path = "b" };
+        var image = BitmapFrame.Create(new Uri(Fixture("reflow.png", 80, 160)));
+        try
+        {
+            var scene = renderer.Build(new(CompositionMode.Gallery, new[] { a, b }), new[] { image, image }, new Random(1));
+            Save((FrameworkElement)renderer.Content, "gallery-before.png", 800, 300);
+            await renderer.ShowAsync(scene, CancellationToken.None);
+            await Until(() => scene.Canvas.Opacity > .999, 3000);
+            Save((FrameworkElement)renderer.Content, "gallery-before.png", 800, 300);
+            var slots = scene.Slots.ToArray();
+            FrameRect Rect(System.Windows.Controls.Border slot) => new(Canvas.GetLeft(slot), Canvas.GetTop(slot), slot.Width, slot.Height);
+            var before = slots.Select(Rect).ToArray();
+            var replacement = a with { Path = "wide", RawWidth = 1600, RawHeight = 800 };
+            var expected = FaceSafeLayout.Gallery(new[] { replacement, b }, scene.Viewport, settings.Gap, regions);
+            var changed = Enumerable.Range(0, slots.Length).First(i => Math.Abs(before[i].X - expected[i].X) > 1 || Math.Abs(before[i].Width - expected[i].Width) > 1);
+            bool Intermediate()
+            {
+                Snapshot((FrameworkElement)renderer.Content, 800, 300);
+                var rect = Rect(slots[changed]); var from = before[changed]; var to = expected[changed];
+                var fraction = Math.Abs(to.X - from.X) > 1 ? (rect.X - from.X) / (to.X - from.X) : (rect.Width - from.Width) / (to.Width - from.Width);
+                return fraction > .05 && fraction < .9;
+            }
+            var replacementImage = BitmapFrame.Create(new Uri(Fixture("reflow-wide.png", 160, 80)));
+            var moving = renderer.ReplaceSlotAsync(scene, 0, replacement, replacementImage, CancellationToken.None);
+            await Until(Intermediate, 2000);
+            Check(Intermediate() && slots.SequenceEqual(scene.Slots) && scene.Foreground.Children.Count == slots.Length,
+                "existing slots actually move through intermediate geometry rather than fading a rebuilt layout");
+            scheduler.SetPaused(true); transitions.SetPaused(true); await Task.Delay(100);
+            var frozen = slots.Select(Rect).ToArray(); await Task.Delay(180);
+            Check(!moving.IsCompleted && frozen.SequenceEqual(slots.Select(Rect)), "Gallery reflow and fade pause together");
+            Save((FrameworkElement)renderer.Content, "gallery-moving.png", 800, 300);
+            scheduler.SetPaused(false); transitions.SetPaused(false); await moving;
+            await Until(() => slots.All(s => !DependencyPropertyHelper.GetValueSource(s, Canvas.LeftProperty).IsAnimated), 2000);
+            for (var i = 0; i < slots.Length; i++)
+                Check(Rect(slots[i]) == expected[i] && !DependencyPropertyHelper.GetValueSource(slots[i], Canvas.LeftProperty).IsAnimated,
+                    "reflow commits face-safe final geometry and removes clocks without jumping back");
+            Save((FrameworkElement)renderer.Content, "gallery-after.png", 800, 300);
+            using var cancel = new CancellationTokenSource();
+            var interrupted = renderer.ReplaceSlotAsync(scene, 0, a, image, cancel.Token);
+            await Task.Delay(120); cancel.Cancel();
+            try { await interrupted; Check(false, "replacement must observe cancellation"); } catch (OperationCanceledException) { }
+            var cancelledFrames = FaceSafeLayout.Gallery(new[] { a, b }, scene.Viewport, settings.Gap, regions);
+            await Until(() => slots.All(s => !DependencyPropertyHelper.GetValueSource(s, FrameworkElement.WidthProperty).IsAnimated), 2000);
+            Check(slots.Select(Rect).SequenceEqual(cancelledFrames) && slots.All(s => !DependencyPropertyHelper.GetValueSource(s, FrameworkElement.WidthProperty).IsAnimated),
+                "Next/stop cancellation leaves a settled layout without animation clocks");
+        }
+        finally { renderer.Clear(); renderer.Close(); }
+
+        var monitors = MonitorManager.Enumerate().Take(2).ToArray(); Check(monitors.Length == 2, "two displays required");
+        var folder = Path.Combine(root, "mirror-photos"); Directory.CreateDirectory(folder);
+        var sourceWidth = (int)Math.Ceiling(monitors.Max(m => m.Width) * .96 / 4) + 1;
+        for (var i = 0; i < 2; i++) File.Copy(Fixture($"mirror-{i}.png", sourceWidth, sourceWidth * 6), Path.Combine(folder, $"mirror-{i}.png"), true);
+        var config = new WallSettings { StartOnLaunch = false, Folders = [folder], FadeSeconds = .2, GlassBackground = false,
+            GalleryEnabled = false, GalleryScrollEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false,
+            FaceAwarePanDirection = false, StopAtFace = false, AvoidFaceDisplayBoundaries = false, CacheMegabytes = 64,
+            Displays = monitors.Select((m, i) => new DisplayPlacement { Id = m.Id, X = i == 0 ? 0 : monitors[0].Width, Y = 0,
+                Width = m.Width, Height = m.Height, GroupId = "mirror-group", HideTaskbar = false }).ToList() };
+        await using var controller = new WallController(config); await controller.InitializeAsync();
+        await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);
+        var state = controller.GroupStates.Single();
+        Check(state.Mode == CompositionMode.VerticalPan && state.PerDisplay && state.Surfaces.Count == 2
+            && state.PhotoPaths.Distinct().Count() == 1 && !controller.Settings.VerticalPanPerDisplay,
+            "a real spanning session automatically mirrors the same small photo without changing the user's per-mode setting");
+        var live = Application.Current.Windows.OfType<PhotoRenderer>().Single(w => w.Current?.Mode == CompositionMode.VerticalPan);
+        var mirror = live.Current!;
+        Check(mirror.Displays.All(d => d.Viewport == new Viewport(monitors.Single(m => m.Id == d.DisplayId).Width, monitors.Single(m => m.Id == d.DisplayId).Height))
+            && ReferenceEquals(mirror.Displays[0].Bitmaps[0], mirror.Displays[1].Bitmaps[0]), "local physical viewports share one decoded bitmap");
+        await Until(() => mirror.Canvas.Opacity > .999, 5000);
+        for (var i = 0; i < 2; i++) Save(mirror.Displays[i].Canvas, $"mirror-display-{i}.png", (int)mirror.Displays[i].Viewport.Width, (int)mirror.Displays[i].Viewport.Height);
+        controller.TogglePause(); Check(controller.GroupStates.Single().IsPaused, "automatic mirrors share group pause");
+        controller.TogglePause(); controller.Next();
+        await Until(() => live.Current != mirror, 10000);
+        Check(live.Current != mirror && controller.GroupStates.Single().PhotoPaths.Distinct().Count() == 1, "Next replaces the whole mirror group together");
+        var spanning = SettingsManager.Clone(config); spanning.MaxPanUpscale = 12;
+        await controller.ApplyAsync(spanning); await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);
+        Check(controller.CurrentMode == CompositionMode.VerticalPan && !controller.GroupStates.Single().PerDisplay,
+            "a photo that fits the configured span width keeps spanning");
+        var individual = SettingsManager.Clone(config); individual.VerticalPanPerDisplay = true;
+        await controller.ApplyAsync(individual); await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);
+        Check(controller.CurrentMode == CompositionMode.VerticalPan && controller.GroupStates.Single().PhotoPaths.Distinct().Count() == 2,
+            "explicit per-display mode still chooses separate photos");
+        var missing = SettingsManager.Clone(config); missing.Displays[0].Id = "absent-mirror-display";
+        await controller.ApplyAsync(missing); await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);
+        state = controller.GroupStates.Single();
+        Check(state.Mode == CompositionMode.VerticalPan && state.Surfaces.Count == 1 && state.Surfaces[0].DisplayId == monitors[1].Id
+            && state.Viewport == new WallLayout(missing.Displays).Viewport, "mirrors use only connected outputs and retain saved wall dimensions");
+        File.WriteAllText(Path.Combine(root, "mirror-state.json"), JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+        await controller.StopAsync(); Check(!controller.IsRunning && controller.GroupStates.Count == 0, "automatic mirror group stops cleanly");
+    }
     private static async Task PerDisplayModesAsync()
     {
         static BitmapSource Solid(Color color, int width = 16, int height = 16)
@@ -522,7 +649,7 @@ internal static class Program
         }
         finally { renderer.Clear(); renderer.Close(); }
 
-        // Faces in a spanning Gallery use safe layouts even during replacement.
+        // Faces in a spanning Gallery finish replacement at a safe layout.
         var regions = new[] { new FrameRect(0, 0, 400, 300), new FrameRect(400, 0, 400, 300) };
         var safeRenderer = new PhotoRenderer(new(800, 300), settings, new TransitionController(), new AnimationScheduler(), regions);
         var facePhoto = Photo("face", 800, 1600) with { Faces = [new(.25, .1, .5, .5)] };

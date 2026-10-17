@@ -101,7 +101,7 @@
                     <CheckBox Grid.Column="1" x:Name="ZoomPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding ZoomPerDisplay}"/>
                 </Grid>
                 <CheckBox x:Name="AvoidFaceDisplayBoundariesCheck" Content="スパン時に顔が画面の境目に重ならないよう配置" IsChecked="{Binding AvoidFaceDisplayBoundaries}"/>
-                <TextBlock Text="Gallery・Vertical Panで検出した顔を収める位置を優先します。位置の調整だけで収まらない場合は写真を小さくします。横スクロール・横パンは境界を通過します。" Style="{StaticResource Hint}"/>
+                <TextBlock Text="Galleryの停止後の配置・Vertical Panで顔を画面内へ収めます。位置の調整だけで収まらない場合は写真を小さくします。Galleryの再配置中や横スクロール・横パンは境界を通過します。" Style="{StaticResource Hint}"/>
                 <TextBlock Text="抽選ウェイト（0で抽選対象から除外）"/>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,12,0"><TextBlock Text="Gallery"/><TextBox Text="{Binding GalleryWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
@@ -116,7 +116,7 @@
                 <TextBox Text="{Binding PanWidthFraction, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <CheckBox Content="顔が見える位置で縦パンを止める" IsChecked="{Binding StopAtFace}"/>
                 <CheckBox Content="全画面表示でも顔が見える位置を優先" IsChecked="{Binding FaceAwareFraming}"/>
-                <TextBlock Text="画面より小さい画像もパンできます。粗さが気になる場合は許容拡大率を下げてください。拡大率を超える写真はGalleryで表示します。" Style="{StaticResource Hint}"/>
+                <TextBlock Text="縦パンでスパン幅への拡大率が上限を超えても各画面に収まる写真は、同じ写真を各ディスプレイへ自動でミラー表示します。各画面でも上限を超える写真はパンの候補から外れます。" Style="{StaticResource Hint}"/>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="動き"><ScrollViewer><StackPanel>
                 <TextBlock Text="ゆったりとしたモーション" FontSize="20"/>

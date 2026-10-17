@@ -290,16 +290,16 @@ public sealed class PhotoRenderer : Window
     {
         if (Current == null || !Current.Surfaces.Contains(scene)) return;
         var viewport = scene.Viewport;
-        if (scene.DisplayRegions.Count > 0 && (FaceSafeLayout.Bounds(photo) != null || scene.Photos.Any(p => FaceSafeLayout.Bounds(p) != null)))
-        {
-            await ReplaceSafeGalleryAsync(scene, index, photo, bitmap, token); return;
-        }
+        var photos = scene.Photos.ToArray(); photos[index] = photo;
+        // Protect the resting layout. Faces may cross seams while the existing
+        // slots smoothly move and resize toward their new positions.
+        var frames = scene.DisplayRegions.Count > 0 ? FaceSafeLayout.Gallery(photos, viewport, settings.Gap, scene.DisplayRegions)
+            : CompositionEngine.GalleryLayout(photos, viewport, settings.Gap);
         var slot = scene.Slots[index];
         var old = slot.Child;
         var next = CreatePhoto(photo, bitmap); next.Opacity = 0;
         var stack = new Grid(); if (old != null) { slot.Child = null; stack.Children.Add(old); } stack.Children.Add(next); slot.Child = stack;
         scene.Photos[index] = photo; scene.Bitmaps[index] = bitmap;
-        var frames = CompositionEngine.GalleryLayout(scene.Photos, viewport, settings.Gap);
         var fade = transitions.Create(); TransitionController.Animate(fade, next, OpacityProperty, 0, 1, settings.FadeSeconds);
         for (var i = 0; i < frames.Count; i++)
         {
@@ -310,35 +310,14 @@ public sealed class PhotoRenderer : Window
             TransitionController.Animate(fade, item, HeightProperty, item.ActualHeight > 0 ? item.ActualHeight : item.Height, frame.Height, settings.FadeSeconds);
         }
         transitions.Start(fade, next);
-        await scheduler.DelayAsync(settings.FadeSeconds, token);
-        for (var i = 0; i < frames.Count; i++) SetRect(scene.Slots[i], frames[i]);
-        // Set the final values before removing the clocks (avoid a one-frame jump).
-        next.Opacity = 1; transitions.RemoveRoot(next);
-        stack.Children.Clear(); slot.Child = next;
-    }
-    private async Task ReplaceSafeGalleryAsync(SceneVisual scene, int index, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
-    {
-        var photos = scene.Photos.ToArray(); photos[index] = photo;
-        var frames = FaceSafeLayout.Gallery(photos, scene.Viewport, settings.Gap, scene.DisplayRegions);
-        var bitmaps = scene.Bitmaps.ToArray(); bitmaps[index] = bitmap;
-        var next = new Canvas { Width = scene.Viewport.Width, Height = scene.Viewport.Height, ClipToBounds = true, Opacity = 0 };
-        var slots = new List<Border>();
-        for (var i = 0; i < photos.Length; i++)
-        {
-            var slot = CreateSlot(photos[i], bitmaps[i]); SetRect(slot, frames[i]); slots.Add(slot); next.Children.Add(slot);
-        }
-        scene.Foreground.Children.Add(next);
-        var fade = transitions.Create(); TransitionController.Animate(fade, next, OpacityProperty, 0, 1, settings.FadeSeconds);
-        transitions.Start(fade, next);
         try { await scheduler.DelayAsync(settings.FadeSeconds, token); }
         finally
         {
-            // Crossfade between two safe layouts instead of translating faces
-            // through a seam during the Gallery's aspect-ratio reflow.
-            next.Opacity = 1; transitions.RemoveRoot(next); next.Children.Clear(); scene.Foreground.Children.Clear();
-            foreach (var slot in slots) scene.Foreground.Children.Add(slot);
-            scene.Slots.Clear(); scene.Slots.AddRange(slots);
-            scene.Photos.Clear(); scene.Photos.AddRange(photos); scene.Bitmaps.Clear(); scene.Bitmaps.AddRange(bitmaps);
+            for (var i = 0; i < frames.Count; i++) SetRect(scene.Slots[i], frames[i]);
+            // Commit final values before removing clocks, including Next/stop
+            // cancellation, so the outgoing scene cannot snap back mid-fade.
+            next.Opacity = 1; transitions.RemoveRoot(next);
+            stack.Children.Clear(); slot.Child = next;
         }
     }
     private Border CreateSlot(PhotoInfo photo, BitmapSource bitmap)

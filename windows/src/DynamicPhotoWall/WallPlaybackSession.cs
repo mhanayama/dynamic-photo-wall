@@ -200,6 +200,13 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         var viewports = regions.Select(r => new Viewport(r.Region.Width, r.Region.Height)).ToArray();
         var plan = composition.Next(photos, layout.Viewport, Settings, excluded, viewports) ?? composition.Next(photos, layout.Viewport, Settings, displayViewports: viewports);
         if (plan == null) return null;
+        if (plan.MirrorPerDisplay)
+        {
+            // Decode and analyze only once. Every connected output receives the
+            // same photo/bitmap at its own dimensions and on the group clock.
+            var single = await PreparePartAsync(plan, viewports.MaxBy(v => v.Width)!, token);
+            return single == null ? null : new(plan.Mode, regions.Select(r => single with { DisplayId = r.Id, Region = r.Region }).ToArray());
+        }
         if (!Settings.IsPerDisplay(plan.Mode))
         {
             var single = await PreparePartAsync(plan, layout.Viewport, token);
@@ -235,7 +242,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
                     && plan.Mode is CompositionMode.Gallery or CompositionMode.VerticalPan;
             kept.Add(analyzeFace ? await faces.AnalyzeAsync(photo, image, token) : photo); images.Add(image);
         }
-        return kept.Count > 0 ? new(new(plan.Mode, kept), images) : null;
+        return kept.Count > 0 ? new(plan with { Photos = kept }, images) : null;
     }
     private async Task<(PhotoInfo Photo, BitmapSource Image)?> PrepareScrollPhotoAsync(SceneVisual scene, string? reserved, CancellationToken token)
     {
