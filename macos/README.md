@@ -87,7 +87,7 @@ bash macos/scripts/package.sh
 
 DMG用の一時フォルダはプロジェクト外に作成し、終了時に削除します。DMG内の `/Applications` リンクをエディタがたどって大量のファイルを検索することを防ぎます。VS Codeのワークスペース設定でもビルド生成物をファイル一覧・検索・監視から除外しています。
 
-[macOS v1.0.1（build 3）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)を2026-10-15にユーザー承認で公開しました。v1.0.0は以前の実装として保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
+[macOS v1.1.0（build 4）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)は2026-10-18の更新です。変更点と検証状況は[リリースノート](docs/RELEASE-NOTES-v1.1.0.md)を参照してください。v1.0.1以前のReleaseも保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
 
 ## アイコンと管理ファイル
 

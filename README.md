@@ -59,7 +59,7 @@ Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` ス�
 open macos/DynamicPhotoWall.xcodeproj
 ```
 
-隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。macOS v1.0.1（build 3）は[GitHub Release](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)で公開済みです。実機受け入れの残件はTODOで継続管理します。
+隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。macOS v1.1.0（build 4）は[GitHub Release](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)からダウンロードできます。実機受け入れの残件はTODOで継続管理します。
 
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 

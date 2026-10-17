@@ -1,6 +1,6 @@
 # Windows先行機能のMac移植・検証記録
 
-2026-10-17（日本時間）。作業開始時の`0f31687`から`git pull --ff-only`で`2f140ce`まで取り込み、作業中に追加された`d1044b6`もautostashで差分を保持して取り込んだ。[handover](../WINDOWS_DELTA_HANDOVER.md)のD01〜D09をMacへ反映。Mac mini / arm64、macOS 27.0.1、Xcode 27.0で検証した。製品候補は1.0.1 build 4。GitHub Releaseへは公開していない。
+2026-10-17（日本時間）。作業開始時の`0f31687`から`git pull --ff-only`で`2f140ce`まで取り込み、作業中に追加された`d1044b6`もautostashで差分を保持して取り込んだ。[handover](../WINDOWS_DELTA_HANDOVER.md)のD01〜D09をMacへ反映。Mac mini / arm64、macOS 27.0.1、Xcode 27.0で検証した。製品候補は1.0.1 build 4。この検証時点ではGitHub Releaseへ公開していない。翌日のv1.1.0公開については[リリースノート](RELEASE-NOTES-v1.1.0.md)を参照。
 
 ## 実装と自動検証
 

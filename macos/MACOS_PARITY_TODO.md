@@ -8,6 +8,8 @@
 
 **macOS v1.0.1（build 3）を公開済み。** フォルダー削除を含む既知のコード上の不足を修正し、2026-10-15のユーザー承認により[更新版を公開](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)した。下記の実機受け入れは未完了のまま継続管理し、Windowsとの完全な機能同等性を実機確認済みとは扱わない。
 
+**2026-10-18の更新:** macOS v1.1.0（build 4）にD01〜D09と写真アルバム対応を含める。[リリースノート](docs/RELEASE-NOTES-v1.1.0.md)の単体109件・UI5件と、実機未確認の条件を区別する。以下の実機受け入れは引き続き未完了として管理する。
+
 ## 許容するOS差分（ユーザー合意済み）
 
 2026-10-15に「Dock／メニューバーはmacOS側の設定に従う仕様として差分を認める」と確認済み。Mac版はDock／メニューバーの表示設定を変更しない。Windowsの対象画面限定タスクバー非表示を、全画面化や全画面共通の自動非表示へ置き換えない。Appleの[アプリケーション表示オプション](https://developer.apple.com/documentation/appkit/nsapplication/presentationoptions-swift.struct)にはアプリ／システムの表示制御があるが、対象ディスプレイIDを指定する同等APIは確認できていない。
