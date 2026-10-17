@@ -15,7 +15,9 @@ if (generate)
     {
         IReadOnlyList<FaceRegion>? faces = cases.Count % 2 == 0 ? [new(.1,.03,.25,.3), new(.6,.5,.1,.15)] : null;
         var photo = new PhotoInfo($"/fixture/{cases.Count}.jpg", dimensions.Item1, dimensions.Item2, 1, null, 1, 0, faces);
-        var s = new WallSettings { StopAtFace = cases.Count % 3 != 0, FaceAwareFraming = cases.Count % 4 != 0 };
+        // This shared suite preserves the macOS v1.0.1 baseline. New face-directed
+        // pan cases belong in an additional suite when the Swift port is ready.
+        var s = new WallSettings { FaceAwarePanDirection = false, StopAtFace = cases.Count % 3 != 0, FaceAwareFraming = cases.Count % 4 != 0 };
         var reverse = cases.Count % 2 != 0;
         var plan = MotionEngine.Plan(mode, photo, v, s, reverse, .37, .63);
         cases.Add(new($"{mode}-{cases.Count}", mode, photo.Width, photo.Height, faces, v, s, reverse, .37, .63, plan,

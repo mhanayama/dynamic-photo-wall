@@ -60,6 +60,8 @@ open macos/DynamicPhotoWall.xcodeproj
 
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 
+2026-10-17に追加したWindowsのマルチディスプレイ・グループ・設定UI・即時テスト表示・顔によるパン方向のMac移植は、[差分引き継ぎ資料](macos/WINDOWS_DELTA_HANDOVER.md)を基準に進めます。
+
 ## 共通の計画
 
 [Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)。Windows内の複数画面表示と配置設定を実装済み。MacとのPC間同期は今後の段階です。

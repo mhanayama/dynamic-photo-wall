@@ -1,5 +1,7 @@
 # Windows / macOS 機能差レビュー
 
+**2026-10-17追記:** 次に移植する機能は[Windows追加分の引き継ぎ](WINDOWS_DELTA_HANDOVER.md)のD01〜D05を参照。以下の最新判定はv1.0.1時点で、今回追加された画面グループ・即時テスト表示・顔によるパン方向を含まない。
+
 更新日: 2026-10-15（日本時間）。最新の実装・判定・全TODOは [MACOS_PARITY_TODO](MACOS_PARITY_TODO.md) を正本とする。
 
 **最新判定:** フォルダー行の削除操作と保存後の再起動をUIで検証し、次構成の先読み、FSEvents監視、永続metadata／顔キャッシュ、Vision顔検出とPan／Zoom位置調整、前景配置からの動的背景、遮蔽休止、ログイン起動、完全な設定ドラフト／原子的保存、ログ、単一起動を追加した。Pan／Zoomのキャプションを移動画像の外へ固定し、SineEaseのフェードと、大きな顔で高さが画面未満になる縦Panの中央配置もWindowsへ整合。Windows Coreの共通fixtureと隔離した単体74件／UI 3件のテストを実行し、arm64 Releaseのコンパイルも成功。実機受け入れの残件を明記したうえで、2026-10-15のユーザー承認により[v1.0.1 build 3を公開](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)した。

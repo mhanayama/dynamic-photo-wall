@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-17 — 最新Mac版の取り込みと共通fixture互換性
+
+- Mac側の`7508db8`までの更新を取り込み、Windowsの追加機能を統合。Macの既存実装・公開記録を保持した。
+- 新設定`FaceAwarePanDirection`の既定値ONにより、旧共通fixtureは`HorizontalPan-4: field 2`で不一致となった。既存36ケースと生成器へ方向設定OFFを明示し、旧動作の期待座標を維持した。製品の既定値はONのまま。
+- C# verifierは36 motion／eligibilityケース、Gallery配置9ケース、Selector2ケース、計704 assertionsが成功。Macアプリ・SwiftテストはWindows上では実行していない。方向ONのMac回帰追加は[引き継ぎ資料](../../macos/WINDOWS_DELTA_HANDOVER.md)で依頼する。
+
+```powershell
+.\.tools\dotnet\dotnet.exe run --project tests/ParityVerifier -- macos/DynamicPhotoWallTests/Fixtures/WindowsParity.json
+```
+
 ## 2026-10-17 — 一般・タスクバー移動・グループ一覧・即時テスト表示
 
 - 「表示設定」を「一般」へ改名し、タスクバー設定を使用ディスプレイへ移動。

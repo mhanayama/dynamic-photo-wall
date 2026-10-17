@@ -5,3 +5,5 @@
 - `hopper.webp`: public-domain US Navy photograph of Grace Hopper, from [Pillow 11.3.0 test images](https://github.com/python-pillow/Pillow/blob/11.3.0/Tests/images/hopper.webp). Used to test a real WebP container (128×128). Not shipped in the app target.
 
 JPEG and HEIC/HEIF fixtures are encoded during tests into temporary directories. No user photo or production setting is used.
+
+As of 2026-10-17, the existing 36 motion cases explicitly set `faceAwarePanDirection: false` to preserve the macOS v1.0.1 baseline while Windows defaults to the new face-directed behavior. The generator uses the same setting. Add direction-enabled cases when porting the feature; see [the handover](../../WINDOWS_DELTA_HANDOVER.md). Existing expected coordinates remain unchanged.
