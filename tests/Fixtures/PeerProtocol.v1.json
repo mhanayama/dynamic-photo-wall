@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "hello": {
+    "protocolVersion": 1,
+    "peerId": "10000000-0000-0000-0000-000000000001",
+    "name": "Fixture Mac",
+    "platform": "macos"
+  },
+  "groupId": "20000000-0000-0000-0000-000000000001",
+  "displays": [
+    {
+      "key": { "peerId": "10000000-0000-0000-0000-000000000001", "displayId": "screen1" },
+      "selected": true, "groupId": "20000000-0000-0000-0000-000000000001",
+      "x": -1920, "y": 0, "width": 1920, "height": 1080
+    },
+    {
+      "key": { "peerId": "10000000-0000-0000-0000-000000000002", "displayId": "screen1" },
+      "selected": true, "groupId": "20000000-0000-0000-0000-000000000001",
+      "x": 0, "y": 0, "width": 1920, "height": 1080
+    },
+    {
+      "key": { "peerId": "10000000-0000-0000-0000-000000000002", "displayId": "screen2" },
+      "selected": true, "groupId": null,
+      "x": 1920, "y": 0, "width": 1920, "height": 1080
+    }
+  ],
+  "photo": {
+    "key": {
+      "providerId": "10000000-0000-0000-0000-000000000001",
+      "sourceId": "30000000-0000-0000-0000-000000000001",
+      "generationId": "40000000-0000-0000-0000-000000000001",
+      "imageId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "pixelWidth": 6000, "pixelHeight": 4000, "byteLength": 12000000,
+    "faceMetadata": {
+      "version": 1, "pixelWidth": 6000, "pixelHeight": 4000,
+      "detector": "fixture", "detectorVersion": "1",
+      "state": "complete", "faces": [{ "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 }]
+    }
+  },
+  "timeline": {
+    "anchor": { "sharedTime": 100, "position": 0, "paused": false },
+    "changes": [
+      { "sequence": 1, "effectiveAt": 103, "paused": true, "seekPosition": null },
+      { "sequence": 2, "effectiveAt": 105, "paused": false, "seekPosition": null },
+      { "sequence": 3, "effectiveAt": 108, "paused": false, "seekPosition": 20 }
+    ],
+    "samples": [
+      { "sharedTime": 100, "position": 0 },
+      { "sharedTime": 102, "position": 2 },
+      { "sharedTime": 104, "position": 3 },
+      { "sharedTime": 106, "position": 4 },
+      { "sharedTime": 108, "position": 20 },
+      { "sharedTime": 109, "position": 21 }
+    ]
+  }
+}

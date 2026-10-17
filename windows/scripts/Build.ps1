@@ -30,6 +30,8 @@ $skiaRoot = Join-Path $packagesRoot 'skiasharp.nativeassets.win32\3.119.4'
 Copy-Item -LiteralPath (Join-Path $skiaRoot 'LICENSE.txt') -Destination (Join-Path $release 'SkiaSharp-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $skiaRoot 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $release 'SkiaSharp-THIRD-PARTY-NOTICES.txt') -Force
 if ($Test -or $DesktopTest) {
+    & $sdk run --project (Join-Path $projectRoot 'tests\NetworkCore.Tests\NetworkCore.Tests.csproj') -c Release -- (Join-Path $projectRoot 'artifacts\windows\network-core')
+    if ($LASTEXITCODE -ne 0) { throw 'Network core tests failed.' }
     & $sdk build 'tests\DynamicPhotoWall.Tests\DynamicPhotoWall.Tests.csproj' -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Test build failed.' }
     $testArguments = @('tests\DynamicPhotoWall.Tests\bin\Release\net10.0-windows10.0.19041.0\DynamicPhotoWall.Tests.dll', (Join-Path $projectRoot 'artifacts\windows\smoke-data'))

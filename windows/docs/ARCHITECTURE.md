@@ -6,6 +6,8 @@
 WPFアプリは `DesktopIntegration`、`PhotoLibrary`、`Rendering`、`Motion`、`UI`、`Configuration` に分離する。
 画像はローカルで処理する。ネットワーク通信、テレメトリ、壁紙設定APIは使用しない。
 
+将来のピア間通信に向け、Coreの`Networking`へデータ契約・共有再生時間・切断復旧状態・暗号化キャッシュを追加した。現在のアプリはまだこれらへ接続せず、ソケットも開かない。実装範囲と隔離テストは[ネットワーク基盤](../../docs/NETWORK-CORE.md)を参照。`Build.ps1 -Test`は新しいCoreテストも実行する。
+
 ## Phase 1の方針
 
 1. モニターを物理ピクセル座標で列挙する。負座標を許容する。
