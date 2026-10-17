@@ -83,7 +83,7 @@
 
 ## 再現コマンドと証跡
 
-リポジトリ直下で `bash macos/scripts/verify.sh`。UIテストを省いた追加検証は `--unit-only`。専用アプリID `asia.dix.mhanayama.DynamicPhotoWall.Regression` を使い、UIテストのhostはデスクトップウィンドウを作成しない。ログは `artifacts/macos-verification/`（Git対象外）。C# verifierはmacOS上でWindows Coreの純粋計算を実行するもので、WPF／Windows実機テストの実行ではない。
+リポジトリ直下で `bash macos/scripts/verify.sh`。UIテストを省いた追加検証は `--unit-only`。専用アプリID `asia.dix.mhanayama.DynamicPhotoWall.Regression` を使い、UIテストのhostはデスクトップウィンドウを作成しない。ログは `artifacts/macos/verification/`（Git対象外）。C# verifierはmacOS上でWindows Coreの純粋計算を実行するもので、WPF／Windows実機テストの実行ではない。配布物は `release/macos/arm64/`、archive等は `artifacts/macos/package/`。ルート直下へ一時ファイルを作らず、[共通規則](../docs/GENERATED-FILES.md)に従う。
 
 最新の実行結果（2026-10-15、Xcode 27.0／arm64）: **単体74件・UI 3件合格**、C#共通fixture **704 assertions合格**、Releaseコンパイル成功。Swiftソースのconcurrency警告なし。AppIntents未使用のメタデータ通知と、XCTestホストのApple linkd接続通知は製品のSwiftコンパイルエラーとは分けて記録した。
 

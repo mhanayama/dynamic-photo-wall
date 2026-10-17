@@ -30,7 +30,10 @@ dynamic-photo-wall/
 │   ├── DynamicPhotoWallUITests/
 │   ├── MACOS_PARITY_TODO.md
 │   └── README.md
-├── docs/                            # プラットフォーム共通の計画
+├── docs/                            # プラットフォーム共通の計画・作業規則
+├── release/                         # 両OSの配布物（Git対象外）
+│   ├── windows/win-x64/
+│   └── macos/arm64/
 ├── photos/                          # ローカル写真（Git対象外）
 └── artifacts/                       # ビルド・検証結果（Git対象外）
 ```
@@ -46,7 +49,7 @@ dynamic-photo-wall/
 .\windows\Start-PhotoWall.ps1
 ```
 
-ビルド後はリポジトリ直下の **`DynamicPhotoWall.exe`をダブルクリック**して起動できます。ランタイム同梱の単一EXEです。ビルド元と配布用ドキュメントは `artifacts/win-x64-single-file`、ショートカットはリポジトリ直下に作成します。Visual Studioでは `windows/DynamicPhotoWall.sln` を開きます。設定・操作・制約は [Windows版README](windows/README.md) を参照してください。
+ビルド後は **`release/windows/win-x64/DynamicPhotoWall.exe`をダブルクリック**して起動できます。ランタイム同梱の単一EXEで、ドキュメント・ライセンス・ショートカットも同じディレクトリに置きます。Visual Studioでは `windows/DynamicPhotoWall.sln` を開きます。設定・操作・制約は [Windows版README](windows/README.md) を参照してください。
 
 ## macOS
 
@@ -61,6 +64,10 @@ open macos/DynamicPhotoWall.xcodeproj
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 
 2026-10-17に追加したWindowsのマルチディスプレイ・グループ・設定UI・即時テスト表示・顔によるパン方向のMac移植は、[差分引き継ぎ資料](macos/WINDOWS_DELTA_HANDOVER.md)を基準に進めます。
+
+## 生成物の置き場所
+
+配布物は両OS共通の `release/` 配下へ置きます。Windowsは `release/windows/win-x64/`、Macは `release/macos/arm64/`。ログ・検証画像・archive・DerivedData・staging等は `artifacts/<OS>/` へ置き、プロジェクトルート直下へ一時ファイルやEXE・ショートカットを出しません。[共通規則](docs/GENERATED-FILES.md)と[開発エージェント向け指示](AGENTS.md)を参照してください。
 
 ## 共通の計画
 

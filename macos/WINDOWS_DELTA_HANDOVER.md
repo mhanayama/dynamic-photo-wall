@@ -2,6 +2,18 @@
 
 作成日: 2026-10-17（日本時間）。Windowsの実装基準は `f20e05c`、Macの比較基準は `7508db8`（v1.0.1 build 3の記録）。この資料と同じコミットに含めた共通fixtureの互換性修正も取り込んでから作業する。
 
+## 追加引き継ぎ: 配布物とOS別の一時ファイル
+
+両OS共通の[生成物の規則](../docs/GENERATED-FILES.md)とルートの[AGENTS.md](../AGENTS.md)を守る。配布物はルート配下の **release/** へ統一し、Windowsは`release/windows/win-x64/`、Macは`release/macos/arm64/`。今回Windowsのビルド／起動／ショートカットとMacのpackage／verifyスクリプトを新パスへ変更した。
+
+Mac側はZIP・DMG・SHA256SUMSだけを`release/macos/arm64/`へ置き、archive・DerivedData・archive.log・DMG stagingは`artifacts/macos/package/`、検証ログは`artifacts/macos/verification/`へ置く。その他の一時ファイル・キャプチャ・診断結果は`artifacts/macos/<作業名>/`またはOS標準一時領域へ出す。OS差分で出るファイルを含め、ルート直下へAPP・ZIP・DMG・ショートカット・ログ・一時ファイルを生成／コピーしない。
+
+- [ ] Mac実機で変更後の`verify.sh`／`package.sh`を実行し、完成物と作業ファイルが上記の場所へ分かれることを確認する。
+- [ ] 実行前後のルート直下ファイル一覧を比較する。ignore済みのファイルも確認し、ルートへ生成物が増えていないことを記録する。
+- [ ] 新規スクリプトやリダイレクトも出力先を明示し、配布先変更時はREADME・handover・起動手順を同時に更新する。
+
+Windows上ではMacスクリプトの構文と出力パスを確認する。署名・archive・DMGの実生成はMac側で検証する。過去の検証記録の旧パスは証跡として残してよいが、これからの作業は新パスを使う。
+
 ## 今回実装する差分
 
 オンライン化より先に、Mac単体のマルチディスプレイ対応を進める。Windows側で追加した以下の動作をMacへ移植する。LAN通信・ペアリング・PC間の時計同期・写真転送は今回の範囲外。
@@ -157,10 +169,10 @@ Windowsの再現（リポジトリ直下、通常の対話デスクトップ）:
 
 ```powershell
 .\windows\scripts\Build.ps1 -Test
-.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/handover-settings --settings-ui --test-pattern-toggle
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/handover-settings --settings-ui --test-pattern-toggle
 ```
 
-`.tools`がなければインストール済み`dotnet`を使用する。実写真・スクリーンショット・ログ・EXE・artifactsはGit対象外で、Macへpullしても付いてこない。コミットしたテストコード・fixtureと[検証記録](../windows/docs/TEST-RESULTS.md)で再現する。
+`.tools`がなければインストール済み`dotnet`を使用する。実写真・スクリーンショット・ログ・release・artifactsはGit対象外で、Macへpullしても付いてこない。コミットしたテストコード・fixtureと[検証記録](../windows/docs/TEST-RESULTS.md)で再現する。
 
 Macの再現（Xcode 27／arm64・.NET 10、リポジトリ直下）:
 
@@ -173,4 +185,4 @@ bash macos/scripts/verify.sh
 
 ## Mac側への作業依頼文
 
-> mainの最新を取り込み、macos/WINDOWS_DELTA_HANDOVER.mdを基準にD01〜D05を実装してください。既存Mac v1.0.1の顔検出・背景・監視・設定保存・隔離テストを維持し、マルチディスプレイ、独立グループ、一般／使用ディスプレイ／画面グルーピングのUI、空グループ一覧、保存不要のテスト表示、顔の反対側からのパンを追加します。Dock／メニューバーは合意済みのOS設定に従う仕様を維持。PC間同期は後回しです。共通fixtureの従来ケースは方向OFFを明示してあり、方向ONの回帰を追加してください。自動検証と実機未確認を区別して記録してください。
+> mainの最新を取り込み、macos/WINDOWS_DELTA_HANDOVER.mdを基準にD01〜D05を実装してください。既存Mac v1.0.1の顔検出・背景・監視・設定保存・隔離テストを維持し、マルチディスプレイ、独立グループ、一般／使用ディスプレイ／画面グルーピングのUI、空グループ一覧、保存不要のテスト表示、顔の反対側からのパンを追加します。Dock／メニューバーは合意済みのOS設定に従う仕様を維持。PC間同期は後回しです。共通fixtureの従来ケースは方向OFFを明示してあり、方向ONの回帰を追加してください。AGENTS.mdとdocs/GENERATED-FILES.mdに従い、配布物はrelease/macos/arm64、作業生成物はartifacts/macos配下へ分け、プロジェクトルート直下へ一時ファイルを出さないことも確認してください。自動検証と実機未確認を区別して記録してください。

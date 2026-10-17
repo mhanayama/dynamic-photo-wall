@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-17 — 両OSのreleaseディレクトリ統一
+
+- Windows配布先を`release/windows/win-x64/`へ変更し、起動スクリプト・ショートカットを同じパスへ統一。ショートカットのターゲットと作業ディレクトリを実ファイルから確認。
+- `Build.ps1 -Test`の発行とコア16項目が成功。検証結果は`artifacts/windows/smoke-data/`へ出力。エラー0、NuGetの脆弱性情報へ接続できないNU1900警告あり。
+- ビルド前後でルート直下のファイルが増えないことを確認。既存のルートEXE・ショートカットは`artifacts/windows/legacy-root/`へ退避し、ルートは管理対象のドキュメント・設定ファイルだけになった。
+- 診断`--probe`の既定レポートもデータディレクトリへ変更し、ルート直下の一時JSON生成を避ける。アプリのReleaseコンパイルで確認。
+- Macは配布ZIP／DMGを`release/macos/arm64/`、archive・DerivedData・stagingを`artifacts/macos/package/`、検証結果を`artifacts/macos/verification/`へ分離。Git Bashの`bash -n`で両スクリプトの構文が成功。Mac実機での署名・archive・DMG生成は未実行で、handoverに確認条件を追加。
+
+結果: `artifacts/windows/release-layout/result.json`。[共通規則](../../docs/GENERATED-FILES.md)と[Mac向け引き継ぎ](../../macos/WINDOWS_DELTA_HANDOVER.md)を参照。以下の過去記録の旧出力パスは当時の証跡として保持する。
+
 ## 2026-10-17 — 最新Mac版の取り込みと共通fixture互換性
 
 - Mac側の`7508db8`までの更新を取り込み、Windowsの追加機能を統合。Macの既存実装・公開記録を保持した。

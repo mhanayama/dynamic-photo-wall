@@ -3,14 +3,21 @@
 .tools/
 .vs/
 artifacts/
+/release/
 *.user
 *.lnk
 /DynamicPhotoWall.exe
+/*.log
+/*.tmp
+/*.dmp
+/probe-result.json
 photos/**
 !photos/.gitkeep
 
 # macOS / Xcode local state and build caches
 .DS_Store
+Thumbs.db
+Desktop.ini
 **/xcuserdata/
 *.xcuserstate
 **/DerivedData/

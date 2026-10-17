@@ -7,7 +7,7 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $sdk = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
 if (-not (Test-Path -LiteralPath $sdk)) { $sdk = 'dotnet' }
 if (Test-Path -LiteralPath (Join-Path $projectRoot '.tools\packages')) { $env:NUGET_PACKAGES = Join-Path $projectRoot '.tools\packages' }
-$release = Join-Path $projectRoot 'artifacts\win-x64-single-file'
+$release = Join-Path $projectRoot 'release\windows\win-x64'
 & $sdk publish 'src\DynamicPhotoWall\DynamicPhotoWall.csproj' -c Release -r win-x64 --self-contained true -o $release --nologo `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
     -p:DebugType=embedded -p:PublishTrimmed=false
@@ -32,11 +32,10 @@ Copy-Item -LiteralPath (Join-Path $skiaRoot 'THIRD-PARTY-NOTICES.txt') -Destinat
 if ($Test -or $DesktopTest) {
     & $sdk build 'tests\DynamicPhotoWall.Tests\DynamicPhotoWall.Tests.csproj' -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Test build failed.' }
-    $testArguments = @('tests\DynamicPhotoWall.Tests\bin\Release\net10.0-windows10.0.19041.0\DynamicPhotoWall.Tests.dll', (Join-Path $projectRoot 'artifacts\smoke-data'))
+    $testArguments = @('tests\DynamicPhotoWall.Tests\bin\Release\net10.0-windows10.0.19041.0\DynamicPhotoWall.Tests.dll', (Join-Path $projectRoot 'artifacts\windows\smoke-data'))
     if ($DesktopTest) { $testArguments += '--desktop' }
     & $sdk @testArguments
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 }
-Copy-Item -LiteralPath (Join-Path $release 'DynamicPhotoWall.exe') -Destination (Join-Path $projectRoot 'DynamicPhotoWall.exe') -Force
 & (Join-Path $PSScriptRoot 'Create-Shortcut.ps1')
-Write-Output "Ready: $projectRoot\DynamicPhotoWall.exe (self-contained single-file Windows x64)"
+Write-Output "Ready: $release\DynamicPhotoWall.exe (self-contained single-file Windows x64)"

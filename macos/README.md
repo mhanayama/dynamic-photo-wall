@@ -4,6 +4,8 @@ Apple Silicon搭載Mac、macOS 27.0以降、Xcode 27.0向けです。SwiftUI＋A
 
 **次の実装:** [2026-10-17 Windows追加分の引き継ぎ](WINDOWS_DELTA_HANDOVER.md)。複数画面・独立グループ、設定UIの分割と一覧、保存不要のテスト表示、顔の反対側からのパンを対象にします。以下の既存機能と検証記録はv1.0.1時点のものです。
 
+**生成物の共通規則:** 配布物は `release/macos/arm64/`、作業・検証ファイルは `artifacts/macos/`。プロジェクトルート直下へAPP・ZIP・DMG・ログ・一時ファイルを置きません。[共通規則](../docs/GENERATED-FILES.md)と[AGENTS.md](../AGENTS.md)に従ってください。
+
 ## 起動と設定
 
 ```sh
@@ -38,7 +40,7 @@ Dock／メニューバーの表示はmacOS側の設定に従います。これ�
 bash macos/scripts/verify.sh
 ```
 
-単体テスト、実操作付きUIテスト、Windows Coreの共通fixture照合、arm64 Releaseコンパイルを実行します。追加の単体検証だけなら `--unit-only` を指定します。ログ・DerivedDataは `artifacts/macos-verification/`（Git対象外）です。
+単体テスト、実操作付きUIテスト、Windows Coreの共通fixture照合、arm64 Releaseコンパイルを実行します。追加の単体検証だけなら `--unit-only` を指定します。ログ・DerivedDataは `artifacts/macos/verification/`（Git対象外）です。
 
 テスト用アプリIDは `asia.dix.mhanayama.DynamicPhotoWall.Regression`。通常アプリと別のsandbox／UserDefaultsを使います。UIテストにはfake画面・写真一覧・ログイン登録・デスクトップhostを渡すため、ユーザーの写真や表示中の壁、ログイン項目を変更しません。実画像テストは公開fixtureと一時ディレクトリを使います。
 
@@ -48,7 +50,7 @@ bash macos/scripts/verify.sh
 xcodebuild build-for-testing \
   -project macos/DynamicPhotoWall.xcodeproj -scheme DynamicPhotoWall \
   -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath artifacts/macos-compile/DerivedData CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath artifacts/macos/compile/DerivedData CODE_SIGNING_ALLOWED=NO
 ```
 
 ## Release候補のパッケージ化
@@ -57,7 +59,7 @@ xcodebuild build-for-testing \
 bash macos/scripts/package.sh
 ```
 
-`artifacts/macos-release/candidate/` にarm64専用archive、アドホック署名付きZIP／DMG、SHA256SUMSを生成します。署名とCPU構成も検査します。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できます。
+`release/macos/arm64/` にアドホック署名付きZIP／DMG、SHA256SUMSを生成します。arm64専用archive・DerivedData・ログ・DMG stagingは `artifacts/macos/package/` へ分けます。署名とCPU構成も検査します。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
 
 [macOS v1.0.1（build 3）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.0.1)を2026-10-15にユーザー承認で公開しました。v1.0.0は以前の実装として保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
 

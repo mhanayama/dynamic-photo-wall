@@ -31,9 +31,10 @@ internal static class Program
             app.Startup += (_, _) =>
             {
                 var host = new DesktopWindowHost();
-                var output = Value(args, "--output") ?? "probe-result.json";
+                var output = Value(args, "--output") ?? Path.Combine(Log.DataDirectory, "probe-result.json");
                 try
                 {
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
                     var monitors = MonitorManager.Enumerate();
                     var id = Value(args, "--monitor");
                     var monitor = id == null ? monitors.First() : monitors.First(m => m.Id == id || m.Device == id);

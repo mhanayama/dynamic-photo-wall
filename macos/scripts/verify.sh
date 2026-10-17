@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-output="artifacts/macos-verification"
+output="artifacts/macos/verification"
 mkdir -p "$output"
 if [[ "${1:-}" == "--unit-only" ]]; then
     set -- -only-testing:DynamicPhotoWallTests

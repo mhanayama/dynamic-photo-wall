@@ -4,13 +4,13 @@ Windows 11の選択したディスプレイを、写真がゆっくり動くギ�
 
 ## 起動
 
-プロジェクト直下の **`DynamicPhotoWall.exe`をダブルクリック**すると起動します。Windows x64向けのReleaseビルドで、.NETランタイム・画像処理ライブラリ・アイコンを同梱した単一EXEです。DLLやPowerShellの操作、.NETの別途インストールは不要です。
+**`release/windows/win-x64/DynamicPhotoWall.exe`をダブルクリック**すると起動します。Windows x64向けのReleaseビルドで、.NETランタイム・画像処理ライブラリ・アイコンを同梱した単一EXEです。DLLやPowerShellの操作、.NETの別途インストールは不要です。
 
-`Dynamic Photo Wall`ショートカットも同じEXEを起動します。ビルド時に自動で作成・更新します。手動で再作成する場合は `windows\scripts\Create-Shortcut.ps1` を実行してください。
+同じディレクトリの`Dynamic Photo Wall`ショートカットも同じEXEを起動します。ビルド時に自動で作成・更新します。手動で再作成する場合は `windows\scripts\Create-Shortcut.ps1` を実行してください。
 
-リポジトリ直下から `windows\Start-PhotoWall.ps1` を実行してください。ルートの `photos` を初期の写真フォルダーとして検出します。
+リポジトリ直下から `windows\Start-PhotoWall.ps1` を実行しても起動できます。EXEと同じディレクトリの `photos` を初期の写真フォルダーとして検出します。ルートの既存 `photos` を使う場合は「写真」設定から選択してください。保存済みの写真設定は維持します。
 
-ビルド元のEXEとドキュメント・ライセンス類は `artifacts\win-x64-single-file` に保存します。EXEを別のフォルダーへ移しても起動できます。写真はEXEに含めず、「写真」設定で選択します。設定・キャッシュは引き続きユーザーのLocalAppDataへ保存します。初回起動時には、同梱したネイティブライブラリを.NETがユーザーの一時領域へ展開します。
+EXEとドキュメント・ライセンス類は `release/windows/win-x64/` に保存します。EXEを別のフォルダーへ移しても起動できます。写真はEXEに含めず、「写真」設定で選択します。設定・キャッシュは引き続きユーザーのLocalAppDataへ保存します。初回起動時には、同梱したネイティブライブラリを.NETがユーザーの一時領域へ展開します。
 
 1. **使用ディスプレイ**で表示対象を1台以上選びます。つなげたい画面がある場合は、**画面グルーピング**で同じグループを選びます。
 2. **写真**に写真フォルダーを追加します。複数フォルダーと再帰検索に対応しています。
@@ -76,7 +76,7 @@ JPEG / PNG / WebP対応。EXIFの8方向の回転・反転を適用します。H
 
 Windows 11 x64、.NET 10 SDKが必要です。ソリューションは `windows/DynamicPhotoWall.sln` です。初回の復元にはNuGet接続が必要です。プロジェクト内の `.tools\dotnet` があればビルドスクリプトが優先します。
 
-リポジトリ直下から実行します。生成物は `artifacts/win-x64-single-file` に出力し、ルートへ `DynamicPhotoWall.exe` をコピーします。再ビルドする前に、起動中のアプリをタスクトレイの「終了」で閉じてください。
+リポジトリ直下から実行します。配布物は `release/windows/win-x64/`、検証結果は `artifacts/windows/smoke-data/` に出力します。ルートへEXE・ショートカットをコピーしません。[生成物の共通規則](../docs/GENERATED-FILES.md)に従ってください。再ビルドする前に、起動中のアプリをタスクトレイの「終了」で閉じてください。
 
 ```powershell
 .\windows\scripts\Build.ps1 -Test
@@ -88,9 +88,9 @@ Windows 11 x64、.NET 10 SDKが必要です。ソリューションは `windows/
 
 ```powershell
 Set-Location windows
-dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../artifacts/win-x64-single-file -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PublishTrimmed=false
+dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../release/windows/win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PublishTrimmed=false
 dotnet build tests/DynamicPhotoWall.Tests/DynamicPhotoWall.Tests.csproj -c Release
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/smoke-data
+dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/windows/smoke-data
 ```
 
 `--probe --monitor \\.\DISPLAY2 --output <json-path>` は指定画面に4秒間だけ検証ウィンドウを表示し、親・スタイル・座標・破棄結果を記録します。monitor省略時は列挙順の最初の画面です。

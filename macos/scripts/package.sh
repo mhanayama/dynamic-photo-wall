@@ -1,19 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-output="artifacts/macos-release/candidate"
-mkdir -p "$output"
+output="release/macos/arm64"
+work="artifacts/macos/package"
+mkdir -p "$output" "$work"
 xcodebuild archive -project macos/DynamicPhotoWall.xcodeproj -scheme DynamicPhotoWall \
     -configuration Release -destination 'generic/platform=macOS' \
-    -derivedDataPath "$output/DerivedData" -archivePath "$output/DynamicPhotoWall.xcarchive" \
+    -derivedDataPath "$work/DerivedData" -archivePath "$work/DynamicPhotoWall.xcarchive" \
     CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
-    CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES 2>&1 | tee "$output/archive.log"
-app="$output/DynamicPhotoWall.xcarchive/Products/Applications/DynamicPhotoWall.app"
+    CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES 2>&1 | tee "$work/archive.log"
+app="$work/DynamicPhotoWall.xcarchive/Products/Applications/DynamicPhotoWall.app"
 [[ "$(lipo -archs "$app/Contents/MacOS/DynamicPhotoWall")" == "arm64" ]]
 codesign --verify --deep --strict "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMultipleInstancesProhibited' "$app/Contents/Info.plist")" == "true" ]]
 ditto -c -k --sequesterRsrc --keepParent "$app" "$output/DynamicPhotoWall-macos-arm64.zip"
-staging=$(mktemp -d "$output/dmg-staging.XXXXXX")
+staging=$(mktemp -d "$work/dmg-staging.XXXXXX")
 ditto "$app" "$staging/DynamicPhotoWall.app"
 ln -s /Applications "$staging/Applications"
 hdiutil create -volname "Dynamic Photo Wall" -srcfolder "$staging" -ov -format UDZO     "$output/DynamicPhotoWall-macos-arm64.dmg"
