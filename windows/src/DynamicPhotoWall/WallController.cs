@@ -5,8 +5,13 @@ using DynamicPhotoWall.PhotoLibrary;
 
 namespace DynamicPhotoWall;
 
+public sealed record WallSurfaceState(string? DisplayId, Viewport Viewport, IReadOnlyList<string> PhotoPaths);
 public sealed record WallGroupState(string Name, IReadOnlyList<string> DisplayIds, Viewport? Viewport,
-    CompositionMode? Mode, IReadOnlyList<string> PhotoPaths, bool IsRunning, bool IsPaused, string Status);
+    CompositionMode? Mode, IReadOnlyList<string> PhotoPaths, bool IsRunning, bool IsPaused, string Status)
+{
+    public bool PerDisplay { get; init; }
+    public IReadOnlyList<WallSurfaceState> Surfaces { get; init; } = [];
+}
 
 public sealed class WallController : IAsyncDisposable
 {

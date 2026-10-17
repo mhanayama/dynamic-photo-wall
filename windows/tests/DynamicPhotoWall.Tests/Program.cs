@@ -11,6 +11,7 @@ using DynamicPhotoWall.Motion;
 using DynamicPhotoWall.Rendering;
 using DynamicPhotoWall.DesktopIntegration;
 using SkiaSharp;
+using Canvas = System.Windows.Controls.Canvas;
 
 namespace DynamicPhotoWall.Tests;
 
@@ -45,6 +46,7 @@ internal static class Program
             if (args.Contains("--settings-ui")) await Test("settings pages visual review", SettingsPagesAsync);
             if (args.Contains("--test-pattern-toggle")) await Test("test pattern button previews draft without saving and restores playback", TestPatternToggleAsync);
             if (args.Contains("--group-deletion")) await Test("group delete buttons preserve screens and survive refresh, save and reopen", GroupDeletionAsync);
+            if (args.Contains("--per-display-modes")) await Test("per-mode display routing, face-safe rendering and lifecycle", PerDisplayModesAsync);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -94,6 +96,28 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("spanning face-safe Gallery and vertical Pan avoid display seams", () => Sync(FaceBoundaryGeometry));
+        await Test("mode-specific physical viewports, selection and settings compatibility", () => Sync(() =>
+        {
+            var settings = JsonSerializer.Deserialize<WallSettings>("{}")!;
+            Check(Enum.GetValues<CompositionMode>().All(m => !settings.IsPerDisplay(m)) && settings.AvoidFaceDisplayBoundaries, "legacy settings keep spanning and enable face protection");
+            settings.GalleryPerDisplay = true; settings.VerticalPanPerDisplay = true;
+            var clone = SettingsManager.Clone(settings);
+            Check(clone.IsPerDisplay(CompositionMode.Gallery) && clone.IsPerDisplay(CompositionMode.VerticalPan)
+                && !clone.IsPerDisplay(CompositionMode.GalleryScroll), "mode switches persist independently");
+            settings.GalleryEnabled = settings.GalleryScrollEnabled = settings.VerticalPanEnabled = settings.ZoomEnabled = false;
+            settings.HorizontalPanEnabled = true; settings.HorizontalPanPerDisplay = true;
+            var wall = new Viewport(2400, 800); Viewport[] displays = [new(800, 800), new(1600, 800)];
+            PhotoInfo[] photos = [Photo("medium", 1400, 800), Photo("wide", 2800, 800)];
+            var planner = new CompositionEngine(new PhotoSelector(new Random(1)), new Random(1));
+            var plan = planner.Next(photos, wall, settings, displayViewports: displays);
+            Check(plan?.Mode == CompositionMode.HorizontalPan, "a per-screen Pan eligible locally remains available even if the whole wall is too wide");
+            var second = planner.ForMode(photos, displays[1], settings, CompositionMode.HorizontalPan);
+            Check(second?.Photos.Single().Path == "wide", "each screen filters candidates using its own dimensions");
+            Check(planner.Next(photos.Take(1).ToArray(), wall, settings, displayViewports: displays) == null, "one unsuitable display excludes that mode for the group");
+            settings.HorizontalPanPerDisplay = false;
+            Check(planner.Next(photos.Take(1).ToArray(), wall, settings, displayViewports: displays) == null, "spanning mode keeps the group viewport eligibility");
+        }));
         await Test("face-aware pan approaches from opposite side on both axes", () => Sync(() =>
         {
             var settings = new WallSettings { PanWidthFraction = 1 }; var viewport = new Viewport(1000, 600);
@@ -327,6 +351,66 @@ internal static class Program
         });
         if (desktop) await Test("desktop ultrawide negative coordinates + all modes + settings UI", DesktopAsync);
     }
+    private static void FaceBoundaryGeometry()
+    {
+        static bool Inside(FrameRect face, FrameRect display) => face.X >= display.X - .00001 && face.Y >= display.Y - .00001
+            && face.X + face.Width <= display.X + display.Width + .00001 && face.Y + face.Height <= display.Y + display.Height + .00001;
+        var viewport = new Viewport(2000, 1000);
+        FrameRect[][] layouts = [
+            [new(0, 0, 1000, 1000), new(1000, 0, 1000, 1000)],
+            [new(0, 0, 990, 900), new(1010, 100, 990, 900)],
+            [new(0, 0, 2000, 480), new(0, 520, 2000, 480)],
+            [new(0, 0, 800, 1000), new(840, 0, 1160, 700)],
+            [new(1000, 0, 1000, 1000)] ]; // One connected member of a saved two-display wall.
+        FaceRegion[][] faces = [[new(.4, .1, .2, .15)], [new(.4, .75, .2, .15)], [new(.1, .1, .8, .8)], [new(.1, .05, .15, .15), new(.6, .7, .3, .2)]];
+        foreach (var layout in layouts)
+        foreach (var bounds in faces)
+        foreach (var stop in new[] { false, true })
+        foreach (var direction in new[] { false, true })
+        {
+            var photo = Photo("portrait", 1000, 2400) with { Faces = bounds };
+            var settings = new WallSettings { StopAtFace = stop, FaceAwarePanDirection = direction, PanWidthFraction = 1 };
+            var plan = MotionEngine.Plan(CompositionMode.VerticalPan, photo, viewport, settings, displayRegions: layout);
+            Check(double.IsFinite(plan.Seconds) && plan.Width > 0 && plan.Height > 0 && plan.Seconds > 0, "valid protected motion");
+            for (var step = 0; step <= 20; step++)
+            foreach (var face in bounds)
+            {
+                var y = (plan.FrameTop ?? 0) + plan.FromY + (plan.ToY - plan.FromY) * step / 20 + face.Y * plan.Height;
+                var top = Math.Max(0, y); var bottom = Math.Min(viewport.Height, y + face.Height * plan.Height);
+                if (bottom <= top) continue; // Entry/exit at an outer wall edge is allowed.
+                var visible = new FrameRect(plan.FromX + face.X * plan.Width, top, face.Width * plan.Width, bottom - top);
+                Check(layout.Any(d => Inside(visible, d)), "a visible face must never cross an internal seam or gap during vertical motion");
+            }
+            if (stop) foreach (var face in bounds)
+                Check(layout.Any(d => Inside(new(plan.ToX + face.X * plan.Width, (plan.FrameTop ?? 0) + plan.ToY + face.Y * plan.Height,
+                    face.Width * plan.Width, face.Height * plan.Height), d)), "every face is completely visible at protected stop");
+            var photos = new[] { photo, Photo("landscape", 2000, 1200) with { Faces = bounds }, Photo("portrait2", 800, 1600) with { Faces = bounds } };
+            foreach (var gap in new[] { 0d, 8d, 200d })
+            {
+                var frames = FaceSafeLayout.Gallery(photos, viewport, gap, layout);
+                for (var i = 0; i < frames.Count; i++)
+                {
+                    var frame = frames[i];
+                    Check(frame.X >= 0 && frame.Y >= 0 && frame.X + frame.Width <= viewport.Width + .00001 && frame.Y + frame.Height <= viewport.Height + .00001, "gallery remains within the wall");
+                    if (i > 0) Check(frames[i - 1].X + frames[i - 1].Width <= frame.X + .00001, "protected gallery photos do not overlap");
+                    foreach (var face in bounds) Check(layout.Any(d => Inside(new(frame.X + face.X * frame.Width, frame.Y + face.Y * frame.Height,
+                        face.Width * frame.Width, face.Height * frame.Height), d)), "every Gallery face stays inside one display");
+                }
+            }
+        }
+        var centered = Photo("center", 1000, 2400) with { Faces = [new(.4, .2, .2, .15)] };
+        var legacy = MotionEngine.Plan(CompositionMode.VerticalPan, centered, viewport, new WallSettings());
+        var protectedPlan = MotionEngine.Plan(CompositionMode.VerticalPan, centered, viewport, new WallSettings(), displayRegions: layouts[0]);
+        Check(protectedPlan.Width == legacy.Width && protectedPlan.FromX != legacy.FromX, "translation alone retains the original photo size where possible");
+        var disabled = MotionEngine.Plan(CompositionMode.VerticalPan, centered, viewport, new WallSettings { AvoidFaceDisplayBoundaries = false }, displayRegions: layouts[0]);
+        Check(disabled == legacy, "boundary protection can be disabled");
+        var noFace = new[] { Photo("no-face", 1000, 2000) };
+        Check(FaceSafeLayout.Gallery(noFace, viewport, 8, layouts[0]).SequenceEqual(CompositionEngine.GalleryLayout(noFace, viewport, 8)), "no-face Gallery keeps its original layout");
+        foreach (var mode in new[] { CompositionMode.HorizontalPan, CompositionMode.Zoom })
+            Check(MotionEngine.Plan(mode, centered, viewport, new WallSettings(), displayRegions: layouts[0]) == MotionEngine.Plan(mode, centered, viewport, new WallSettings()), "horizontal motion and Zoom are unchanged");
+        var tiny = FaceSafeLayout.Gallery(new[] { centered }, new(400, 200), 200, new[] { new FrameRect(0, 0, 200, 200), new FrameRect(200, 0, 200, 200) });
+        Check(tiny.Single().Width > 0, "large configured gaps still leave room for a protected photo");
+    }
     private static BitmapSource Snapshot(FrameworkElement element, int width, int height)
     {
         element.Measure(new Size(width, height)); element.Arrange(new Rect(0, 0, width, height)); element.UpdateLayout();
@@ -363,6 +447,214 @@ internal static class Program
             if (child is T match) yield return match;
             foreach (var descendant in VisualDescendants<T>(child)) yield return descendant;
         }
+    }
+    private static async Task PerDisplayModesAsync()
+    {
+        static BitmapSource Solid(Color color, int width = 16, int height = 16)
+        {
+            var pixels = Enumerable.Range(0, width * height).SelectMany(_ => new[] { color.B, color.G, color.R, (byte)255 }).ToArray();
+            var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4); bitmap.Freeze(); return bitmap;
+        }
+        static Color Center(FrameworkElement element, int width, int height)
+        {
+            var bitmap = Snapshot(element, width, height); var pixel = new byte[4];
+            bitmap.CopyPixels(new Int32Rect(width / 2, height / 2, 1, 1), pixel, 4, 0); return Color.FromRgb(pixel[2], pixel[1], pixel[0]);
+        }
+        var red = Solid(Colors.Red); var blue = Solid(Colors.Blue);
+        var settings = new WallSettings { FadeSeconds = .05, GalleryScrollPixelsPerSecond = 200 };
+        var scheduler = new AnimationScheduler(); var transitions = new TransitionController();
+        var renderer = new PhotoRenderer(new(800, 300), settings, transitions, scheduler);
+        var leftRegion = new FrameRect(0, 0, 400, 300); var rightRegion = new FrameRect(400, 0, 400, 300);
+        renderer.SetDisplayRegion(leftRegion, "left");
+        var rightView = renderer.CreateDisplayRegion(rightRegion, "right");
+        Snapshot((FrameworkElement)renderer.Content, 400, 300);
+        try
+        {
+            foreach (var mode in Enum.GetValues<CompositionMode>())
+            {
+                var dimensions = mode == CompositionMode.VerticalPan ? (800, 2400) : mode == CompositionMode.GalleryScroll ? (200, 400) : (2400, 800);
+                var a = Photo("red", dimensions.Item1, dimensions.Item2); var b = a with { Path = "blue" };
+                var redImage = Solid(Colors.Red, dimensions.Item1 / 50, dimensions.Item2 / 50); var blueImage = Solid(Colors.Blue, dimensions.Item1 / 50, dimensions.Item2 / 50);
+                var photosA = mode == CompositionMode.GalleryScroll ? new[] { a, a with { Path = "red2" } } : new[] { a };
+                var photosB = mode == CompositionMode.GalleryScroll ? new[] { b, b with { Path = "blue2" } } : new[] { b };
+                var scene = renderer.BuildPerDisplay(new[] {
+                    new DisplayScene("left", leftRegion, new(mode, photosA), photosA.Select(_ => redImage).ToArray()),
+                    new DisplayScene("right", rightRegion, new(mode, photosB), photosB.Select(_ => blueImage).ToArray()) }, new Random(7));
+                await renderer.ShowAsync(scene, CancellationToken.None);
+                Snapshot((FrameworkElement)renderer.Content, 400, 300); Snapshot(rightView, 400, 300);
+                await Until(() => scene.Canvas.Opacity > .999, 2000);
+                Check(scene.Displays.Count == 2 && scene.Displays.All(s => s.Viewport == new Viewport(400, 300)), "all modes build local physical viewports");
+                var leftColor = Center((FrameworkElement)renderer.Content, 400, 300); var rightColor = Center(rightView, 400, 300);
+                Check(leftColor.R > 200 && rightColor.B > 200, $"each display presents its own photo and background: {mode}, left={leftColor}, right={rightColor}, opacity={scene.Canvas.Opacity}, child={scene.Displays[0].Canvas.RenderSize}");
+                if (mode == CompositionMode.Gallery)
+                {
+                    await renderer.ReplaceSlotAsync(scene.Displays[0], 0, b, blueImage, CancellationToken.None);
+                    Check(scene.Displays[0].Photos[0].Path == "blue" && scene.Displays[1].Photos[0].Path == "blue", "Gallery child replacement is accepted by the active parent scene");
+                    await Until(() => Center((FrameworkElement)renderer.Content, 400, 300).B > 200, 2000);
+                    Check(Center((FrameworkElement)renderer.Content, 400, 300).B > 200, "replacement actually appears on its display");
+                }
+                if (mode == CompositionMode.GalleryScroll)
+                {
+                    await renderer.AdvanceGalleryAsync(scene.Displays[0], a with { Path = "incoming" }, redImage, CancellationToken.None);
+                    Check(scene.Displays[0].Photos[^1].Path == "incoming" && scene.Displays[1].Photos[0].Path == "blue", "each scrolling strip advances locally");
+                }
+                var ambient = scene.Displays.Select(s => s.Ambient!).ToArray();
+                scheduler.SetPaused(true); transitions.SetPaused(true); await Task.Delay(180);
+                var counts = ambient.Select(a => a.UpdateCount).ToArray(); await Task.Delay(180);
+                Check(counts.SequenceEqual(ambient.Select(a => a.UpdateCount)), "all per-display backgrounds pause with the group");
+                scheduler.SetPaused(false); transitions.SetPaused(false);
+            }
+            // Overlapping logical placement must not blend independent outputs.
+            renderer.SetDisplayRegion(leftRegion, "left"); var overlappingRight = renderer.CreateDisplayRegion(leftRegion, "right");
+            var overlap = renderer.BuildPerDisplay(new[] {
+                new DisplayScene("left", leftRegion, new(CompositionMode.Gallery, new[] { Photo("r", 800, 400) }), new[] { red }),
+                new DisplayScene("right", leftRegion, new(CompositionMode.Gallery, new[] { Photo("b", 800, 400) }), new[] { blue }) }, new Random(9));
+            await renderer.ShowAsync(overlap, CancellationToken.None);
+            Snapshot(overlappingRight, 400, 300); await Until(() => overlap.Canvas.Opacity > .999, 2000);
+            Check(Center((FrameworkElement)renderer.Content, 400, 300).R > 200 && Center(overlappingRight, 400, 300).B > 200, "display IDs route independent scenes even at identical coordinates");
+            var span = renderer.Build(new(CompositionMode.Gallery, new[] { Photo("span", 1600, 600) }), new[] { Solid(Colors.Red, 80, 30) }, new Random(9));
+            await renderer.ShowAsync(span, CancellationToken.None);
+            await Until(() => span.Canvas.Opacity > .999, 2000);
+            await Until(() => Center(overlappingRight, 400, 300).R > 200, 2000);
+            Check(Center(overlappingRight, 400, 300).R > 200 && renderer.Current!.Displays.Count == 0, "switching back to span changes every output to the shared wall");
+            renderer.Clear(); var oldCount = overlap.Displays.Select(s => s.Ambient!.UpdateCount).ToArray(); await Task.Delay(180);
+            Check(oldCount.SequenceEqual(overlap.Displays.Select(s => s.Ambient!.UpdateCount)), "retired per-screen backgrounds stop updating");
+        }
+        finally { renderer.Clear(); renderer.Close(); }
+
+        // Faces in a spanning Gallery use safe layouts even during replacement.
+        var regions = new[] { new FrameRect(0, 0, 400, 300), new FrameRect(400, 0, 400, 300) };
+        var safeRenderer = new PhotoRenderer(new(800, 300), settings, new TransitionController(), new AnimationScheduler(), regions);
+        var facePhoto = Photo("face", 800, 1600) with { Faces = [new(.25, .1, .5, .5)] };
+        try
+        {
+            Snapshot((FrameworkElement)safeRenderer.Content, 800, 300);
+            var scene = safeRenderer.Build(new(CompositionMode.Gallery, new[] { facePhoto }), new[] { Solid(Colors.Red, 16, 32) }, new Random(1));
+            await safeRenderer.ShowAsync(scene, CancellationToken.None);
+            var replacement = facePhoto with { Path = "replacement", RawWidth = 1600, RawHeight = 800 };
+            await safeRenderer.ReplaceSlotAsync(scene, 0, replacement, Solid(Colors.Blue, 32, 16), CancellationToken.None);
+            var expected = FaceSafeLayout.Gallery(new[] { replacement }, new(800, 300), settings.Gap, regions).Single();
+            Check(scene.Displays.Count == 0 && Math.Abs(Canvas.GetLeft(scene.Slots[0]) - expected.X) < .001
+                && Math.Abs(scene.Slots[0].Width - expected.Width) < .001, "face-safe replacement stays a spanning Gallery with the calculated safe frame");
+            var image = Snapshot((FrameworkElement)safeRenderer.Content, 800, 300);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
+            using var stream = File.Create(Path.Combine(root, "face-safe-gallery.png")); encoder.Save(stream);
+        }
+        finally { safeRenderer.Clear(); safeRenderer.Close(); }
+
+        FrameRect[] stacked = [new(0, 0, 800, 140), new(0, 160, 800, 140)];
+        var stackedRenderer = new PhotoRenderer(new(800, 300), new WallSettings { GlassBackground = false }, new TransitionController(), new AnimationScheduler(), stacked);
+        try
+        {
+            var scene = stackedRenderer.Build(new(CompositionMode.VerticalPan, new[] { facePhoto }), new[] { Solid(Colors.Red, 16, 32) }, new Random(1));
+            var image = scene.MotionImage!; var frame = (Canvas)image.Parent;
+            var translation = (TranslateTransform)((TransformGroup)image.RenderTransform).Children[1];
+            Check(image.Height < 300 && Math.Abs(Canvas.GetTop(frame) - (300 - image.Height) / 2) > 1, "shortened vertical Pan uses the face-safe frame placement rather than wall centering");
+            foreach (var face in facePhoto.Faces!)
+            {
+                var x = Canvas.GetLeft(frame) + translation.X + face.X * image.Width;
+                var y = Canvas.GetTop(frame) + translation.Y + face.Y * image.Height;
+                Check(stacked.Any(r => x >= r.X - .001 && y >= r.Y - .001 && x + face.Width * image.Width <= r.X + r.Width + .001
+                    && y + face.Height * image.Height <= r.Y + r.Height + .001), "rendered vertical Pan face clears the horizontal display seam");
+            }
+        }
+        finally { stackedRenderer.Clear(); stackedRenderer.Close(); }
+
+        var monitors = MonitorManager.Enumerate().Take(2).ToArray(); Check(monitors.Length == 2, "two displays required");
+        var folder = Path.Combine(root, "mode-photos"); Directory.CreateDirectory(folder);
+        for (var i = 0; i < 4; i++)
+        {
+            File.Copy(Fixture($"mode-portrait-{i}.png", 800, 2000), Path.Combine(folder, $"portrait-{i}.png"), true);
+            File.Copy(Fixture($"mode-wide-{i}.png", 4000, 800), Path.Combine(folder, $"wide-{i}.png"), true);
+        }
+        var config = new WallSettings { StartOnLaunch = false, Folders = [folder], FadeSeconds = .2, GalleryMinSeconds = 5, GalleryMaxSeconds = 5,
+            GalleryPerDisplay = true, VerticalPanPerDisplay = true, HorizontalPanPerDisplay = true, ZoomPerDisplay = true,
+            FaceAwarePanDirection = false, FaceAwareFraming = false, StopAtFace = false, CacheMegabytes = 64,
+            Displays = monitors.Select(m => new DisplayPlacement { Id = m.Id, X = m.X, Y = m.Y, Width = m.Width, Height = m.Height, GroupId = "mode-group", HideTaskbar = false }).ToList() };
+        var manager = new SettingsManager(); manager.Save(config);
+        await using var controller = new WallController(config); await controller.InitializeAsync();
+        var window = new DynamicPhotoWall.UI.SettingsWindow(controller, manager);
+        try
+        {
+            window.Show(); ((System.Windows.Controls.TabControl)window.FindName("SettingsPages")).SelectedIndex = 4; window.UpdateLayout();
+            foreach (var name in new[] { "Gallery", "GalleryScroll", "VerticalPan", "HorizontalPan", "Zoom" })
+            {
+                var check = (System.Windows.Controls.CheckBox)window.FindName(name + "PerDisplayCheck");
+                Check(check.Content!.ToString() == "ディスプレイごとに表示", "every mode exposes the same checkbox");
+                check.IsChecked = true;
+            }
+            var boundaryCheck = (System.Windows.Controls.CheckBox)window.FindName("AvoidFaceDisplayBoundariesCheck"); boundaryCheck.IsChecked = false;
+            var save = (System.Windows.Controls.Button)window.FindName("SaveButton"); save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            await Until(() => save.IsEnabled && controller.Settings.GalleryScrollPerDisplay, 10000);
+            var saved = manager.Load(); Check(Enum.GetValues<CompositionMode>().All(saved.IsPerDisplay) && !saved.AvoidFaceDisplayBoundaries, "checkboxes save independently through the settings window");
+            foreach (var width in new[] { 1040d, 920d })
+            { window.Width = width; window.Height = width == 920 ? 700 : 820; window.UpdateLayout(); SaveRender(window, $"mode-checkboxes-{width:0}.png"); }
+        }
+        finally { window.Close(); }
+        var states = new List<object>();
+        static void Only(WallSettings s, CompositionMode mode)
+        {
+            s.GalleryEnabled = mode == CompositionMode.Gallery; s.GalleryScrollEnabled = mode == CompositionMode.GalleryScroll;
+            s.VerticalPanEnabled = mode == CompositionMode.VerticalPan; s.HorizontalPanEnabled = mode == CompositionMode.HorizontalPan; s.ZoomEnabled = mode == CompositionMode.Zoom;
+        }
+        foreach (var mode in Enum.GetValues<CompositionMode>())
+        {
+            var candidate = SettingsManager.Clone(config); Only(candidate, mode);
+            await controller.ApplyAsync(candidate); await controller.StartAsync();
+            await Until(() => controller.CurrentMode == mode, 15000);
+            await Until(() => Application.Current.Windows.OfType<PhotoRenderer>().Any(r => r.Current?.Mode == mode && r.Current.Canvas.Opacity > .999), 10000);
+            var state = controller.GroupStates.Single(); var perDisplay = candidate.IsPerDisplay(mode);
+            Check(state.Mode == mode && state.PerDisplay == perDisplay && state.Surfaces.Count == (perDisplay ? monitors.Length : 1)
+                && Application.Current.Windows.OfType<PhotoRenderer>().Any(r => r.Current?.Mode == mode && r.Current.Canvas.Opacity > .999), "actual session presents local scenes or the shared wall by mode");
+            if (perDisplay) foreach (var monitor in monitors)
+                Check(state.Surfaces.Single(s => s.DisplayId == monitor.Id).Viewport == new Viewport(monitor.Width, monitor.Height), "session renders each display at its physical resolution");
+            states.Add(state);
+            controller.TogglePause(); Check(controller.GroupStates.All(g => g.IsPaused), "group pause reaches all child surfaces"); controller.TogglePause();
+            controller.Next();
+        }
+        var scrolling = SettingsManager.Clone(config); Only(scrolling, CompositionMode.GalleryScroll); scrolling.GalleryScrollPerDisplay = true; scrolling.GalleryScrollPixelsPerSecond = 200;
+        await controller.ApplyAsync(scrolling); await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.GalleryScroll, 15000);
+        Check(controller.GroupStates.Single().Surfaces.Count == 2, "Scrolling Gallery also supports per-screen rendering when enabled");
+        var missing = SettingsManager.Clone(scrolling); missing.Displays[0].Id = "absent-mode-screen";
+        await controller.ApplyAsync(missing); await controller.StartAsync(); await Until(() => controller.CurrentMode == CompositionMode.GalleryScroll, 15000);
+        var reduced = controller.GroupStates.Single();
+        Check(reduced.Surfaces.Count == 1 && reduced.Surfaces[0].DisplayId == monitors[1].Id && reduced.Viewport == new WallLayout(missing.Displays).Viewport, "disconnection preserves wall bounds while preparing only connected display scenes");
+        var faceFolder = Path.Combine(root, "detected-face"); Directory.CreateDirectory(faceFolder);
+        File.Copy("macos/DynamicPhotoWallTests/Fixtures/astronaut.png", Path.Combine(faceFolder, "astronaut.png"), true);
+        var faceSettings = SettingsManager.Clone(config); Only(faceSettings, CompositionMode.Gallery);
+        faceSettings.GalleryPerDisplay = false; faceSettings.Folders = [faceFolder]; faceSettings.AvoidFaceDisplayBoundaries = true;
+        await controller.ApplyAsync(faceSettings); await controller.StartAsync();
+        await Until(() => controller.CurrentMode == CompositionMode.Gallery, 15000);
+        var live = Application.Current.Windows.OfType<PhotoRenderer>().Single(w => w.Current?.Mode == CompositionMode.Gallery);
+        var detectedScene = live.Current!; Check(detectedScene.Displays.Count == 0 && detectedScene.Photos.Single().Faces?.Count > 0,
+            "spanning Gallery prepares actual detected faces even with all motion face settings off");
+        var faceFrame = detectedScene.Slots.Single(); var faceLayout = new WallLayout(faceSettings.Displays);
+        foreach (var face in detectedScene.Photos.Single().Faces!)
+        {
+            var x = Canvas.GetLeft(faceFrame) + face.X * faceFrame.Width; var y = Canvas.GetTop(faceFrame) + face.Y * faceFrame.Height;
+            Check(faceLayout.Regions.Values.Any(r => x >= r.X && y >= r.Y && x + face.Width * faceFrame.Width <= r.X + r.Width
+                && y + face.Height * faceFrame.Height <= r.Y + r.Height), "actual detected Gallery face is rendered inside a connected display");
+        }
+        await Until(() => detectedScene.Canvas.Opacity > .999, 10000);
+        Check(detectedScene.Canvas.Opacity > .999, "detected-face scene completes its presentation fade");
+        var faceImage = Snapshot(detectedScene.Canvas, (int)faceLayout.Viewport.Width, (int)faceLayout.Viewport.Height);
+        var faceEncoder = new PngBitmapEncoder(); faceEncoder.Frames.Add(BitmapFrame.Create(faceImage));
+        using (var stream = File.Create(Path.Combine(root, "detected-face-spanning.png"))) faceEncoder.Save(stream);
+        var faceMissing = SettingsManager.Clone(faceSettings); faceMissing.Displays[0].Id = "absent-face-screen";
+        await controller.ApplyAsync(faceMissing); await controller.StartAsync(); await Until(() => controller.CurrentMode == CompositionMode.Gallery, 15000);
+        var oneDisplayScene = Application.Current.Windows.OfType<PhotoRenderer>().Single(w => w.Current?.Mode == CompositionMode.Gallery).Current!;
+        var connectedRegion = new WallLayout(faceMissing.Displays).Regions[monitors[1].Id]; var survivingSlot = oneDisplayScene.Slots.Single();
+        Check(oneDisplayScene.DisplayRegions.Count == 1 && oneDisplayScene.Photos.Single().Faces?.Count > 0, "a disconnected wall still prepares face protection on its one surviving screen");
+        foreach (var face in oneDisplayScene.Photos.Single().Faces!)
+        {
+            var x = Canvas.GetLeft(survivingSlot) + face.X * survivingSlot.Width; var y = Canvas.GetTop(survivingSlot) + face.Y * survivingSlot.Height;
+            Check(x >= connectedRegion.X && y >= connectedRegion.Y && x + face.Width * survivingSlot.Width <= connectedRegion.X + connectedRegion.Width
+                && y + face.Height * survivingSlot.Height <= connectedRegion.Y + connectedRegion.Height, "faces never get assigned to the disconnected wall area");
+        }
+        await controller.ShowTestPatternAsync(config); Check(controller.TestPatternVisible && controller.GroupStates.Single().Mode == null, "alignment preview ignores mode-specific rendering");
+        await controller.StopAsync(); Check(!controller.IsRunning && controller.GroupStates.Count == 0, "stop clears every local surface");
+        File.WriteAllText(Path.Combine(root, "mode-routing-states.json"), JsonSerializer.Serialize(states, new JsonSerializerOptions { WriteIndented = true }));
     }
     private static async Task GroupDeletionAsync()
     {

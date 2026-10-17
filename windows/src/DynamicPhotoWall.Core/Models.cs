@@ -14,7 +14,10 @@ public sealed record Viewport(double Width, double Height)
 }
 public sealed record FrameRect(double X, double Y, double Width, double Height);
 public sealed record MotionPlan(double Width, double Height, double FromX, double FromY, double ToX, double ToY,
-    double FromScale, double ToScale, double CenterX, double CenterY, double Seconds);
+    double FromScale, double ToScale, double CenterX, double CenterY, double Seconds)
+{
+    public double? FrameTop { get; init; }
+}
 
 public sealed class WallSettings
 {
@@ -36,6 +39,21 @@ public sealed class WallSettings
     public bool VerticalPanEnabled { get; set; } = true;
     public bool HorizontalPanEnabled { get; set; } = true;
     public bool ZoomEnabled { get; set; } = true;
+    public bool GalleryPerDisplay { get; set; }
+    public bool GalleryScrollPerDisplay { get; set; }
+    public bool VerticalPanPerDisplay { get; set; }
+    public bool HorizontalPanPerDisplay { get; set; }
+    public bool ZoomPerDisplay { get; set; }
+    public bool AvoidFaceDisplayBoundaries { get; set; } = true;
+    public bool IsPerDisplay(CompositionMode mode) => mode switch
+    {
+        CompositionMode.Gallery => GalleryPerDisplay,
+        CompositionMode.GalleryScroll => GalleryScrollPerDisplay,
+        CompositionMode.VerticalPan => VerticalPanPerDisplay,
+        CompositionMode.HorizontalPan => HorizontalPanPerDisplay,
+        CompositionMode.Zoom => ZoomPerDisplay,
+        _ => false
+    };
     public int GalleryWeight { get; set; } = 45;
     public int PanWeight { get; set; } = 35;
     public int ZoomWeight { get; set; } = 20;

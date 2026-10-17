@@ -79,11 +79,29 @@
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="表示モード"><ScrollViewer><StackPanel>
                 <TextBlock Text="表示モード" FontSize="20"/>
-                <CheckBox Content="Gallery — 複数の写真を並べる" IsChecked="{Binding GalleryEnabled}"/>
-                <CheckBox Content="Scrolling Gallery — 新しい写真が横から流れてくる" IsChecked="{Binding GalleryScrollEnabled}"/>
-                <CheckBox Content="Vertical Pan — 縦写真を上下に見せる" IsChecked="{Binding VerticalPanEnabled}"/>
-                <CheckBox Content="Horizontal Pan — パノラマを左右に見せる" IsChecked="{Binding HorizontalPanEnabled}"/>
-                <CheckBox Content="Cinematic Zoom — ゆっくり拡大・縮小" IsChecked="{Binding ZoomEnabled}"/>
+                <TextBlock Text="右側にチェックすると、そのモードだけ画面ごとに写真と配置を作ります。チェックなしはグループ全体にスパンします。" Style="{StaticResource Hint}"/>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding GalleryEnabled}"><TextBlock Text="Gallery — 複数の写真を並べる" Margin="0"/></CheckBox>
+                    <CheckBox Grid.Column="1" x:Name="GalleryPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding GalleryPerDisplay}"/>
+                </Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding GalleryScrollEnabled}"><TextBlock Text="Scrolling Gallery — 新しい写真が横から流れてくる" Margin="0"/></CheckBox>
+                    <CheckBox Grid.Column="1" x:Name="GalleryScrollPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding GalleryScrollPerDisplay}"/>
+                </Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding VerticalPanEnabled}"><TextBlock Text="Vertical Pan — 縦写真を上下に見せる" Margin="0"/></CheckBox>
+                    <CheckBox Grid.Column="1" x:Name="VerticalPanPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding VerticalPanPerDisplay}"/>
+                </Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding HorizontalPanEnabled}"><TextBlock Text="Horizontal Pan — パノラマを左右に見せる" Margin="0"/></CheckBox>
+                    <CheckBox Grid.Column="1" x:Name="HorizontalPanPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding HorizontalPanPerDisplay}"/>
+                </Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/></Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding ZoomEnabled}"><TextBlock Text="Cinematic Zoom — ゆっくり拡大・縮小" Margin="0"/></CheckBox>
+                    <CheckBox Grid.Column="1" x:Name="ZoomPerDisplayCheck" Content="ディスプレイごとに表示" IsChecked="{Binding ZoomPerDisplay}"/>
+                </Grid>
+                <CheckBox x:Name="AvoidFaceDisplayBoundariesCheck" Content="スパン時に顔が画面の境目に重ならないよう配置" IsChecked="{Binding AvoidFaceDisplayBoundaries}"/>
+                <TextBlock Text="Gallery・Vertical Panで検出した顔を収める位置を優先します。位置の調整だけで収まらない場合は写真を小さくします。横スクロール・横パンは境界を通過します。" Style="{StaticResource Hint}"/>
                 <TextBlock Text="抽選ウェイト（0で抽選対象から除外）"/>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,12,0"><TextBlock Text="Gallery"/><TextBox Text="{Binding GalleryWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>

@@ -6,7 +6,8 @@ public static class MotionEngine
     public static FaceRegion? PrimaryFace(PhotoInfo photo) => photo.Faces?
         .OrderByDescending(f => f.Width * f.Height).ThenBy(f => f.Y).ThenBy(f => f.X).FirstOrDefault();
 
-    public static MotionPlan Plan(CompositionMode mode, PhotoInfo photo, Viewport v, WallSettings s, bool reverse = false, double centerX = .5, double centerY = .5)
+    public static MotionPlan Plan(CompositionMode mode, PhotoInfo photo, Viewport v, WallSettings s, bool reverse = false, double centerX = .5, double centerY = .5,
+        IReadOnlyList<FrameRect>? displayRegions = null)
     {
         var directionFace = s.FaceAwarePanDirection ? PrimaryFace(photo) : null;
         if (mode == CompositionMode.VerticalPan)
@@ -31,8 +32,10 @@ public static class MotionEngine
             }
             var left = (v.Width - width) / 2;
             var distance = Math.Abs(end - start);
-            return new(width, height, left, start, left, end, 1, 1, .5, .5,
+            var plan = new MotionPlan(width, height, left, start, left, end, 1, 1, .5, .5,
                 distance > 0 ? Math.Max(.1, distance / s.PanPixelsPerSecond) : 5);
+            return s.AvoidFaceDisplayBoundaries && displayRegions != null && FaceSafeLayout.RequiresProtection(v, displayRegions)
+                ? FaceSafeLayout.VerticalPan(photo, v, s, displayRegions, plan) : plan;
         }
         if (mode == CompositionMode.HorizontalPan)
         {

@@ -23,7 +23,17 @@ WPFアプリは `DesktopIntegration`、`PhotoLibrary`、`Rendering`、`Motion`�
 
 `WallSettings.Displays`に画面ID・壁座標・最後の解像度・GroupId・HideTaskbarを保存する。`DisplayGroups`で同じGroupIdの画面をまとめ、空欄は画面ごとに独立させる。`WallLayout`はグループごとに負座標・隙間・上下位置を含む外接矩形を原点へ正規化し、各画面の切り出し領域を計算する。OSの物理座標はHWND配置だけに使い、壁座標とは分離する。従来の`MonitorId`だけの設定も読める。GroupIdが未保存の旧設定は「グループ1」、HideTaskbarが未保存なら従来の全体設定を引き継ぐ。
 
-`WallController`はライブラリー監視・画像キャッシュ・顔検出・環境通知を共有し、グループごとの`WallPlaybackSession`を管理する。各セッションは抽選・アニメーションクロック・動的背景を1セット持つ。共通Canvasをグループの最初の接続画面へ取り付け、ほかの画面は同じCanvasをVisualBrushで切り出す。最初の画面もViewboxで物理画素数に合わせる。切り出し位置はCanvas自身ではなく外側の配置用Canvasでずらし、VisualBrushの原点が動くことを防ぐ。各画面は独立したDesktopWindowHostとTaskbarVisibilityを持ち、画面自身のHideTaskbarで非表示を判断する。
+`WallController`はライブラリー監視・画像キャッシュ・顔検出・環境通知を共有し、グループごとの`WallPlaybackSession`を管理する。各セッションは抽選・アニメーションクロックを1セット持つ。描画元Canvasをグループの最初の接続画面へ接続したまま、各画面の表示用CanvasでVisualBrushを使って現在／旧シーンを提示する。スパンは壁の担当領域を切り出し、画面単位モードは画面IDに対応する子シーンを提示する。配置が重なっていても別画面の子シーンが混ざらず、スパンとのフェードも維持する。全画面でViewboxを使い物理画素数からDIPへ変換する。位置調整は描画元Canvas自身ではなく外側のラッパーへ行い、VisualBrushの原点を動かさない。各画面は独立したDesktopWindowHostとTaskbarVisibilityを持ち、画面自身のHideTaskbarで非表示を判断する。
+
+`GalleryPerDisplay` / `GalleryScrollPerDisplay` / `VerticalPanPerDisplay` / `HorizontalPanPerDisplay` / `ZoomPerDisplay`は欠落時false。`CompositionEngine.Next`は各モードの表示範囲で適性を判定し、画面単位モードでは接続中の全画面に候補があるモードだけを抽選する。`ForMode`で各画面の写真を選び、`PreparedGroup`として1つ先の構成を保持する。各子シーンは画面寸法のレイアウト・画像・背景を持ち、グループ共通のクロック・フェードと最長のシーン時間で切り替わる。Gallery交換・scroll流入は子シーンの寸法を使用する。ライブラリー変更・失敗除外・表示中除外は全子シーンを集約する。
+
+## スパン時の顔と画面境界
+
+`AvoidFaceDisplayBoundaries`は欠落時true。複数画面のグループでGallery／Vertical Panがスパンする場合に顔検出を準備する。接続中の画面が1台になっても、保存済みキャンバス内の未接続領域へ顔を配置しない。方向選択・顔位置停止とは独立してGalleryにも顔検出を接続し、交換写真も同じ経路へ通す。未検出なら既存の幾何計算を維持する。
+
+`FaceSafeLayout`は写真ごとの全検出顔の外接矩形を使い、各画面の内側24px（小さい画面では短辺の3%）へ収める。Galleryは写真順序・非重複・最小間隔を維持し、位置を調整しても実現できない場合だけ共通の高さを縮小する。可能な最大高さを二分探索する。安全なGalleryの交換では旧／新レイアウトのフェードを使い、顔を境界越しに移動させない。背景はこのフェードを含めた前景から採取する。
+
+Vertical Panは写真のXを固定し、顔が画面内に入る位置へ寄せる。必要なら幅を縮小し、顔停止の終点も画面内へ補正する。内部の上下境界がある画面では移動範囲も制限する。画像が壁より低くなる場合の配置用Yは`MotionPlan.FrameTop`へ保持する。横スクロール・横Pan・Zoomの幾何は変更しない。検出不能な顔まで保護する保証はない。
 
 対象画面の消失では同じグループの残りの画面で表示を続け、消失領域を詰めない。画面の増減・解像度変更・Explorer復旧では影響するセッションの表示部と構成を再生成する。時計はグループ内の全画面を同一の前景ウィンドウが覆ったときだけ遮蔽によって停止し、ほかのグループは継続する。ユーザーの開始・停止・一時停止・次の構成は全グループへ適用する。WPF/DWMの各出力の走査タイミングまでは同期を保証しない。
 

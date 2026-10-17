@@ -1,7 +1,10 @@
 using System.Windows.Media.Imaging;
+using System.Windows.Data;
 using DynamicPhotoWall.Motion;
 
 namespace DynamicPhotoWall.Rendering;
+
+public sealed record DisplayScene(string DisplayId, FrameRect Region, CompositionPlan Plan, IReadOnlyList<BitmapSource> Bitmaps);
 
 public sealed class SceneVisual
 {
@@ -10,10 +13,18 @@ public sealed class SceneVisual
     public GlassBackground? Ambient { get; set; }
     public required CompositionMode Mode { get; init; }
     public List<PhotoInfo> Photos { get; } = [];
+    public List<BitmapSource> Bitmaps { get; } = [];
     public List<Border> Slots { get; } = [];
     public double Seconds { get; set; }
     public Canvas? ScrollStrip { get; set; }
     public System.Windows.Controls.Image? MotionImage { get; set; }
+    public Viewport Viewport { get; init; } = new(1, 1);
+    public string? DisplayId { get; set; }
+    public FrameRect? DisplayRegion { get; set; }
+    public List<SceneVisual> Displays { get; } = [];
+    public IReadOnlyList<FrameRect> DisplayRegions { get; init; } = [];
+    public IEnumerable<SceneVisual> Surfaces => Displays.Count == 0 ? new[] { this } : Displays.SelectMany(d => d.Surfaces);
+    public IEnumerable<PhotoInfo> DisplayedPhotos => Surfaces.SelectMany(s => s.Photos);
 }
 
 public sealed class PhotoRenderer : Window
@@ -23,17 +34,24 @@ public sealed class PhotoRenderer : Window
     private readonly WallSettings settings;
     private readonly TransitionController transitions;
     private readonly AnimationScheduler scheduler;
+    private readonly IReadOnlyList<FrameRect> displayRegions;
     private readonly HashSet<GlassBackground> backgrounds = [];
+    private sealed record DisplayView(string? Id, FrameRect Region, Canvas Canvas);
+    private readonly List<DisplayView> views = [];
+    private readonly List<SceneVisual> visibleScenes = [];
+    private DisplayView? primaryView;
+    private bool testPattern;
     public SceneVisual? Current { get; private set; }
-    public PhotoRenderer(Viewport viewport, WallSettings settings, TransitionController transitions, AnimationScheduler scheduler)
+    public PhotoRenderer(Viewport viewport, WallSettings settings, TransitionController transitions, AnimationScheduler scheduler, IReadOnlyList<FrameRect>? displayRegions = null)
     {
         this.viewport = viewport; this.settings = settings; this.transitions = transitions; this.scheduler = scheduler;
+        this.displayRegions = displayRegions ?? [];
         Background = ParseBrush(settings.Background); Focusable = false; IsHitTestVisible = false;
         layers = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true, Background = Background };
         Content = new Viewbox { Stretch = Stretch.Fill, Child = layers };
     }
     public static Brush ParseBrush(string value) { try { var b = (Brush)new BrushConverter().ConvertFromString(value)!; b.Freeze(); return b; } catch (Exception e) when (e is FormatException or NotSupportedException) { return Brushes.Black; } }
-    public void SetDisplayRegion(FrameRect region)
+    public void SetDisplayRegion(FrameRect region, string? displayId = null)
     {
         // Keep the single animated tree attached to the first display. Other
         // outputs sample this same tree, including its common blurred background.
@@ -43,18 +61,56 @@ public sealed class PhotoRenderer : Window
         var positioned = new Canvas { Width = viewport.Width, Height = viewport.Height };
         Canvas.SetLeft(positioned, -region.X); Canvas.SetTop(positioned, -region.Y);
         positioned.Children.Add(layers); crop.Children.Add(positioned);
-        Content = new Viewbox { Stretch = Stretch.Fill, Child = crop };
+        if (primaryView != null) views.Remove(primaryView);
+        primaryView = CreateView(region, displayId);
+        // Keep the source tree attached underneath an opaque presentation view.
+        // Per-display scenes sample their own child even when logical display
+        // rectangles overlap; spanning scenes sample the shared wall region.
+        var presentation = new Grid { Width = region.Width, Height = region.Height };
+        presentation.Children.Add(crop); presentation.Children.Add(primaryView.Canvas);
+        Content = new Viewbox { Stretch = Stretch.Fill, Child = presentation };
     }
-    public FrameworkElement CreateDisplayRegion(FrameRect region)
+    public FrameworkElement CreateDisplayRegion(FrameRect region, string? displayId = null)
+        => new Viewbox { Stretch = Stretch.Fill, Child = CreateView(region, displayId).Canvas };
+    private DisplayView CreateView(FrameRect region, string? displayId)
     {
-        var brush = new VisualBrush(layers) { ViewboxUnits = BrushMappingMode.Absolute,
+        var view = new DisplayView(displayId, region, new Canvas { Width = region.Width, Height = region.Height, ClipToBounds = true, Background = Background });
+        views.Add(view);
+        if (testPattern) view.Canvas.Children.Add(Sample(layers, region));
+        else foreach (var scene in visibleScenes) AddPresentation(view, scene);
+        return view;
+    }
+    private static System.Windows.Shapes.Rectangle Sample(Canvas source, FrameRect region) => new()
+    {
+        Width = region.Width, Height = region.Height,
+        Fill = new VisualBrush(source) { AutoLayoutContent = false, ViewboxUnits = BrushMappingMode.Absolute,
             Viewbox = new Rect(region.X, region.Y, region.Width, region.Height), Stretch = Stretch.Fill,
-            AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
-        return new System.Windows.Shapes.Rectangle { Fill = brush };
+            AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }
+    };
+    private void AddPresentation(DisplayView view, SceneVisual scene)
+    {
+        System.Windows.Shapes.Rectangle rectangle;
+        if (scene.Displays.Count == 0) rectangle = Sample(scene.Canvas, view.Region);
+        else
+        {
+            var child = scene.Displays.FirstOrDefault(s => s.DisplayId == view.Id)
+                ?? (view.Id == null ? scene.Displays.FirstOrDefault(s => s.DisplayRegion == view.Region) : null);
+            if (child == null) return;
+            rectangle = Sample(child.Canvas, new(0, 0, child.Viewport.Width, child.Viewport.Height));
+            rectangle.Width = view.Region.Width; rectangle.Height = view.Region.Height;
+            rectangle.SetBinding(OpacityProperty, new Binding(nameof(Opacity)) { Source = scene.Canvas });
+        }
+        rectangle.Tag = scene; view.Canvas.Children.Add(rectangle);
+    }
+    private void RemovePresentation(SceneVisual scene)
+    {
+        visibleScenes.Remove(scene);
+        foreach (var view in views)
+            foreach (var child in view.Canvas.Children.OfType<FrameworkElement>().Where(c => ReferenceEquals(c.Tag, scene)).ToArray()) view.Canvas.Children.Remove(child);
     }
     public void ShowTestPattern(WallLayout layout, string? groupName = null, IReadOnlyList<string>? displayOrder = null)
     {
-        layers.Children.Clear();
+        Clear(); testPattern = true;
         for (var x = 0; x <= viewport.Width; x += 120)
             layers.Children.Add(new System.Windows.Shapes.Line { X1 = x, X2 = x, Y2 = viewport.Height, Stroke = Brushes.SlateGray, StrokeThickness = 1 });
         for (var y = 0; y <= viewport.Height; y += 120)
@@ -73,12 +129,39 @@ public sealed class PhotoRenderer : Window
             var label = new TextBlock { Text = $"{title}   {region.Width} × {region.Height}\n壁座標 ({region.X}, {region.Y})", FontSize = 32, Foreground = Brushes.White, Background = Brushes.Black, Padding = new Thickness(16) };
             Canvas.SetLeft(label, region.X + 32); Canvas.SetTop(label, region.Y + 32); layers.Children.Add(label);
         }
+        layers.Measure(new Size(viewport.Width, viewport.Height)); layers.Arrange(new Rect(0, 0, viewport.Width, viewport.Height));
+        foreach (var view in views) view.Canvas.Children.Add(Sample(layers, view.Region));
     }
-    public SceneVisual Build(CompositionPlan plan, IReadOnlyList<BitmapSource> bitmaps, Random random)
+    public SceneVisual BuildPerDisplay(IReadOnlyList<DisplayScene> displays, Random random)
     {
+        if (displays.Count == 0 || displays.Any(d => d.Plan.Mode != displays[0].Plan.Mode))
+            throw new InvalidOperationException("画面ごとの構成は同じ表示モードで作成してください。");
+        var foreground = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true };
+        var scene = new SceneVisual { Canvas = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true, Opacity = 0, Background = Background },
+            Foreground = foreground, Mode = displays[0].Plan.Mode, Viewport = viewport };
+        scene.Canvas.Children.Add(foreground);
+        foreach (var display in displays)
+        {
+            var child = Build(display.Plan, display.Bitmaps, random, new(display.Region.Width, display.Region.Height));
+            child.DisplayId = display.DisplayId; child.DisplayRegion = display.Region; child.Canvas.Opacity = 1;
+            // Position a wrapper, keeping the sampled visual's own origin at 0.
+            var positioned = new Canvas { Width = display.Region.Width, Height = display.Region.Height, ClipToBounds = true };
+            Canvas.SetLeft(positioned, display.Region.X); Canvas.SetTop(positioned, display.Region.Y);
+            positioned.Children.Add(child.Canvas); foreground.Children.Add(positioned); scene.Displays.Add(child);
+        }
+        // Shorter motions hold their final frame until the group's longest
+        // motion completes. Fade, pause and Next remain group-wide operations.
+        scene.Seconds = scene.Displays.Max(d => d.Seconds);
+        return scene;
+    }
+    public SceneVisual Build(CompositionPlan plan, IReadOnlyList<BitmapSource> bitmaps, Random random, Viewport? renderViewport = null)
+    {
+        var viewport = renderViewport ?? this.viewport;
+        var regions = renderViewport == null && settings.AvoidFaceDisplayBoundaries ? displayRegions : Array.Empty<FrameRect>();
         var scene = new SceneVisual { Canvas = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true, Opacity = 0 },
-            Foreground = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true }, Mode = plan.Mode };
-        scene.Photos.AddRange(plan.Photos);
+            Foreground = new Canvas { Width = viewport.Width, Height = viewport.Height, ClipToBounds = true }, Mode = plan.Mode, Viewport = viewport,
+            DisplayRegions = FaceSafeLayout.RequiresProtection(viewport, regions) ? regions : [] };
+        scene.Photos.AddRange(plan.Photos); scene.Bitmaps.AddRange(bitmaps);
         if (settings.GlassBackground)
         {
             var backgroundBrush = new ImageBrush { Stretch = Stretch.Fill };
@@ -92,7 +175,8 @@ public sealed class PhotoRenderer : Window
         scene.Canvas.Children.Add(scene.Foreground);
         if (plan.Mode == CompositionMode.Gallery)
         {
-            var frames = CompositionEngine.GalleryLayout(plan.Photos, viewport, settings.Gap);
+            var frames = scene.DisplayRegions.Count > 0 ? FaceSafeLayout.Gallery(plan.Photos, viewport, settings.Gap, regions)
+                : CompositionEngine.GalleryLayout(plan.Photos, viewport, settings.Gap);
             for (var i = 0; i < plan.Photos.Count; i++)
             {
                 var slot = CreateSlot(plan.Photos[i], bitmaps[i]); SetRect(slot, frames[i]); scene.Slots.Add(slot); scene.Foreground.Children.Add(slot);
@@ -114,7 +198,7 @@ public sealed class PhotoRenderer : Window
         }
         else
         {
-            var motion = Core.MotionEngine.Plan(plan.Mode, plan.Photos[0], viewport, settings, random.Next(2) == 0, .35 + random.NextDouble() * .3, .35 + random.NextDouble() * .3);
+            var motion = Core.MotionEngine.Plan(plan.Mode, plan.Photos[0], viewport, settings, random.Next(2) == 0, .35 + random.NextDouble() * .3, .35 + random.NextDouble() * .3, regions);
             var image = new System.Windows.Controls.Image { Source = bitmaps[0], Width = motion.Width, Height = motion.Height, Stretch = Stretch.Fill,
                 RenderTransformOrigin = new System.Windows.Point(motion.CenterX, motion.CenterY) };
             var scale = new ScaleTransform(motion.FromScale, motion.FromScale);
@@ -122,7 +206,7 @@ public sealed class PhotoRenderer : Window
             var frameWidth = plan.Mode == CompositionMode.VerticalPan ? motion.Width : viewport.Width;
             var frameHeight = Math.Min(viewport.Height, motion.Height);
             var photoFrame = new Canvas { Width = frameWidth, Height = frameHeight, ClipToBounds = true };
-            Canvas.SetLeft(photoFrame, frameLeft); Canvas.SetTop(photoFrame, (viewport.Height - frameHeight) / 2);
+            Canvas.SetLeft(photoFrame, frameLeft); Canvas.SetTop(photoFrame, motion.FrameTop ?? (viewport.Height - frameHeight) / 2);
             scene.Foreground.Children.Add(photoFrame); scene.MotionImage = image;
             var translation = new TranslateTransform(motion.FromX - frameLeft, motion.FromY);
             var transform = new TransformGroup(); transform.Children.Add(scale); transform.Children.Add(translation);
@@ -147,6 +231,7 @@ public sealed class PhotoRenderer : Window
     }
     public async Task AdvanceGalleryAsync(SceneVisual scene, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
     {
+        var viewport = scene.Viewport;
         var strip = scene.ScrollStrip ?? throw new InvalidOperationException("スクロール用レイアウトがありません。");
         var distance = Canvas.GetLeft(scene.Slots[0]) + scene.Slots[0].Width;
         var board = transitions.Create();
@@ -159,7 +244,7 @@ public sealed class PhotoRenderer : Window
             var transform = (TranslateTransform)strip.RenderTransform; transform.X = transform.X;
             transitions.RemoveRoot(strip); throw;
         }
-        strip.Children.Remove(scene.Slots[0]); scene.Slots.RemoveAt(0); scene.Photos.RemoveAt(0);
+        strip.Children.Remove(scene.Slots[0]); scene.Slots.RemoveAt(0); scene.Photos.RemoveAt(0); scene.Bitmaps.RemoveAt(0);
         foreach (var slot in scene.Slots) Canvas.SetLeft(slot, Canvas.GetLeft(slot) - distance);
         transitions.RemoveRoot(strip); ((TranslateTransform)strip.RenderTransform).X = 0;
         var last = scene.Slots.LastOrDefault();
@@ -167,42 +252,53 @@ public sealed class PhotoRenderer : Window
         var next = CreateSlot(photo, bitmap);
         SetRect(next, new(last == null ? settings.Gap : Canvas.GetLeft(last) + last.Width + settings.Gap,
             (viewport.Height - height) / 2, height * photo.Aspect, height));
-        scene.Photos.Add(photo); scene.Slots.Add(next); strip.Children.Add(next);
+        scene.Photos.Add(photo); scene.Bitmaps.Add(bitmap); scene.Slots.Add(next); strip.Children.Add(next);
     }
     public async Task ShowAsync(SceneVisual next, CancellationToken token)
     {
         var old = Current;
+        if (testPattern) { layers.Children.Clear(); foreach (var view in views) view.Canvas.Children.Clear(); testPattern = false; }
         layers.Children.Add(next.Canvas);
+        visibleScenes.Add(next);
+        foreach (var view in views) AddPresentation(view, next);
         Current = next;
         next.Canvas.UpdateLayout();
         try
         {
-            if (next.Ambient != null) { backgrounds.Add(next.Ambient); await next.Ambient.StartAsync(token); }
+            var ambient = next.Surfaces.Select(s => s.Ambient).OfType<GlassBackground>().ToArray();
+            foreach (var background in ambient) backgrounds.Add(background);
+            await Task.WhenAll(ambient.Select(b => b.StartAsync(token)));
         }
         catch (OperationCanceledException)
         {
-            DisposeBackground(next); layers.Children.Remove(next.Canvas); Current = old; throw;
+            DisposeBackground(next); RemovePresentation(next); layers.Children.Remove(next.Canvas); Current = old; throw;
         }
-        if (next.Canvas.Tag is System.Windows.Media.Animation.Storyboard motion) transitions.Start(motion, next.Canvas);
+        foreach (var surface in next.Surfaces)
+            if (surface.Canvas.Tag is System.Windows.Media.Animation.Storyboard motion) transitions.Start(motion, surface.Canvas);
         var fade = transitions.Create(); TransitionController.Animate(fade, next.Canvas, OpacityProperty, 0, 1, settings.FadeSeconds);
         // Keep the old scene opaque under the new one to prevent a black dip.
         transitions.Start(fade, next.Canvas);
         try { await scheduler.DelayAsync(settings.FadeSeconds, token); }
         catch (OperationCanceledException)
         {
-            DisposeBackground(next); transitions.RemoveTree(next.Canvas); layers.Children.Remove(next.Canvas); Current = old;
+            DisposeBackground(next); RemovePresentation(next); transitions.RemoveTree(next.Canvas); layers.Children.Remove(next.Canvas); Current = old;
             throw;
         }
-        if (old != null) { DisposeBackground(old); transitions.RemoveTree(old.Canvas); layers.Children.Remove(old.Canvas); }
+        if (old != null) { DisposeBackground(old); RemovePresentation(old); transitions.RemoveTree(old.Canvas); layers.Children.Remove(old.Canvas); }
     }
     public async Task ReplaceSlotAsync(SceneVisual scene, int index, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
     {
-        if (Current != scene) return;
+        if (Current == null || !Current.Surfaces.Contains(scene)) return;
+        var viewport = scene.Viewport;
+        if (scene.DisplayRegions.Count > 0 && (FaceSafeLayout.Bounds(photo) != null || scene.Photos.Any(p => FaceSafeLayout.Bounds(p) != null)))
+        {
+            await ReplaceSafeGalleryAsync(scene, index, photo, bitmap, token); return;
+        }
         var slot = scene.Slots[index];
         var old = slot.Child;
         var next = CreatePhoto(photo, bitmap); next.Opacity = 0;
         var stack = new Grid(); if (old != null) { slot.Child = null; stack.Children.Add(old); } stack.Children.Add(next); slot.Child = stack;
-        scene.Photos[index] = photo;
+        scene.Photos[index] = photo; scene.Bitmaps[index] = bitmap;
         var frames = CompositionEngine.GalleryLayout(scene.Photos, viewport, settings.Gap);
         var fade = transitions.Create(); TransitionController.Animate(fade, next, OpacityProperty, 0, 1, settings.FadeSeconds);
         for (var i = 0; i < frames.Count; i++)
@@ -219,6 +315,31 @@ public sealed class PhotoRenderer : Window
         // Set the final values before removing the clocks (avoid a one-frame jump).
         next.Opacity = 1; transitions.RemoveRoot(next);
         stack.Children.Clear(); slot.Child = next;
+    }
+    private async Task ReplaceSafeGalleryAsync(SceneVisual scene, int index, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
+    {
+        var photos = scene.Photos.ToArray(); photos[index] = photo;
+        var frames = FaceSafeLayout.Gallery(photos, scene.Viewport, settings.Gap, scene.DisplayRegions);
+        var bitmaps = scene.Bitmaps.ToArray(); bitmaps[index] = bitmap;
+        var next = new Canvas { Width = scene.Viewport.Width, Height = scene.Viewport.Height, ClipToBounds = true, Opacity = 0 };
+        var slots = new List<Border>();
+        for (var i = 0; i < photos.Length; i++)
+        {
+            var slot = CreateSlot(photos[i], bitmaps[i]); SetRect(slot, frames[i]); slots.Add(slot); next.Children.Add(slot);
+        }
+        scene.Foreground.Children.Add(next);
+        var fade = transitions.Create(); TransitionController.Animate(fade, next, OpacityProperty, 0, 1, settings.FadeSeconds);
+        transitions.Start(fade, next);
+        try { await scheduler.DelayAsync(settings.FadeSeconds, token); }
+        finally
+        {
+            // Crossfade between two safe layouts instead of translating faces
+            // through a seam during the Gallery's aspect-ratio reflow.
+            next.Opacity = 1; transitions.RemoveRoot(next); next.Children.Clear(); scene.Foreground.Children.Clear();
+            foreach (var slot in slots) scene.Foreground.Children.Add(slot);
+            scene.Slots.Clear(); scene.Slots.AddRange(slots);
+            scene.Photos.Clear(); scene.Photos.AddRange(photos); scene.Bitmaps.Clear(); scene.Bitmaps.AddRange(bitmaps);
+        }
     }
     private Border CreateSlot(PhotoInfo photo, BitmapSource bitmap)
     {
@@ -247,11 +368,13 @@ public sealed class PhotoRenderer : Window
     }
     private void DisposeBackground(SceneVisual scene)
     {
-        if (scene.Ambient != null) { scene.Ambient.Dispose(); backgrounds.Remove(scene.Ambient); }
+        foreach (var surface in scene.Surfaces)
+            if (surface.Ambient != null) { surface.Ambient.Dispose(); backgrounds.Remove(surface.Ambient); }
     }
     public void Clear()
     {
         foreach (var background in backgrounds) background.Dispose(); backgrounds.Clear();
-        transitions.Clear(); layers.Children.Clear(); Current = null;
+        transitions.Clear(); layers.Children.Clear(); visibleScenes.Clear(); foreach (var view in views) view.Canvas.Children.Clear();
+        Current = null; testPattern = false;
     }
 }

@@ -9,7 +9,8 @@ namespace DynamicPhotoWall;
 
 internal sealed class WallPlaybackSession : IAsyncDisposable
 {
-    private sealed record Prepared(CompositionPlan Plan, IReadOnlyList<BitmapSource> Images);
+    private sealed record Prepared(CompositionPlan Plan, IReadOnlyList<BitmapSource> Images, string? DisplayId = null, FrameRect? Region = null);
+    private sealed record PreparedGroup(CompositionMode Mode, IReadOnlyList<Prepared> Parts);
     private readonly PhotoScanner library;
     private readonly ImageCache cache;
     private readonly FaceAnalyzer faces;
@@ -36,10 +37,14 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
     public bool IsPaused => userPaused;
     public bool IsRunning => renderer != null && desiredRunning;
     public CompositionMode? CurrentMode => renderer?.Current?.Mode;
-    public IReadOnlyList<string> DisplayedPhotoPaths => renderer?.Current?.Photos.Select(p => p.Path).ToArray() ?? [];
+    public IReadOnlyList<string> DisplayedPhotoPaths => renderer?.Current?.DisplayedPhotos.Select(p => p.Path).ToArray() ?? [];
     public event Action? Changed;
     public WallGroupState State => new(group.Name, group.Displays.Select(d => d.Id).ToArray(), layout?.Viewport,
-        CurrentMode, DisplayedPhotoPaths, IsRunning, userPaused || covered || sleeping, Status);
+        CurrentMode, DisplayedPhotoPaths, IsRunning, userPaused || covered || sleeping, Status)
+        {
+            PerDisplay = renderer?.Current?.Displays.Count > 0,
+            Surfaces = renderer?.Current?.Surfaces.Select(s => new WallSurfaceState(s.DisplayId, s.Viewport, s.Photos.Select(p => p.Path).ToArray())).ToArray() ?? []
+        };
     public WallPlaybackSession(WallSettings settings, DisplayGroup group, PhotoScanner library, ImageCache cache, FaceAnalyzer faces, CancellationToken lifetime)
     {
         Settings = settings; this.group = group; this.library = library; this.cache = cache; this.faces = faces; this.lifetime = lifetime;
@@ -59,13 +64,13 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         try
         {
             layout = BuildLayout();
-            renderer = new(layout.Viewport, Settings, transitions, scheduler);
-            renderer.SetDisplayRegion(layout.Regions[monitors[0].Id]);
+            renderer = new(layout.Viewport, Settings, transitions, scheduler, monitors.Select(m => layout.Regions[m.Id]).ToArray());
+            renderer.SetDisplayRegion(layout.Regions[monitors[0].Id], monitors[0].Id);
             foreach (var monitor in monitors)
             {
                 var output = new Output(monitor, new DesktopWindowHost(), new TaskbarVisibility());
                 outputs.Add(output);
-                var window = outputs.Count == 1 ? renderer : new Window { Background = renderer.Background, Content = renderer.CreateDisplayRegion(layout.Regions[monitor.Id]), Focusable = false, IsHitTestVisible = false };
+                var window = outputs.Count == 1 ? renderer : new Window { Background = renderer.Background, Content = renderer.CreateDisplayRegion(layout.Regions[monitor.Id], monitor.Id), Focusable = false, IsHitTestVisible = false };
                 output.Host.Attach(window, monitor);
             }
             cache.BudgetBytes = Settings.CacheMegabytes * 1024L * 1024;
@@ -135,7 +140,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
     }
     private async Task PlayAsync(CancellationToken token)
     {
-        Prepared? prepared = null;
+        PreparedGroup? prepared = null;
         try
         {
             while (!token.IsCancellationRequested)
@@ -148,15 +153,18 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
                     // Consume before Build: a failed layout must not pin the
                     // retry loop to the same invalid prepared composition.
                     var ready = prepared; prepared = null;
-                    var scene = activeRenderer.Build(ready.Plan, ready.Images, random);
+                    var scene = ready.Parts[0].Region != null
+                        ? activeRenderer.BuildPerDisplay(ready.Parts.Select(p => new DisplayScene(p.DisplayId!, p.Region!, p.Plan, p.Images)).ToArray(), random)
+                        : activeRenderer.Build(ready.Parts[0].Plan, ready.Parts[0].Images, random);
                     using var local = CancellationTokenSource.CreateLinkedTokenSource(token);
                     sceneLifetime = local;
                     try
                     {
                         await activeRenderer.ShowAsync(scene, local.Token);
                         UpdatePause();
-                        var updates = scene.Mode == CompositionMode.Gallery ? Enumerable.Range(0, scene.Slots.Count).Select(i => UpdateGalleryAsync(activeRenderer, scene, i, local.Token)).ToArray()
-                            : scene.Mode == CompositionMode.GalleryScroll ? new[] { ScrollGalleryAsync(activeRenderer, scene, local.Token) } : [];
+                        var updates = scene.Surfaces.SelectMany(surface => scene.Mode == CompositionMode.Gallery
+                            ? Enumerable.Range(0, surface.Slots.Count).Select(i => UpdateGalleryAsync(activeRenderer, surface, i, local.Token))
+                            : scene.Mode == CompositionMode.GalleryScroll ? new[] { ScrollGalleryAsync(activeRenderer, surface, local.Token) } : []).ToArray();
                         var preload = PrepareAsync(local.Token); // Only one future composition held.
                         try
                         {
@@ -183,22 +191,48 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         }
         finally { sceneLifetime = null; }
     }
-    private async Task<Prepared?> PrepareAsync(CancellationToken token)
+    private async Task<PreparedGroup?> PrepareAsync(CancellationToken token)
     {
         if (layout == null) return null;
         var photos = library.Photos.Where(p => !failed.Contains(p.Path)).ToArray();
-        var excluded = renderer?.Current?.Photos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var plan = composition.Next(photos, layout.Viewport, Settings, excluded) ?? composition.Next(photos, layout.Viewport, Settings);
+        var excluded = renderer?.Current?.DisplayedPhotos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new(StringComparer.OrdinalIgnoreCase);
+        var regions = monitors.Select(m => (m.Id, Region: layout.Regions[m.Id])).ToArray();
+        var viewports = regions.Select(r => new Viewport(r.Region.Width, r.Region.Height)).ToArray();
+        var plan = composition.Next(photos, layout.Viewport, Settings, excluded, viewports) ?? composition.Next(photos, layout.Viewport, Settings, displayViewports: viewports);
         if (plan == null) return null;
+        if (!Settings.IsPerDisplay(plan.Mode))
+        {
+            var single = await PreparePartAsync(plan, layout.Viewport, token);
+            return single == null ? null : new(plan.Mode, new[] { single });
+        }
+        var parts = new List<Prepared>();
+        for (var i = 0; i < regions.Length; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            var candidates = photos.Where(p => !failed.Contains(p.Path)).ToArray();
+            var local = i == 0 ? plan : composition.ForMode(candidates, viewports[i], Settings, plan.Mode, excluded)
+                ?? composition.ForMode(candidates, viewports[i], Settings, plan.Mode);
+            if (local == null) return null;
+            var part = await PreparePartAsync(local, viewports[i], token);
+            if (part == null) return null; // Never replace a group with a blank display.
+            parts.Add(part with { DisplayId = regions[i].Id, Region = regions[i].Region });
+            foreach (var photo in part.Plan.Photos) excluded.Add(photo.Path);
+        }
+        return new(plan.Mode, parts);
+    }
+    private async Task<Prepared?> PreparePartAsync(CompositionPlan plan, Viewport viewport, CancellationToken token)
+    {
         var kept = new List<PhotoInfo>(); var images = new List<BitmapSource>();
         foreach (var photo in plan.Photos)
         {
-            var targetWidth = plan.Mode is CompositionMode.Gallery or CompositionMode.GalleryScroll or CompositionMode.HorizontalPan ? (int)(layout.Viewport.Height * photo.Aspect)
-                : plan.Mode == CompositionMode.VerticalPan ? (int)(layout.Viewport.Width * Settings.PanWidthFraction) : (int)layout.Viewport.Width;
+            var targetWidth = plan.Mode is CompositionMode.Gallery or CompositionMode.GalleryScroll or CompositionMode.HorizontalPan ? (int)(viewport.Height * photo.Aspect)
+                : plan.Mode == CompositionMode.VerticalPan ? (int)(viewport.Width * Settings.PanWidthFraction) : (int)viewport.Width;
             var image = await cache.LoadAsync(photo, targetWidth, token);
             if (image == null) { failed.Add(photo.Path); continue; }
             var analyzeFace = (plan.Mode is CompositionMode.VerticalPan or CompositionMode.HorizontalPan) && Settings.FaceAwarePanDirection
-                || plan.Mode == CompositionMode.VerticalPan && Settings.StopAtFace || plan.Mode == CompositionMode.Zoom && Settings.FaceAwareFraming;
+                || plan.Mode == CompositionMode.VerticalPan && Settings.StopAtFace || plan.Mode == CompositionMode.Zoom && Settings.FaceAwareFraming
+                || Settings.AvoidFaceDisplayBoundaries && group.Displays.Count > 1 && !Settings.IsPerDisplay(plan.Mode)
+                    && plan.Mode is CompositionMode.Gallery or CompositionMode.VerticalPan;
             kept.Add(analyzeFace ? await faces.AnalyzeAsync(photo, image, token) : photo); images.Add(image);
         }
         return kept.Count > 0 ? new(new(plan.Mode, kept), images) : null;
@@ -206,13 +240,13 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
     private async Task<(PhotoInfo Photo, BitmapSource Image)?> PrepareScrollPhotoAsync(SceneVisual scene, string? reserved, CancellationToken token)
     {
         var candidates = library.Photos.Where(p => !failed.Contains(p.Path)).ToArray();
-        var excluded = scene.Photos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var excluded = renderer?.Current?.DisplayedPhotos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new(StringComparer.OrdinalIgnoreCase);
         if (reserved != null) excluded.Add(reserved);
         var portraits = candidates.Where(p => p.Aspect < .95).ToArray();
         var photo = selector.Pick(portraits.Length > 0 ? portraits : candidates, Settings, excluded);
         photo ??= scene.Photos.FirstOrDefault(p => p.Path != reserved);
         if (photo == null) return null;
-        var image = await cache.LoadAsync(photo, (int)(layout!.Viewport.Height * photo.Aspect), token);
+        var image = await cache.LoadAsync(photo, (int)(scene.Viewport.Height * photo.Aspect), token);
         if (image == null) { failed.Add(photo.Path); return null; }
         return (photo, image);
     }
@@ -244,12 +278,17 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
                 try
                 {
                     var candidates = library.Photos.Where(p => !failed.Contains(p.Path)).ToArray();
-                    var excluded = scene.Photos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var excluded = renderer?.Current?.DisplayedPhotos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                     var photo = selector.Pick(candidates, Settings, excluded);
                     if (photo != null)
                     {
-                        var bitmap = await cache.LoadAsync(photo, (int)(layout!.Viewport.Height * photo.Aspect), token);
-                        if (bitmap != null) await activeRenderer.ReplaceSlotAsync(scene, slot, photo, bitmap, token); else failed.Add(photo.Path);
+                        var bitmap = await cache.LoadAsync(photo, (int)(scene.Viewport.Height * photo.Aspect), token);
+                        if (bitmap != null)
+                        {
+                            if (scene.DisplayRegions.Count > 0) photo = await faces.AnalyzeAsync(photo, bitmap, token);
+                            await activeRenderer.ReplaceSlotAsync(scene, slot, photo, bitmap, token);
+                        }
+                        else failed.Add(photo.Path);
                     }
                 }
                 finally { galleryUpdates.Release(); }
@@ -262,7 +301,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
     {
         failed.Clear();
         var paths = library.Photos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (renderer?.Current?.Photos.Any(p => !paths.Contains(p.Path)) == true) Next();
+        if (renderer?.Current?.DisplayedPhotos.Any(p => !paths.Contains(p.Path)) == true) Next();
     }
     public async Task RecoverAsync()
     {

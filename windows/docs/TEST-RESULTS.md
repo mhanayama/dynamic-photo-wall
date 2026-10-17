@@ -1,5 +1,21 @@
 # 実施した検証
 
+## 2026-10-17 — モード別の画面単位表示と、スパン中の顔境界回避
+
+- 全5モードに「ディスプレイごとに表示」を追加。旧設定はスパンのまま、画面別モードは各画面の物理解像度で適性・写真・配置・背景を作り、モード・pause・Next・切替時刻をグループで共有する。
+- 「スパン時に顔が画面の境目に重ならないよう配置」を初期値ONで追加。Gallery・縦Panは全検出顔を接続画面内へ寄せ、必要時だけ縮小。Galleryの再配置は安全な配置同士のフェードにする。横スクロール・横Pan・Zoomは従来の幾何を維持する。
+- 5種類の画面配置（左右・上下・隙間・高さ違い・1画面未接続）、4種類の顔矩形、停止／方向のON/OFFによる縦Pan80通り、Gap3種類を含むGallery240通りで、顔の包含・移動中の境界回避・非重複を検証。位置調整でサイズを維持できる場合、巨大Gap、未検出、設定OFFも確認。
+- 画面ごとの全5モードの画素、Gallery交換、scroll流入、背景pause／破棄、同じ配置座標でも画面IDで別の写真が出ること、スパンへの切替を確認。設定ウィンドウの5チェックと境界設定を保存・再読込し、1040×820と920×700をPNG確認。
+- 実セッションで全モードを切り替え、各画面の寸法・モード・写真・共有pause／Next・停止と切断時の領域保持を確認。公開fixtureのastronaut.pngをWindows標準検出へ通し、他の顔設定をOFFにしたスパンGalleryでも顔を準備し、実際の配置が画面内へ収まることを確認。画面を1台切断した構成でも残った画面へ顔を配置する。
+- 最終のコア18項目＋画面別描画／顔検出の統合1項目が成功。既存の背景・復旧・画面グループ・設定UI・テスト表示・グループ削除も成功。複数画面のタスクバー復元だけは起動中の通常版との干渉で最初に不一致となり、通常版を終了した単独試験では成功した。
+- C#共通fixtureの704 assertionsは既存の期待値を維持して成功。Releaseの単一EXEを発行し、共通release先へ配置。NU1900の情報取得警告あり、コンパイルエラー0。Macアプリの変更・検証は行わず、D06/D07としてhandoverへ仕様を追加した。
+
+結果: `artifacts/windows/span-face-complete/test-results.json`、`mode-routing-states.json`、`mode-checkboxes-{1040,920}.png`、`detected-face-spanning.png`。上下配置の短い縦Panで実際の描画位置も確認した追加統合は`artifacts/windows/span-face-vertical-frame/`。既存回帰は`artifacts/windows/span-face-final/`、タスクバーの単独再検証は`artifacts/windows/mode-routing-clean-multi/`。実機の提示検査は露出していたDISPLAY3の9/9点が成功し、DISPLAY1/2は他アプリに覆われていた。混在DPI・実ケーブル抜差し・長時間運転は従来どおり残る。顔未検出の写真まで保護する保証はない。
+
+```powershell
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/span-face-complete --per-display-modes
+```
+
 ## 2026-10-17 — 画面グループの削除
 
 - 一覧カードごとに「削除」ボタンを追加。空／所属あり／最後のグループを削除でき、所属画面は未選択の画面も含め「独立して表示」へ戻す。画面の選択・配置・タスクバー設定は維持する。
