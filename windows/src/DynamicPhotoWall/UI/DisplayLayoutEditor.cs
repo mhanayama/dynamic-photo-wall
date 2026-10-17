@@ -41,7 +41,7 @@ public sealed class DisplayLayoutEditor : StackPanel
     public StackPanel TaskbarView { get; } = new();
     public List<DisplayChoice> Choices { get; private set; } = [];
     public IReadOnlyList<string> GroupNames => groupOptions.Where(g => g.Id != null).Select(g => g.Id!).ToArray();
-    private bool dragging;
+    private bool dragging, loaded, updatingGroups;
     private double scale, originX, originY;
     private static Brush PhotoRendererBrush(string color) => Rendering.PhotoRenderer.ParseBrush(color);
     public DisplayLayoutEditor()
@@ -51,6 +51,7 @@ public sealed class DisplayLayoutEditor : StackPanel
         addGroup.Click += (_, _) => AddGroup();
         DockPanel.SetDock(addGroup, Dock.Right); header.Children.Add(addGroup); header.Children.Add(groupCount);
         Children.Add(header); Children.Add(groupList);
+        Children.Add(new TextBlock { Text = "グループを削除すると、所属画面は「独立して表示」に戻ります。", Foreground = Brushes.LightSteelBlue, FontSize = 12 });
         Children.Add(new TextBlock { Text = "画面の割り当て", Foreground = Brushes.LightSteelBlue, Margin = new Thickness(0, 8, 0, 8) });
         Children.Add(rows); Children.Add(preview); Children.Add(summary);
         Children.Add(new Expander { Header = "配置を数値で調整", Content = coordinateRows, Foreground = Brushes.LightSteelBlue, Margin = new Thickness(0, 12, 0, 8) });
@@ -72,18 +73,21 @@ public sealed class DisplayLayoutEditor : StackPanel
                 Width = m?.Width ?? p!.Width, Height = m?.Height ?? p!.Height,
                 GroupId = old != null ? old.GroupId : p?.GroupId, HideTaskbar = old?.HideTaskbar ?? p?.HideTaskbar ?? settings.HideTaskbar };
         }).ToList();
-        foreach (var name in settings.DisplayGroupNames.Where(n => !string.IsNullOrWhiteSpace(n)))
-            if (groupOptions.All(g => g.Id != name)) groupOptions.Add(new(name, name));
+        // Refresh uses the editor's draft catalog; importing saved names again
+        // would resurrect groups deleted before saving.
+        if (!loaded)
+            foreach (var name in settings.DisplayGroupNames.Where(n => !string.IsNullOrWhiteSpace(n)))
+                if (groupOptions.All(g => g.Id != name)) groupOptions.Add(new(name, name));
         foreach (var choice in Choices.Where(c => !string.IsNullOrWhiteSpace(c.GroupId)))
             if (groupOptions.All(g => g.Id != choice.GroupId)) groupOptions.Add(new(choice.GroupId, choice.GroupId!));
-        if (groupOptions.Count == 1) groupOptions.Add(new("グループ1", "グループ1"));
+        loaded = true;
         SelectionView.Children.Clear();
         foreach (var choice in Choices)
         {
             choice.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(DisplayChoice.Selected)) BuildSelectedViews();
-                if (e.PropertyName != nameof(DisplayChoice.HideTaskbar)) Draw();
+                if (!updatingGroups && e.PropertyName != nameof(DisplayChoice.HideTaskbar)) Draw();
             };
             var check = new CheckBox { Content = choice.Label, DataContext = choice, Padding = new Thickness(4), Margin = new Thickness(0) };
             check.SetBinding(CheckBox.IsCheckedProperty, new Binding(nameof(DisplayChoice.Selected)) { Mode = BindingMode.TwoWay });
@@ -130,6 +134,22 @@ public sealed class DisplayLayoutEditor : StackPanel
         var number = 1; while (groupOptions.Any(g => g.Id == $"グループ{number}")) number++;
         groupOptions.Add(new($"グループ{number}", $"グループ{number}")); RefreshGroupList();
     }
+    public bool RemoveGroup(string name)
+    {
+        var option = groupOptions.FirstOrDefault(g => g.Id == name && g.Id != null);
+        if (option == null) return false;
+        updatingGroups = true;
+        try
+        {
+            // Include deselected screens so selecting them again cannot restore
+            // membership in a group that no longer exists.
+            foreach (var choice in Choices.Where(c => c.GroupId?.Trim() == name)) choice.GroupId = null;
+            groupOptions.Remove(option);
+            BuildSelectedViews();
+        }
+        finally { updatingGroups = false; }
+        Draw(); return true;
+    }
     private static readonly string[] groupColors = ["#294875", "#355A45", "#674568", "#6B512C", "#365C65"];
     private Brush GroupBrush(string? id) => PhotoRendererBrush(string.IsNullOrWhiteSpace(id) ? "#333B4C" : groupColors[Math.Max(0, groupOptions.ToList().FindIndex(g => g.Id == id) - 1) % groupColors.Length]);
     private void RefreshGroupList()
@@ -139,7 +159,13 @@ public sealed class DisplayLayoutEditor : StackPanel
         {
             var members = Choices.Where(c => c.Selected && c.GroupId?.Trim() == name).ToArray();
             var content = new StackPanel();
-            content.Children.Add(new TextBlock { Text = $"{name} · {members.Length}画面", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+            var header = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+            var remove = new Button { Name = "RemoveGroupButton", Tag = name, Content = "削除", Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top,
+                ToolTip = "グループを削除し、所属画面を「独立して表示」に戻します。保存時に反映します。" };
+            remove.Click += (_, _) => RemoveGroup(name);
+            DockPanel.SetDock(remove, Dock.Right); header.Children.Add(remove);
+            header.Children.Add(new TextBlock { Text = $"{name} · {members.Length}画面", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0) });
+            content.Children.Add(header);
             content.Children.Add(new TextBlock { Text = members.Length == 0 ? "画面未割り当て" : string.Join(", ", members.Select(c => c.Label.Split('·')[0].Trim())), Foreground = Brushes.LightSteelBlue, FontSize = 12, Margin = new Thickness(0) });
             groupList.Children.Add(new Border { Child = content, Background = GroupBrush(name), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 8, 8), MinWidth = 150, MaxWidth = 250 });
         }

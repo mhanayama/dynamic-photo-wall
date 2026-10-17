@@ -44,6 +44,7 @@ internal static class Program
             if (args.Contains("--display-groups")) await Test("independent display groups and per-display taskbar settings", DisplayGroupsDesktopAsync);
             if (args.Contains("--settings-ui")) await Test("settings pages visual review", SettingsPagesAsync);
             if (args.Contains("--test-pattern-toggle")) await Test("test pattern button previews draft without saving and restores playback", TestPatternToggleAsync);
+            if (args.Contains("--group-deletion")) await Test("group delete buttons preserve screens and survive refresh, save and reopen", GroupDeletionAsync);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -362,6 +363,52 @@ internal static class Program
             if (child is T match) yield return match;
             foreach (var descendant in VisualDescendants<T>(child)) yield return descendant;
         }
+    }
+    private static async Task GroupDeletionAsync()
+    {
+        var monitors = MonitorManager.Enumerate(); Check(monitors.Count > 0, "display required");
+        var settings = new WallSettings { StartOnLaunch = false, DisplayGroupNames = ["連結", "予備", "残す"],
+            Displays = monitors.Select(m => new DisplayPlacement { Id = m.Id, X = m.X, Y = m.Y, Width = m.Width, Height = m.Height, GroupId = "連結", HideTaskbar = false }).ToList() };
+        var manager = new SettingsManager(); manager.Save(settings); var originalFile = File.ReadAllText(manager.FilePath);
+        await using var controller = new WallController(settings);
+        var window = new DynamicPhotoWall.UI.SettingsWindow(controller, manager);
+        try
+        {
+            window.Show(); ((System.Windows.Controls.TabControl)window.FindName("SettingsPages")).SelectedIndex = 2; window.UpdateLayout();
+            var editor = (DynamicPhotoWall.UI.DisplayLayoutEditor)((System.Windows.Controls.ContentControl)window.FindName("DisplayEditorHost")).Content;
+            void Delete(string name) => VisualDescendants<System.Windows.Controls.Button>(editor)
+                .Single(b => b.Name == "RemoveGroupButton" && (string)b.Tag == name).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            var add = VisualDescendants<System.Windows.Controls.Button>(editor).Single(b => b.Name == "AddGroupButton");
+            add.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Delete("グループ1"); Check(editor.GroupNames.Count == 3 && !editor.GroupNames.Contains("グループ1"), "new unassigned group deleted by its button");
+            Delete("予備"); editor.Load(settings); window.UpdateLayout();
+            Check(!editor.GroupNames.Contains("予備") && editor.GroupNames.Count == 2, "refresh must not resurrect deleted saved group");
+            var hiddenChoice = editor.Choices.Count > 1 ? editor.Choices.Last() : null;
+            if (hiddenChoice != null) hiddenChoice.Selected = false;
+            var before = editor.Choices.Select(c => (c.Id, c.Selected, c.X, c.Y, c.HideTaskbar)).ToArray();
+            Delete("連結"); window.UpdateLayout();
+            Check(editor.Choices.All(c => c.GroupId == null) && before.SequenceEqual(editor.Choices.Select(c => (c.Id, c.Selected, c.X, c.Y, c.HideTaskbar))), "assigned deletion only clears membership, including deselected screens");
+            if (hiddenChoice != null) hiddenChoice.Selected = true;
+            Check(VisualDescendants<System.Windows.Controls.ComboBox>(editor).All(p => p.Text == "独立して表示"), "assignment pickers immediately show independent display");
+            Check(controller.Settings.Displays.All(d => d.GroupId == "連結") && File.ReadAllText(manager.FilePath) == originalFile, "deletion stays in draft until saved");
+            // A separate editor represents closing without saving: old groups survive.
+            var cancelled = new DynamicPhotoWall.UI.DisplayLayoutEditor(); cancelled.Load(manager.Load());
+            Check(cancelled.GroupNames.Contains("連結") && cancelled.GroupNames.Contains("予備"), "unsaved deletion does not modify persisted catalog");
+            Delete("残す"); editor.Load(settings); window.UpdateLayout();
+            Check(editor.GroupNames.Count == 0 && VisualDescendants<System.Windows.Controls.TextBlock>(editor).Any(t => t.Text == "グループ一覧（0）"), "last group stays deleted after refresh");
+            Check(!editor.RemoveGroup("不存在"), "unknown group deletion is harmless");
+            var saveButton = (System.Windows.Controls.Button)window.FindName("SaveButton");
+            saveButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            await Until(() => saveButton.IsEnabled && controller.Settings.DisplayGroupNames.Count == 0, 10000);
+            var reloaded = manager.Load();
+            Check(saveButton.IsEnabled && controller.Settings.DisplayGroupNames.Count == 0 && reloaded.DisplayGroupNames.Count == 0 && reloaded.Displays.Count == monitors.Count
+                && reloaded.Displays.All(d => d.GroupId == null), "save removes catalog and assignments without losing selected screens");
+            var reopened = new DynamicPhotoWall.UI.DisplayLayoutEditor(); reopened.Load(reloaded);
+            Check(reopened.GroupNames.Count == 0 && reopened.SelectedPlacements().All(d => d.GroupId == null), "reopening does not create a phantom default group");
+            reopened.AddGroup(); Check(reopened.GroupNames.SequenceEqual(new[] { "グループ1" }), "adding after deleting all reuses first available number");
+            SaveRender(window, "groups-deleted.png");
+        }
+        finally { window.Close(); }
     }
     private static async Task TestPatternToggleAsync()
     {

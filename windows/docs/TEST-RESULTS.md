@@ -1,5 +1,19 @@
 # 実施した検証
 
+## 2026-10-17 — 画面グループの削除
+
+- 一覧カードごとに「削除」ボタンを追加。空／所属あり／最後のグループを削除でき、所属画面は未選択の画面も含め「独立して表示」へ戻す。画面の選択・配置・タスクバー設定は維持する。
+- 再検出時は編集済みのグループ一覧を保持し、保存済みの削除前の名前を再追加しない。全削除後も再読込で「グループ1」を自動生成しない。
+- 実際の削除ボタン・割り当て選択肢・一覧数・保存ボタンを操作し、ドラフトだけの変更、保存しない場合の元データ保持、保存・再読込、番号の再利用を確認した。
+- Release発行とコア16項目が成功。最終の設定UI・既存テストパターン・グループ削除の統合3項目も成功。通常／最小サイズの設定ページ、全削除後の画面をPNGで確認。ビルドはエラー0、NU1900の情報取得警告あり。
+- 最初のテストパターン統合試験は制限環境からExplorerのProgmanを取得できず失敗。対話デスクトップ側で再実行し、最終3項目はすべて成功した。削除試験自体は両環境で成功。
+
+結果: `artifacts/windows/group-deletion-final/test-results.json`、`settings-page-3-{1040,920}.png`、`groups-deleted.png`。Mac移植にも同じ削除・再検出・保存の条件を[handover](../../macos/WINDOWS_DELTA_HANDOVER.md)へ追記した。
+
+```powershell
+.\.tools\dotnet\dotnet.exe windows/tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll artifacts/windows/group-deletion-final --scan-only --settings-ui --test-pattern-toggle --group-deletion
+```
+
 ## 2026-10-17 — 両OSのreleaseディレクトリ統一
 
 - Windows配布先を`release/windows/win-x64/`へ変更し、起動スクリプト・ショートカットを同じパスへ統一。ショートカットのターゲットと作業ディレクトリを実ファイルから確認。
