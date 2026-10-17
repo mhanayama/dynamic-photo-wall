@@ -71,6 +71,8 @@ final class PhotoImageStore {
     @ObservationIgnored private let decode: Decode
     @ObservationIgnored private let faceAnalyzer: PhotoFaceAnalyzer?
     private(set) var analyzedFaces: [PhotoImageKey: [FaceRegion]] = [:]
+    @ObservationIgnored private var owners: [UUID: (photos: Set<PhotoImageKey>, widths: [PhotoImageKey: Int])] = [:]
+    private static let legacyOwner = UUID()
     @ObservationIgnored private var pinnedPhotos: Set<PhotoImageKey> = []
     @ObservationIgnored private var desiredWidths: [PhotoImageKey: Int] = [:]
     @ObservationIgnored private var cache: [PhotoDecodeKey: (image: NSImage, bytes: Int)] = [:]
@@ -98,6 +100,16 @@ final class PhotoImageStore {
         return result
     }
 
+    /// Cache-only lookup: nil means unexamined, [] means examined with no face.
+    func cachedFaceAssets(_ assets: [PhotoAsset]) async -> [PhotoAsset] {
+        let known = assets.map(assetWithFaces).filter { $0.faces != nil }
+        guard let faceAnalyzer else { return known }
+        let knownKeys = Set(known.map(PhotoImageKey.init))
+        let persisted = await faceAnalyzer.cachedAssets(assets.filter { !knownKeys.contains(PhotoImageKey($0)) })
+        for asset in persisted { analyzedFaces[PhotoImageKey(asset)] = asset.faces }
+        return known + persisted
+    }
+
     func request(for asset: PhotoAsset, desiredWidth: Int? = nil) -> PhotoDecodeRequest {
         PhotoDecodeRequest(asset, desiredWidth: desiredWidth ?? desiredWidths[PhotoImageKey(asset)] ?? asset.pixelWidth)
     }
@@ -118,15 +130,22 @@ final class PhotoImageStore {
     func failed(_ asset: PhotoAsset) -> Bool { failedKeys.contains(PhotoImageKey(asset)) }
 
     func setDisplayedAssets(_ assets: [PhotoAsset], cacheMegabytes: Int,
-                            desiredWidths: [PhotoImageKey: Int] = [:]) {
+                            desiredWidths: [PhotoImageKey: Int] = [:], owner: UUID? = nil) {
         budgetBytes = max(64, min(1024, cacheMegabytes)) * 1024 * 1024
-        pinnedPhotos = Set(assets.map(PhotoImageKey.init))
-        self.desiredWidths = desiredWidths
+        let owner = owner ?? Self.legacyOwner
+        if assets.isEmpty { owners.removeValue(forKey: owner) }
+        else { owners[owner] = (Set(assets.map(PhotoImageKey.init)), desiredWidths) }
+        pinnedPhotos = owners.values.reduce(into: Set<PhotoImageKey>()) { $0.formUnion($1.photos) }
+        self.desiredWidths = owners.values.reduce(into: [:]) { all, value in
+            for (key, width) in value.widths { all[key] = max(all[key] ?? 0, width) }
+        }
         var retained = displayedImages.filter { pinnedPhotos.contains($0.key.photo) }
         for (key, value) in cache where pinnedPhotos.contains(key.photo) { retained[key] = value.image }
         if Set(displayedImages.keys) != Set(retained.keys) { displayedImages = retained }
         evictIfNeeded()
     }
+
+    func clearFailures() { failedKeys.removeAll() }
 
     func resetFailures() {
         failureGeneration += 1
@@ -137,7 +156,7 @@ final class PhotoImageStore {
 
     @discardableResult
     func prepare(_ assets: [PhotoAsset], desiredWidths: [PhotoImageKey: Int]? = nil, detectFaces: Bool = false) async -> Bool {
-        let requests = assets.map { request(for: $0, desiredWidth: desiredWidths?[PhotoImageKey($0)]) }
+        let requests = assets.map { request(for: $0, desiredWidth: max(desiredWidths?[PhotoImageKey($0)] ?? self.desiredWidths[PhotoImageKey($0)] ?? $0.pixelWidth, self.desiredWidths[PhotoImageKey($0)] ?? 0)) }
         let generation = failureGeneration
         for request in requests {
             guard !Task.isCancelled else { return false }

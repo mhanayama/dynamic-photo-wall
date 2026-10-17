@@ -16,7 +16,10 @@ nonisolated enum WindowOcclusion {
         return window.bounds.insetBy(dx: -2, dy: -2).contains(target)
     }
 
-    @MainActor static func isCovered(_ screen: ScreenDescriptor) -> Bool {
+    @MainActor static func isCovered(_ screen: ScreenDescriptor) -> Bool { isCovered([screen]) }
+
+    @MainActor static func isCovered(_ screens: [ScreenDescriptor]) -> Bool {
+        guard !screens.isEmpty else { return false }
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
         let windows = info.compactMap { value -> ForegroundWindow? in
@@ -28,9 +31,11 @@ nonisolated enum WindowOcclusion {
                 alpha: value[kCGWindowAlpha as String] as? Double ?? 1, bounds: bounds)
         }
         // CGWindow bounds use top-left coordinates; NSScreen uses bottom-left.
-        let visible = screen.visibleFrame ?? screen.frame
-        let primaryTop = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
-        let target = CGRect(x: visible.minX, y: primaryTop - visible.maxY, width: visible.width, height: visible.height)
-        return covers(target, windows: windows, foregroundPID: pid, ownPID: ProcessInfo.processInfo.processIdentifier)
+        let primaryTop = NSScreen.screens.first?.frame.maxY ?? screens[0].frame.maxY
+        return screens.allSatisfy { screen in
+            let visible = screen.visibleFrame ?? screen.frame
+            let target = CGRect(x: visible.minX, y: primaryTop - visible.maxY, width: visible.width, height: visible.height)
+            return covers(target, windows: windows, foregroundPID: pid, ownPID: ProcessInfo.processInfo.processIdentifier)
+        }
     }
 }

@@ -18,6 +18,8 @@ xcodebuild test -project macos/DynamicPhotoWall.xcodeproj -scheme DynamicPhotoWa
     "$@" 2>&1 | tee "$output/tests.log"
 dotnet run --project tests/ParityVerifier -- macos/DynamicPhotoWallTests/Fixtures/WindowsParity.json \
     2>&1 | tee "$output/windows-core-fixtures.log"
+dotnet run --project tests/ParityVerifier -- macos/DynamicPhotoWallTests/Fixtures/WindowsDelta.json \
+    2>&1 | tee "$output/windows-delta-fixtures.log"
 xcodebuild build -project macos/DynamicPhotoWall.xcodeproj -scheme DynamicPhotoWall \
     -configuration Release -destination 'platform=macOS,arch=arm64' \
     -derivedDataPath "$output/ReleaseDerivedData" CODE_SIGNING_ALLOWED=NO \

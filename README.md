@@ -5,7 +5,7 @@
 | プラットフォーム | 状態 | 開発・利用ガイド |
 |---|---|---|
 | Windows | WPF常駐アプリ。複数画面をつなぐ表示・配置設定、Gallery・横スクロール・パン・Zoom・顔検出・動的背景を実装 | [Windows版README](windows/README.md) |
-| macOS | SwiftUI / AppKit版。機能差分の修正と隔離自動テストに対応、実機受け入れを継続中 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
+| macOS | SwiftUI / AppKit版。複数画面・独立グループ・顔境界回避・画面単位モード・小画像ミラー・Gallery余白改善を実装。隔離自動テストと実機受け入れを継続 | [macOS版README](macos/README.md) / [差分監査とTODO](macos/MACOS_PARITY_TODO.md) |
 
 ## ディレクトリ構成
 

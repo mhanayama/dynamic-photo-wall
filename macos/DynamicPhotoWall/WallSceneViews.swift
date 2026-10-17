@@ -7,6 +7,7 @@ struct WallSceneLayer: View {
 
     let viewport: CGSize
     let paused: Bool
+    var sharedAmbient: AmbientSampler? = nil
     @State private var ambient = AmbientSampler()
 
     private var usesCardCaption: Bool { presentation.scene.mode == .gallery || presentation.scene.mode == .horizontalGallery }
@@ -14,7 +15,7 @@ struct WallSceneLayer: View {
     var body: some View {
         ZStack {
             Color(hex: settings.backgroundHex)
-            if settings.glassBackground, let image = ambient.image {
+            if settings.glassBackground, let image = (sharedAmbient ?? ambient).image {
                 Image(nsImage: image).resizable().interpolation(.high)
                     .overlay(Color.black.opacity(0.42))
             }
@@ -36,7 +37,7 @@ struct WallSceneLayer: View {
         }
         .clipped()
         .onChange(of: Int(presentation.elapsed * 8), initial: true) {
-            if settings.glassBackground { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: paused) }
+            if sharedAmbient == nil, settings.glassBackground { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: paused) }
         }
         .onChange(of: paused) { _, paused in if paused { ambient.stop() } }
         .onDisappear { ambient.stop() }

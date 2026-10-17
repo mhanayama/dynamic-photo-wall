@@ -11,7 +11,18 @@ final class AppModel {
     }
 
     var screens: [ScreenDescriptor] = []
-    var selectedScreenID: CGDirectDisplayID?
+    var displays: [WallDisplay] = []
+    var displayGroupNames: [String] = []
+    var selectedScreenID: CGDirectDisplayID? {
+        get { displays.first(where: \.enabled)?.id }
+        set {
+            if let id = newValue, !displays.contains(where: { $0.id == id }) {
+                let screen = screens.first { $0.id == id }
+                displays.append(WallDisplay(id: id, name: screen?.name ?? "未接続のディスプレイ", width: Double(screen?.pixelWidth ?? 1920), height: Double(screen?.pixelHeight ?? 1080)))
+            }
+            for i in displays.indices { displays[i].enabled = displays[i].id == newValue }
+        }
+    }
     var folders: [PhotoFolder] = []
     var photoAlbums: [PhotoAlbum] = []
     private(set) var availablePhotoAlbums: [PhotoAlbum] = []
@@ -30,8 +41,16 @@ final class AppModel {
     private(set) var settingsWarning: String?
     private(set) var userPaused = false
     private(set) var covered = false
+    @ObservationIgnored private var coveredGroupIDs: Set<WallGroupID> = []
     private(set) var loginItemStatus = ""
-    let playback: WallPlaybackController
+    @ObservationIgnored private let fallbackPlayback: WallPlaybackController
+    private(set) var sessions: [WallGroupPlayback] = []
+    private(set) var testPatternVisible = false
+    @ObservationIgnored private var pendingPreviewRestore: (displays: [WallDisplay], running: Bool, paused: Bool)?
+    @ObservationIgnored private var previewDisplays: [WallDisplay]?
+    @ObservationIgnored private var appliedDisplays: [WallDisplay] = []
+    @ObservationIgnored private var appliedGroupNames: [String] = []
+    var playback: WallPlaybackController { sessions.first?.primary ?? fallbackPlayback }
 
     @ObservationIgnored private let loginItems: LoginItemService
     @ObservationIgnored private var watcher: PhotoFolderWatcher?
@@ -70,7 +89,7 @@ final class AppModel {
         self.defaults = defaults
         self.repository = SettingsRepository(defaults: defaults, file: settingsFile)
         self.host = host ?? DesktopWindowController()
-        self.playback = playback ?? WallPlaybackController(imageStore: .shared)
+        self.fallbackPlayback = playback ?? WallPlaybackController(imageStore: .shared)
         self.folderStore = folderStore ?? FolderBookmarkStore(defaults: defaults)
         self.screenProvider = screenProvider
         self.scanner = scanner
@@ -86,14 +105,22 @@ final class AppModel {
         // Read the saved ID before enumeration. Disconnection never overwrites it.
         let saved = snapshot.map { $0.screenID.map(Int.init) ?? 0 } ?? defaults.integer(forKey: DefaultsKey.selectedScreenID)
         let savedID: CGDirectDisplayID? = saved > 0 ? CGDirectDisplayID(exactly: saved) : nil
-        selectedScreenID = savedID
         screens = screenProvider()
-        if selectedScreenID == nil { selectedScreenID = screens.first?.id }
+        if let stored = snapshot?.displays { displays = stored }
+        else if let savedID {
+            if let screen = screens.first(where: { $0.id == savedID }) {
+                displays = [DisplayLayout.detected(screen, screens: screens, enabled: true)]
+            } else { displays = [WallDisplay(id: savedID, name: "未接続のディスプレイ", width: 1920, height: 1080)] }
+        } else if let first = screens.first { displays = [DisplayLayout.detected(first, screens: screens, enabled: true)] }
+        appliedDisplays = snapshot?.displays ?? (savedID == nil ? [] : displays)
+        displayGroupNames = DisplayLayout.groupNames(snapshot?.displayGroupNames ?? [], displays: displays)
+        appliedGroupNames = displayGroupNames
+        mergeDetectedScreens()
         appliedScreenID = savedID
         appliedSettings = settings
         appliedPhotoAlbums = photoAlbums
         syncFolders()
-        desiredRunning = savedID != nil && settings.startOnLaunch && (!folders.isEmpty || !photoAlbums.isEmpty)
+        desiredRunning = appliedDisplays.contains(where: \.enabled) && settings.startOnLaunch && (!folders.isEmpty || !photoAlbums.isEmpty)
         loginItemStatus = self.loginItems.status()
         if observeEnvironment {
             watcher = PhotoFolderWatcher { [weak self] in self?.retryFolders() }
@@ -114,22 +141,20 @@ final class AppModel {
         return AppModel(settingsFile: RuntimePaths.root.appending(path: "settings.json"))
     }
 
-    var hasSavedScreen: Bool { appliedScreenID != nil }
+    var hasSavedScreen: Bool { appliedDisplays.contains(where: \.enabled) }
     var needsFolderRecovery: Bool { folderStore.hasInvalidStoredData }
     func recoverFolders() { folderStore.recoverInvalidStoredData(); syncFolders() }
     var selectedScreen: ScreenDescriptor? { screens.first { $0.id == selectedScreenID } }
     var displayConnectionMessage: String {
-        if selectedScreenID != nil, selectedScreen == nil {
-            return "保存済みのディスプレイは未接続です。再接続するか表示対象を選び直してください。"
-        }
-        return "\(screens.count)台接続中。選択画面だけに写真を表示します。"
+        "\(screens.count)台接続中 · \(displays.filter(\.enabled).count)台選択。未接続画面の配置も保持します。"
     }
-    var canStart: Bool { selectedScreen != nil && (!folders.isEmpty || !photoAlbums.isEmpty) && !isScanning }
-    var canStartApplied: Bool { appliedScreenID != nil && (!folderStore.folders.isEmpty || !appliedPhotoAlbums.isEmpty) && !isScanning }
-    var isPlaying: Bool { wallAttached && playback.currentScene != nil && !playback.isWaiting }
-    var isWaiting: Bool { desiredRunning && (!wallAttached || playback.isWaiting) }
-    var canAdvance: Bool { desiredRunning && wallAttached }
+    var canStart: Bool { displays.contains { display in display.enabled && screens.contains(where: { $0.id == display.id }) } && (!folders.isEmpty || !photoAlbums.isEmpty) && !isScanning }
+    var canStartApplied: Bool { appliedDisplays.contains(where: \.enabled) && (!folderStore.folders.isEmpty || !appliedPhotoAlbums.isEmpty) && !isScanning }
+    var isPlaying: Bool { !testPatternVisible && sessions.contains { $0.primary.currentScene != nil && !$0.isWaiting } }
+    var isWaiting: Bool { !testPatternVisible && desiredRunning && (!wallAttached || sessions.allSatisfy(\.isWaiting)) }
+    var canAdvance: Bool { !testPatternVisible && desiredRunning && wallAttached }
     var playbackStateLabel: String {
+        if testPatternVisible { return "テスト表示中" }
         if !desiredRunning { return "停止中" }
         if isWaiting { return "待機中" }
         if sleeping { return "スリープ中" }
@@ -139,17 +164,90 @@ final class AppModel {
         return "再生中"
     }
     var displayStatusMessage: String {
-        playback.imageFailureMessage
+        testPatternVisible ? "テストパターンを表示中" : playback.imageFailureMessage
             ?? ((playback.waitingForImages || playback.waitingForScrollImage)
                 ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
     }
-    var currentMode: String? { playback.currentScene?.mode.displayName }
+    var currentMode: String? {
+        let modes = sessions.compactMap { $0.primary.currentScene?.mode.displayName }
+        return modes.isEmpty ? nil : modes.joined(separator: " / ")
+    }
     var displayPhotoAlbumsWarning: String? { albumPreview == nil ? photoAlbumsWarning : albumPreviewWarning }
+
+    private func mergeDetectedScreens() {
+        for screen in screens {
+            if let i = displays.firstIndex(where: { $0.id == screen.id }) {
+                displays[i].name = screen.name
+                displays[i].width = Double(screen.pixelWidth); displays[i].height = Double(screen.pixelHeight)
+            } else { displays.append(DisplayLayout.detected(screen, screens: screens)) }
+            if let i = previewDisplays?.firstIndex(where: { $0.id == screen.id }) {
+                previewDisplays?[i].width = Double(screen.pixelWidth); previewDisplays?[i].height = Double(screen.pixelHeight)
+            }
+            if let i = appliedDisplays.firstIndex(where: { $0.id == screen.id }) {
+                appliedDisplays[i].name = screen.name
+                appliedDisplays[i].width = Double(screen.pixelWidth); appliedDisplays[i].height = Double(screen.pixelHeight)
+            }
+        }
+    }
 
     func refreshScreens() {
         screens = screenProvider()
-        if selectedScreenID == nil { selectedScreenID = screens.first?.id }
+        mergeDetectedScreens()
         reconcilePlayback()
+    }
+
+    func addDisplayGroup() {
+        var index = 1
+        while displayGroupNames.contains("グループ\(index)") { index += 1 }
+        displayGroupNames.append("グループ\(index)")
+    }
+
+    func deleteDisplayGroup(_ name: String) {
+        displayGroupNames.removeAll { $0 == name }
+        for i in displays.indices where DisplayLayout.cleanName(displays[i].groupID) == name { displays[i].groupID = nil }
+    }
+
+    func resetDisplayPositions() {
+        for screen in screens {
+            if let i = displays.firstIndex(where: { $0.id == screen.id }) {
+                let detected = DisplayLayout.detected(screen, screens: screens)
+                displays[i].x = detected.x; displays[i].y = detected.y
+            }
+        }
+    }
+
+    func toggleTestPattern() {
+        if testPatternVisible { endTestPattern(); return }
+        var attempted = false
+        do {
+            let groups = try DisplayLayout.groups(displays)
+            let outputs = makeOutputs(groups: groups, sessions: [])
+            guard !outputs.isEmpty else { throw DisplayLayout.LayoutError.noConnectedDisplay }
+            attempted = true
+            try host.present(outputs)
+            for session in sessions { session.stop() }
+            sessions = []
+            previewDisplays = displays
+            testPatternVisible = true; wallAttached = true
+            statusMessage = "テストパターンを表示中"
+        } catch {
+            if attempted { try? host.present(makeOutputs(groups: sessions.map(\.group), sessions: sessions)) }
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func endTestPattern() {
+        guard testPatternVisible else { return }
+        let old = previewDisplays
+        testPatternVisible = false; previewDisplays = nil; wallAttached = false
+        do {
+            try reconcileOutputs()
+            if !desiredRunning { host.close() }
+        } catch {
+            previewDisplays = old; testPatternVisible = true
+            if let old, let groups = try? DisplayLayout.groups(old) { try? host.present(makeOutputs(groups: groups, sessions: [])) }
+            wallAttached = true; statusMessage = error.localizedDescription
+        }
     }
 
     func chooseFolder() {
@@ -248,7 +346,9 @@ final class AppModel {
         clearAlbumPreview()
         settings = appliedSettings
         photoAlbums = appliedPhotoAlbums
-        selectedScreenID = appliedScreenID ?? screens.first?.id
+        displays = appliedDisplays
+        displayGroupNames = appliedGroupNames
+        mergeDetectedScreens()
         folderStore.discardDraft()
         syncFolders()
     }
@@ -271,25 +371,28 @@ final class AppModel {
     }
     func start() {
         guard !isScanning else { return }
-        applySettings(startRequested: true)
+        applySettings(startRequested: true, endPreview: true)
     }
 
     func startApplied() {
         guard canStartApplied else { return }
+        if let previewDisplays { pendingPreviewRestore = (previewDisplays, desiredRunning, userPaused) }
+        testPatternVisible = false; previewDisplays = nil
         desiredRunning = true
         userPaused = false
         reloadPhotos()
     }
 
-    private func applySettings(startRequested: Bool) {
+    private func applySettings(startRequested: Bool, endPreview: Bool = false) {
         do {
             guard !folderStore.hasInvalidStoredData else { throw FolderBookmarkStore.AccessError.invalidStoredData }
             var normalized = settings
             normalized.normalize()
             try normalized.validate()
+            _ = try DisplayLayout.groups(displays)
             let previousAutoStart = appliedSettings.autoStart
             try loginItems.setEnabled(normalized.autoStart)
-            do { try repository.save(SettingsSnapshot(settings: normalized, screenID: selectedScreenID, folders: folders, photoAlbums: photoAlbums)) }
+            do { try repository.save(SettingsSnapshot(settings: normalized, screenID: selectedScreenID, folders: folders, photoAlbums: photoAlbums, displays: displays, displayGroupNames: displayGroupNames)) }
             catch { try? loginItems.setEnabled(previousAutoStart); throw error }
             loginItemStatus = loginItems.status()
             folderStore.replace(with: folders)
@@ -303,11 +406,18 @@ final class AppModel {
             appliedSettings = normalized
             appliedPhotoAlbums = photoAlbums
             appliedScreenID = selectedScreenID
+            appliedDisplays = displays
+            appliedGroupNames = DisplayLayout.groupNames(displayGroupNames, displays: displays)
+            displayGroupNames = appliedGroupNames
             // Reuse the selection scan even when Apply is pressed before it finishes.
             let preparedAlbums = albumPreview?.albums == photoAlbums ? albumPreview?.task : nil
             clearAlbumPreview(cancelScan: preparedAlbums == nil)
-            if startRequested { desiredRunning = true; userPaused = false }
-            suspendWall()
+            if endPreview, testPatternVisible {
+                if let previewDisplays { pendingPreviewRestore = (previewDisplays, desiredRunning, userPaused) }
+                testPatternVisible = false; previewDisplays = nil
+            }
+            if startRequested && !testPatternVisible { desiredRunning = true; userPaused = false }
+            if !testPatternVisible { suspendWall() }
             reloadPhotos(preparedAlbums: preparedAlbums)
         } catch {
             statusMessage = error.localizedDescription
@@ -318,6 +428,7 @@ final class AppModel {
     func stop() {
         desiredRunning = false
         userPaused = false
+        testPatternVisible = false; previewDisplays = nil; pendingPreviewRestore = nil
         suspendWall()
         statusMessage = "停止中 · \(photoAssets.count)枚"
     }
@@ -325,7 +436,7 @@ final class AppModel {
     func togglePause() {
         guard desiredRunning else { return }
         userPaused.toggle()
-        playback.setPaused(userPaused || sleeping || covered)
+        for session in sessions { session.setPaused(userPaused || sleeping || covered || coveredGroupIDs.contains(session.group.id)) }
         updatePlayingStatus()
     }
 
@@ -336,7 +447,7 @@ final class AppModel {
 
     func showNextScene() {
         guard canAdvance else { return }
-        playback.next()
+        for session in sessions { session.next() }
         updatePlayingStatus()
     }
 
@@ -358,7 +469,7 @@ final class AppModel {
         guard !folders.isEmpty || !albums.isEmpty else {
             isScanning = false
             photoAssets = []
-            suspendWall()
+            if !testPatternVisible { suspendWall() }
             photoAlbumsWarning = nil
             statusMessage = folderStore.folders.isEmpty ? "写真フォルダーまたはアルバムを選択してください。" : "写真フォルダー未接続 · 再接続を待機中"
             return
@@ -393,57 +504,88 @@ final class AppModel {
             self.photoAssets = updated
             self.isScanning = false
             self.scanTask = nil
-            if self.desiredRunning, self.wallAttached {
-                self.playback.updateLibrary(assets: updated)
+            if self.desiredRunning, !self.testPatternVisible, self.wallAttached {
+                for session in self.sessions { session.updateLibrary(updated) }
             }
             self.reconcilePlayback()
         }
     }
 
-    private func reconcilePlayback() {
-        guard !terminated, !isScanning else { return }
-        guard desiredRunning else {
-            statusMessage = "停止中 · \(photoAssets.count)枚"
-            return
-        }
-        guard let screen = screens.first(where: { $0.id == appliedScreenID }) else {
-            suspendWall()
-            statusMessage = "対象ディスプレイ未接続 · 再接続を待機中"
-            return
-        }
-        guard !photoAssets.isEmpty else {
-            if wallAttached { playback.updateLibrary(assets: [], retryFailed: false) }
-            statusMessage = photoAlbumsWarning ?? "画像がありません · 写真の追加を待機中"
-            return
-        }
-        let viewport = CGSize(width: screen.pixelWidth, height: screen.pixelHeight)
-        if !wallAttached || playback.viewport != viewport {
-            playback.start(assets: photoAssets, settings: appliedSettings, viewport: viewport)
-            guard playback.currentScene != nil else {
-                suspendWall()
-                statusMessage = "適した写真・有効なモードがありません。"
-                return
+    private func makeOutputs(groups: [WallDisplayGroup], sessions: [WallGroupPlayback]) -> [DesktopWallOutput] {
+        let selected = (testPatternVisible ? previewDisplays ?? [] : (sessions.isEmpty ? displays : appliedDisplays)).filter(\.enabled)
+        return groups.flatMap { group in
+            group.displays.compactMap { display in
+                guard let screen = screens.first(where: { $0.id == display.id }) else { return nil }
+                let number = (selected.firstIndex(where: { $0.id == display.id }) ?? 0) + 1
+                return DesktopWallOutput(screen: screen, display: display, group: group, number: number,
+                    session: sessions.first { $0.group.id == group.id })
             }
         }
-        playback.setPaused(userPaused || sleeping || covered)
-        host.show(on: screen, playback: playback)
-        wallAttached = true
-        updatePlayingStatus()
+    }
+
+    private func reconcilePlayback() {
+        guard !terminated else { return }
+        do { try reconcileOutputs() }
+        catch {
+            if let previous = pendingPreviewRestore {
+                previewDisplays = previous.displays; desiredRunning = previous.running; userPaused = previous.paused
+                testPatternVisible = true; pendingPreviewRestore = nil
+                if let groups = try? DisplayLayout.groups(previous.displays) { try? host.present(makeOutputs(groups: groups, sessions: [])) }
+                wallAttached = true
+            }
+            statusMessage = error.localizedDescription; WallLog.write("画面を作成できません。", error: error)
+        }
+    }
+
+    private func reconcileOutputs() throws {
+        if testPatternVisible, let previewDisplays {
+            let groups = try DisplayLayout.groups(previewDisplays)
+            let outputs = makeOutputs(groups: groups, sessions: [])
+            try host.present(outputs)
+            wallAttached = !outputs.isEmpty
+            return
+        }
+        guard !isScanning, desiredRunning else { return }
+        let groups = try DisplayLayout.groups(appliedDisplays)
+        let connected = Set(screens.map(\.id))
+        var updated: [WallGroupPlayback] = []
+        var created: [WallGroupPlayback] = []
+        for group in groups {
+            let ids = Set(group.displays.map(\.id)).intersection(connected)
+            guard !ids.isEmpty else { continue }
+            if let existing = sessions.first(where: { $0.group == group && $0.connected == ids }) { updated.append(existing) }
+            else if !photoAssets.isEmpty {
+                let session = WallGroupPlayback(group: group, connected: ids, assets: photoAssets, settings: appliedSettings,
+                    primary: sessions.isEmpty && groups.count == 1 && group.displays.count == 1 ? fallbackPlayback : nil,
+                    imageStore: fallbackPlayback.imageStore)
+                updated.append(session); created.append(session)
+            }
+        }
+        let outputs = makeOutputs(groups: updated.map(\.group), sessions: updated)
+        do { try host.present(outputs) }
+        catch { for session in created { session.stop() }; throw error }
+        for session in sessions where !updated.contains(where: { $0 === session }) { session.stop() }
+        pendingPreviewRestore = nil
+        sessions = updated; wallAttached = !outputs.isEmpty
+        for session in sessions { session.setPaused(userPaused || sleeping || covered || coveredGroupIDs.contains(session.group.id)) }
+        if outputs.isEmpty {
+            statusMessage = groups.contains(where: { $0.displays.contains { connected.contains($0.id) } })
+                ? photoAlbumsWarning ?? "画像がありません · 写真の追加を待機中" : "対象ディスプレイ未接続 · 再接続を待機中"
+        } else { updatePlayingStatus() }
     }
 
     private func suspendWall() {
         host.close()
-        playback.stop()
+        for session in sessions { session.stop() }
+        sessions = []; fallbackPlayback.stop()
         wallAttached = false
     }
 
     private func updatePlayingStatus() {
         guard wallAttached else { return }
-        if playback.isWaiting {
-            statusMessage = playback.imageFailureMessage ?? "画像の準備を待機中"
-            return
-        }
-        statusMessage = userPaused ? "一時停止中" : sleeping ? "スリープ中" : covered ? "画面遮蔽で休止中" : "再生中 · \(photoAssets.count)枚"
+        if testPatternVisible { statusMessage = "テストパターンを表示中"; return }
+        if sessions.allSatisfy(\.isWaiting) { statusMessage = playback.imageFailureMessage ?? "画像の準備を待機中"; return }
+        statusMessage = userPaused ? "一時停止中" : sleeping ? "スリープ中" : covered ? "画面遮蔽で休止中" : "再生中 · \(photoAssets.count)枚 · \(sessions.count)グループ"
     }
 
     private func syncFolders() {
@@ -481,13 +623,22 @@ final class AppModel {
 
     func updateOcclusion(_ isCovered: Bool) {
         covered = isCovered
-        playback.setPaused(userPaused || sleeping || covered)
+        coveredGroupIDs = isCovered ? Set(sessions.map { $0.group.id }) : []
+        for session in sessions { session.setPaused(userPaused || sleeping || covered || coveredGroupIDs.contains(session.group.id)) }
         updatePlayingStatus()
     }
 
     private func checkOcclusion() {
-        let screen = screens.first { $0.id == appliedScreenID }
-        updateOcclusion(screen.map(WindowOcclusion.isCovered) ?? false)
+        coveredGroupIDs = []
+        var coveredGroups = 0
+        for session in sessions {
+            let members = screens.filter { session.connected.contains($0.id) }
+            let hidden = WindowOcclusion.isCovered(members)
+            if hidden { coveredGroups += 1; coveredGroupIDs.insert(session.group.id) }
+            session.setPaused(userPaused || sleeping || hidden)
+        }
+        covered = !sessions.isEmpty && coveredGroups == sessions.count
+        updatePlayingStatus()
     }
 
     private func observeSystemEnvironment() {
@@ -495,10 +646,10 @@ final class AppModel {
         let workspace = NSWorkspace.shared.notificationCenter
         observe(workspace, NSWorkspace.didActivateApplicationNotification) { $0.checkOcclusion() }
         observe(workspace, NSWorkspace.willSleepNotification) {
-            $0.sleeping = true; $0.playback.setPaused(true); $0.updatePlayingStatus()
+            $0.sleeping = true; for session in $0.sessions { session.setPaused(true) }; $0.updatePlayingStatus()
         }
         observe(workspace, NSWorkspace.didWakeNotification) {
-            $0.sleeping = false; $0.refreshScreens(); $0.checkOcclusion(); $0.playback.setPaused($0.userPaused || $0.covered)
+            $0.sleeping = false; $0.refreshScreens(); $0.checkOcclusion()
         }
         observe(.default, NSApplication.willTerminateNotification) { $0.shutdown() }
         healthTask = Task { [weak self] in

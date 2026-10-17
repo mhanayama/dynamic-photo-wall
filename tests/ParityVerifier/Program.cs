@@ -5,7 +5,12 @@ using DynamicPhotoWall.Core;
 var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 var generate = args.Contains("--generate");
-var path = args.LastOrDefault(a => a != "--generate") ?? "macos/DynamicPhotoWallTests/Fixtures/WindowsParity.json";
+var path = args.LastOrDefault(a => a != "--generate" && a != "--generate-delta") ?? "macos/DynamicPhotoWallTests/Fixtures/WindowsParity.json";
+if (args.Contains("--generate-delta") || Path.GetFileName(path) == "WindowsDelta.json")
+{
+    DeltaVerifier.Run(path, args.Contains("--generate-delta"), options);
+    return;
+}
 if (generate)
 {
     var cases = new List<MotionCase>();
@@ -16,7 +21,7 @@ if (generate)
         IReadOnlyList<FaceRegion>? faces = cases.Count % 2 == 0 ? [new(.1,.03,.25,.3), new(.6,.5,.1,.15)] : null;
         var photo = new PhotoInfo($"/fixture/{cases.Count}.jpg", dimensions.Item1, dimensions.Item2, 1, null, 1, 0, faces);
         // This shared suite preserves the macOS v1.0.1 baseline. New face-directed
-        // pan cases belong in an additional suite when the Swift port is ready.
+        // pan and display-boundary cases live separately in DeltaVerifier.cs.
         var s = new WallSettings { FaceAwarePanDirection = false, StopAtFace = cases.Count % 3 != 0, FaceAwareFraming = cases.Count % 4 != 0 };
         var reverse = cases.Count % 2 != 0;
         var plan = MotionEngine.Plan(mode, photo, v, s, reverse, .37, .63);

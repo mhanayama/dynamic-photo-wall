@@ -14,9 +14,20 @@ actor PhotoFaceAnalyzer {
         cache = cache.filter { $0.value.allSatisfy(\.isValid) }
     }
 
-    func analyze(_ asset: PhotoAsset, image: DecodedPhoto) -> [FaceRegion] {
+    nonisolated static func cacheKey(_ asset: PhotoAsset) -> String {
         let source = asset.url.isFileURL ? asset.url.path : asset.url.absoluteString
-        let key = "\(source)|\(asset.fileSize)|\(asset.modifiedAt)"
+        return "\(source)|\(asset.fileSize)|\(asset.modifiedAt)"
+    }
+
+    func cachedAssets(_ assets: [PhotoAsset]) -> [PhotoAsset] {
+        assets.compactMap { asset in
+            guard let faces = cache[Self.cacheKey(asset)] else { return nil }
+            var known = asset; known.faces = faces; return known
+        }
+    }
+
+    func analyze(_ asset: PhotoAsset, image: DecodedPhoto) -> [FaceRegion] {
+        let key = Self.cacheKey(asset)
         if let found = cache[key] { return found }
         guard !Task.isCancelled else { return [] }
         do {

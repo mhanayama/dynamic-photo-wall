@@ -1,6 +1,6 @@
 # macOS版：WindowsパリティとRelease条件
 
-**2026-10-17の追加差分:** [Windows追加分の引き継ぎ](WINDOWS_DELTA_HANDOVER.md)のD01〜D07を今回の実装仕様とする。Windowsのマルチディスプレイ・グループ、設定UI、即時テスト表示、顔によるパン方向、モード別の画面単位描画、スパン中の顔境界回避が追加された。以下は2026-10-15時点の実装・受け入れ記録で、M24の「上端の顔で停止」は方向設定OFF時の互換動作になる。Dock／メニューバーの合意済み仕様と実機残件は維持する。
+**2026-10-17の追加差分:** [引き継ぎ](WINDOWS_DELTA_HANDOVER.md)のD01〜D09をMacへ実装。複数画面・グループ・一時テスト表示・顔方向・画面単位モード・スパン顔保護・自動ミラーを追加。[当日の検証記録](docs/TEST-RESULTS-2026-10-17.md)に、自動検証と実機未確認を分けて記載する。以下の2026-10-15の受け入れ記録、Dock／メニューバーの合意済み仕様、実機残件は維持する。M24の上端の顔で停止する動作は方向OFF時の互換動作。
 
 更新: 2026-10-15。基準は同じリポジトリのWindows実装。旧監査のM01〜M40、T01〜T06をすべて引き継いでいる。旧版の「CLIコンパイルのみ」という制約は、ユーザーの許可により**専用設定・テスト画像による隔離自動テストも実行する**方針へ更新した。
 
@@ -57,6 +57,10 @@
 | [x] | M39 | 追加だけでwindow／scene／時計を破棄しない。現在ファイル削除／上書き時も旧ビットマップから切替。回帰テスト |
 | [x] | M40 | 全件失敗時の待機・最後の表示保持・Next／再検索による復帰を回帰テスト |
 
+## Windows追加差分 D01〜D09（2026-10-17）
+
+実装・自動検証は[当日の検証記録](docs/TEST-RESULTS-2026-10-17.md)を参照。単体109件、UI5件、C#の従来704＋追加472 assertions、arm64 Release／archive／ZIP／DMGを確認。旧単一画面設定、PhotoKit、ブックマーク、取消を維持し、共有キャッシュとグループ寿命を検証した。実ディスプレイ間の継ぎ目・抜差し・混在倍率・長時間運転は下記T06へ残す。
+
 ## テストTODO
 
 ### 写真アプリのアルバム対応（2026-10-17追加）
@@ -91,8 +95,8 @@
 
 リポジトリ直下で `bash macos/scripts/verify.sh`。UIテストを省いた追加検証は `--unit-only`。専用アプリID `asia.dix.mhanayama.DynamicPhotoWall.Regression` を使い、UIテストのhostはデスクトップウィンドウを作成しない。ログは `artifacts/macos/verification/`（Git対象外）。C# verifierはmacOS上でWindows Coreの純粋計算を実行するもので、WPF／Windows実機テストの実行ではない。配布物は `release/macos/arm64/`、archive等は `artifacts/macos/package/`。ルート直下へ一時ファイルを作らず、[共通規則](../docs/GENERATED-FILES.md)に従う。
 
-最新の実行結果（2026-10-15、Xcode 27.0／arm64）: **単体74件・UI 3件合格**、C#共通fixture **704 assertions合格**、Releaseコンパイル成功。Swiftソースのconcurrency警告なし。AppIntents未使用のメタデータ通知と、XCTestホストのApple linkd接続通知は製品のSwiftコンパイルエラーとは分けて記録した。
+v1.0.1公開時の実行結果（2026-10-15、Xcode 27.0／arm64）: **単体74件・UI 3件合格**、C#共通fixture **704 assertions合格**、Releaseコンパイル成功。Swiftソースのconcurrency警告なし。AppIntents未使用のメタデータ通知と、XCTestホストのApple linkd接続通知は製品のSwiftコンパイルエラーとは分けて記録した。
 
 CLIのローカル配布候補は `bash macos/scripts/package.sh`。アドホック署名のarm64 archive／ZIP／DMGを作成する。Developer ID署名・公証・GitHub Release公開は含めない。今回は実機チェックの残件をリリースノートに明記し、ユーザーの明示的な承認で公開した。残件の合格判定は引き続き実機で行う。
 
-Windows単体の複数画面同時再生は2026-10-17に実装済みで、Mac側は上記のD01〜D04として移植する。2台3画面同期、LANペアリング、設定／履歴同期は将来機能として[クロスプラットフォーム計画](../docs/CROSS-PLATFORM-WALL-PLAN.md)で別管理する。Windowsにも残る実機未確認事項は、macOSだけの機能不足と混同しない。
+Windows単体の複数画面同時再生は2026-10-17に実装済みで、Mac側もD01〜D09として実装した。2台3画面同期、LANペアリング、設定／履歴同期は将来機能として[クロスプラットフォーム計画](../docs/CROSS-PLATFORM-WALL-PLAN.md)で別管理する。Windowsにも残る実機未確認事項は、macOSだけの機能不足と混同しない。

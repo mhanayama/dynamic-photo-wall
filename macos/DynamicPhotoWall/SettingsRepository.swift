@@ -5,15 +5,19 @@ nonisolated struct SettingsSnapshot: Codable {
     var settings: WallSettings
     var screenID: UInt32?
     var folders: [PhotoFolder]
+    var displays: [WallDisplay]? = nil
+    var displayGroupNames: [String] = []
     var photoAlbums: [PhotoAlbum] = []
 
-    private enum CodingKeys: String, CodingKey { case schemaVersion, settings, screenID, folders, photoAlbums }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, settings, screenID, folders, photoAlbums, displays, displayGroupNames }
 
-    init(settings: WallSettings, screenID: UInt32?, folders: [PhotoFolder], photoAlbums: [PhotoAlbum] = []) {
+    init(settings: WallSettings, screenID: UInt32?, folders: [PhotoFolder], photoAlbums: [PhotoAlbum] = [], displays: [WallDisplay]? = nil, displayGroupNames: [String] = []) {
         self.settings = settings
         self.screenID = screenID
         self.folders = folders
         self.photoAlbums = photoAlbums
+        self.displays = displays
+        self.displayGroupNames = DisplayLayout.groupNames(displayGroupNames, displays: displays ?? [])
     }
 
     init(from decoder: Decoder) throws {
@@ -22,6 +26,8 @@ nonisolated struct SettingsSnapshot: Codable {
         settings = try values.decode(WallSettings.self, forKey: .settings)
         screenID = try values.decodeIfPresent(UInt32.self, forKey: .screenID)
         folders = try values.decode([PhotoFolder].self, forKey: .folders)
+        displays = try values.decodeIfPresent([WallDisplay].self, forKey: .displays)
+        displayGroupNames = DisplayLayout.groupNames(try values.decodeIfPresent([String].self, forKey: .displayGroupNames) ?? [], displays: displays ?? [])
         photoAlbums = try values.decodeIfPresent([PhotoAlbum].self, forKey: .photoAlbums) ?? []
     }
 }
@@ -72,6 +78,7 @@ final class SettingsRepository {
               Set(value.photoAlbums.map(\.id)).count == value.photoAlbums.count else {
             throw CocoaError(.coderReadCorrupt)
         }
+        _ = try DisplayLayout.groups(value.displays ?? [])
         return value
     }
 
@@ -79,6 +86,7 @@ final class SettingsRepository {
         guard writable else { throw CocoaError(.fileWriteNoPermission) }
         guard value.schemaVersion == 1, Set(value.folders.map(\.id)).count == value.folders.count else { throw CocoaError(.coderInvalidValue) }
         guard Set(value.photoAlbums.map(\.id)).count == value.photoAlbums.count else { throw CocoaError(.coderInvalidValue) }
+        _ = try DisplayLayout.groups(value.displays ?? [])
         let data = try JSONEncoder().encode(value)
         if let file {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

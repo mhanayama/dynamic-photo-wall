@@ -9,26 +9,33 @@ struct ContentView: View {
 
             TabView {
                 DisplaySettingsView(model: model)
-                    .tabItem { Label("Display", systemImage: "display") }
+                    .tabItem { Label("一般", systemImage: "display") }
+
+                UsedDisplaysView(model: model)
+                    .tabItem { Label("使用ディスプレイ", systemImage: "display.2") }
+                DisplayGroupingView(model: model)
+                    .tabItem { Label("画面グルーピング", systemImage: "rectangle.3.group") }
 
                 PhotoSettingsView(model: model)
-                    .tabItem { Label("Photos", systemImage: "photo.on.rectangle") }
+                    .tabItem { Label("写真", systemImage: "photo.on.rectangle") }
 
                 CompositionSettingsView(settings: $model.settings)
-                    .tabItem { Label("Composition", systemImage: "rectangle.3.group") }
+                    .tabItem { Label("表示モード", systemImage: "rectangle.3.group") }
 
                 MotionSettingsView(settings: $model.settings)
-                    .tabItem { Label("Motion", systemImage: "waveform.path") }
+                    .tabItem { Label("動き", systemImage: "waveform.path") }
 
                 AppearanceSettingsView(settings: $model.settings)
-                    .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                    .tabItem { Label("見た目", systemImage: "paintpalette") }
             }
+
+            .tabViewStyle(.grouped)
 
             if let warning = model.settingsWarning { Text(warning).foregroundStyle(.orange) }
             StatusAndSaveView(model: model)
         }
         .padding(24)
-        .frame(minWidth: 760, idealWidth: 880, minHeight: 640, idealHeight: 760)
+        .frame(minWidth: 900, idealWidth: 1040, minHeight: 680, idealHeight: 800)
     }
 }
 
@@ -57,21 +64,7 @@ private struct DisplaySettingsView: View {
 
     var body: some View {
         Form {
-            Section("表示するディスプレイ") {
-                Picker("対象画面", selection: $model.selectedScreenID) {
-                    if let id = model.selectedScreenID, model.selectedScreen == nil {
-                        Text("未接続のディスプレイ（ID \(id)）").tag(Optional(id))
-                    }
-                    ForEach(model.screens) { screen in
-                        Text("\(screen.name)（\(screen.resolutionDescription)）")
-                            .tag(Optional(screen.id))
-                    }
-                }
-                Button("ディスプレイを再検出", systemImage: "arrow.clockwise") {
-                    model.refreshScreens()
-                }
-                Text(model.displayConnectionMessage)
-                    .foregroundStyle(.secondary)
+            Section("起動") {
                 Toggle("ログイン時にアプリを起動", isOn: $model.settings.autoStart)
                 Text(model.loginItemStatus).foregroundStyle(.secondary)
                 Button("システム設定のログイン項目を開く", action: LoginItemService.openSettings)
@@ -80,11 +73,6 @@ private struct DisplaySettingsView: View {
 
             Section("再生操作") {
                 HStack {
-                    Button("保存して表示開始", action: model.start)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!model.canStart)
-                    Button("表示停止", action: model.stop)
-                        .disabled(!model.desiredRunning)
                     Button(model.userPaused ? "再開" : "一時停止", action: model.togglePause)
                         .disabled(!model.isPlaying)
                     Button("次の構成", action: model.showNextScene)
@@ -262,11 +250,36 @@ private struct CompositionSettingsView: View {
     var body: some View {
         Form {
             Section("表示モード") {
-                Toggle("Gallery — 複数の写真を並べる", isOn: $settings.galleryEnabled)
-                Toggle("Scrolling Gallery — 新しい写真が横から流れてくる", isOn: $settings.galleryScrollEnabled)
-                Toggle("Vertical Pan — 縦写真を下側から上側へ見せる", isOn: $settings.verticalPanEnabled)
-                Toggle("Horizontal Pan — パノラマを左右に見せる", isOn: $settings.horizontalPanEnabled)
-                Toggle("Cinematic Zoom — ゆっくり拡大・縮小", isOn: $settings.zoomEnabled)
+                HStack {
+                    Toggle("Gallery — 複数の写真を並べる", isOn: $settings.galleryEnabled)
+                    Spacer()
+                    Toggle("ディスプレイごとに表示", isOn: $settings.galleryPerDisplay)
+                        .accessibilityIdentifier("galleryPerDisplay")
+                }
+                HStack {
+                    Toggle("Scrolling Gallery — 新しい写真が横から流れてくる", isOn: $settings.galleryScrollEnabled)
+                    Spacer()
+                    Toggle("ディスプレイごとに表示", isOn: $settings.galleryScrollPerDisplay)
+                        .accessibilityIdentifier("galleryScrollPerDisplay")
+                }
+                HStack {
+                    Toggle("Vertical Pan — 縦写真を上下に見せる", isOn: $settings.verticalPanEnabled)
+                    Spacer()
+                    Toggle("ディスプレイごとに表示", isOn: $settings.verticalPanPerDisplay)
+                        .accessibilityIdentifier("verticalPanPerDisplay")
+                }
+                HStack {
+                    Toggle("Horizontal Pan — パノラマを左右に見せる", isOn: $settings.horizontalPanEnabled)
+                    Spacer()
+                    Toggle("ディスプレイごとに表示", isOn: $settings.horizontalPanPerDisplay)
+                        .accessibilityIdentifier("horizontalPanPerDisplay")
+                }
+                HStack {
+                    Toggle("Cinematic Zoom — ゆっくり拡大・縮小", isOn: $settings.zoomEnabled)
+                    Spacer()
+                    Toggle("ディスプレイごとに表示", isOn: $settings.zoomPerDisplay)
+                        .accessibilityIdentifier("zoomPerDisplay")
+                }
             }
 
             Section("抽選ウェイト（0で抽選対象から除外）") {
@@ -281,6 +294,7 @@ private struct CompositionSettingsView: View {
                 DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0）", value: $settings.panWidthFraction)
                 Toggle("顔が見える位置で縦パンを止める", isOn: $settings.stopAtFace)
                 Toggle("全画面表示でも顔が見える位置を優先", isOn: $settings.faceAwareFraming)
+                Toggle("スパン時に顔が画面の境目に重ならないよう配置", isOn: $settings.avoidFaceDisplayBoundaries)
                 Text("画面より小さい画像もパンできます。粗さが気になる場合は許容拡大率を下げてください。拡大率を超える写真はGalleryで表示します。")
                     .foregroundStyle(.secondary)
             }
@@ -295,6 +309,8 @@ private struct MotionSettingsView: View {
     var body: some View {
         Form {
             Section("ゆったりとしたモーション") {
+                Toggle("顔の反対側からパンを開始する", isOn: $settings.faceAwarePanDirection)
+                    .accessibilityIdentifier("faceAwarePanDirection")
                 DoubleField(title: "パン速度（物理px / 秒、5〜500）", value: $settings.panPixelsPerSecond)
                 DoubleField(title: "Scrolling Galleryの速度（px / 秒、5〜200）", value: $settings.galleryScrollPixelsPerSecond)
                 DoubleField(title: "ズームの所要時間（秒、10〜600）", value: $settings.zoomSeconds)
@@ -359,13 +375,19 @@ private struct StatusAndSaveView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
             Text("\(model.displayStatusMessage) · ライブラリ \(model.photoAssets.count)枚 · \(model.currentMode ?? "—")")
                 .foregroundStyle(.secondary)
+            }
+            HStack {
+            Button("保存して表示開始", action: model.start).disabled(!model.canStart)
+            Button("表示停止", action: model.stop).disabled(!model.desiredRunning && !model.testPatternVisible)
             Spacer()
             Button("変更を取り消す", action: model.cancelDraft)
             Button("保存して適用", action: model.saveSettings)
                 .buttonStyle(.borderedProminent)
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-nonisolated enum WallMode: String, CaseIterable, Equatable, Sendable {
+nonisolated enum WallMode: String, CaseIterable, Codable, Equatable, Sendable {
     case gallery, horizontalGallery, verticalPan, horizontalPan, zoom
 
     var displayName: String {
@@ -19,6 +19,7 @@ nonisolated struct WallScene: Equatable, Sendable {
     let id: Int
     let mode: WallMode
     var assets: [PhotoAsset]
+    var displayRegions: [CGRect] = []
     var reverse = false
     var zoomCenter = CGPoint(x: 0.5, y: 0.5)
 }
@@ -38,10 +39,15 @@ final class WallScenePlanner {
     }
 
     func next(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
-              excluding: Set<URL> = []) -> WallScene? {
-        var choices = eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: excluding)
+              excluding: Set<URL> = [], forcedMode: WallMode? = nil) -> WallScene? {
+        func choices(excluding: Set<URL>) -> [Choice] {
+            eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: excluding)
+                .filter { forcedMode == nil || $0.mode == forcedMode }
+        }
+        var choices = choices(excluding: excluding)
         if choices.isEmpty, !excluding.isEmpty {
             choices = eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: [])
+                .filter { forcedMode == nil || $0.mode == forcedMode }
         }
         guard !choices.isEmpty else { return nil }
         let galleryCount = choices.filter { $0.mode == .gallery || $0.mode == .horizontalGallery }.count
@@ -53,7 +59,7 @@ final class WallScenePlanner {
             case .zoom: break
             }
         }
-        if repeats >= 2, choices.count > 1 { choices.removeAll { $0.mode == previous } }
+        if forcedMode == nil, repeats >= 2, choices.count > 1 { choices.removeAll { $0.mode == previous } }
         var ticket = Double.random(in: 0..<choices.reduce(0) { $0 + $1.weight }, using: &generator)
         let chosen = choices.first { ticket -= $0.weight; return ticket < 0 } ?? choices[choices.count - 1]
         var selected: [PhotoAsset] = []
@@ -78,14 +84,43 @@ final class WallScenePlanner {
                stripWidth >= viewport.width + viewport.height * 1.5 { break }
         }
         guard !selected.isEmpty else { return nil }
-        repeats = chosen.mode == previous ? repeats + 1 : 1
-        previous = chosen.mode
+        if forcedMode == nil {
+            repeats = chosen.mode == previous ? repeats + 1 : 1
+            previous = chosen.mode
+        }
         defer { nextID += 1 }
         return WallScene(id: nextID, mode: chosen.mode, assets: selected,
                          reverse: Bool.random(using: &generator),
                          zoomCenter: CGPoint(x: Double.random(in: 0.35...0.65, using: &generator),
                                              y: Double.random(in: 0.35...0.65, using: &generator)))
     }
+
+    func chooseGroupMode(settings: WallSettings) -> WallMode? {
+        let definitions: [(WallMode, Bool, Double)] = [
+            (.gallery, settings.galleryEnabled, Double(settings.galleryWeight)),
+            (.horizontalGallery, settings.galleryScrollEnabled, Double(settings.galleryWeight)),
+            (.verticalPan, settings.verticalPanEnabled, Double(settings.panWeight)),
+            (.horizontalPan, settings.horizontalPanEnabled, Double(settings.panWeight)),
+            (.zoom, settings.zoomEnabled, Double(settings.zoomWeight))
+        ]
+        var choices = definitions.filter { $0.1 && $0.2 > 0 }
+        let galleryCount = max(1, choices.filter { [.gallery, .horizontalGallery].contains($0.0) }.count)
+        let panCount = max(1, choices.filter { [.verticalPan, .horizontalPan].contains($0.0) }.count)
+        choices = choices.map { mode, enabled, weight in
+            (mode, enabled, weight / Double([.gallery, .horizontalGallery].contains(mode) ? galleryCount : ([.verticalPan, .horizontalPan].contains(mode) ? panCount : 1)))
+        }
+        if repeats >= 2 && choices.count > 1 { choices.removeAll { $0.0 == previous } }
+        guard !choices.isEmpty else { return nil }
+        var ticket = Double.random(in: 0..<choices.reduce(0) { $0 + $1.2 }, using: &generator)
+        let mode = choices.first { ticket -= $0.2; return ticket < 0 }?.0 ?? choices.last!.0
+        repeats = mode == previous ? repeats + 1 : 1; previous = mode
+        return mode
+    }
+
+    func sampleKnownFaces(_ assets: [PhotoAsset], settings: WallSettings, excluding: Set<URL>) -> [PhotoAsset] {
+        selector.sample(from: assets, settings: settings, excluding: excluding, count: GalleryComposition.candidateLimit)
+    }
+    func remember(_ asset: PhotoAsset, settings: WallSettings) { selector.remember(asset, settings: settings) }
 
     func replacement(assets: [PhotoAsset], settings: WallSettings, excluding: Set<URL>) -> PhotoAsset? {
         selector.pick(from: assets, settings: settings, excluding: excluding)
@@ -138,13 +173,14 @@ final class WallScenePlanner {
 }
 
 nonisolated struct WallMotionPlan: Equatable, Sendable {
-    let width: CGFloat
-    let height: CGFloat
-    let fromX: CGFloat
-    let fromY: CGFloat
-    let toX: CGFloat
-    let toY: CGFloat
-    let seconds: TimeInterval
+    var width: CGFloat
+    var height: CGFloat
+    var fromX: CGFloat
+    var fromY: CGFloat
+    var toX: CGFloat
+    var toY: CGFloat
+    var seconds: TimeInterval
+    var frameTop: CGFloat = 0
     var fromScale: Double = 1
     var toScale: Double = 1
     var center: CGPoint = CGPoint(x: 0.5, y: 0.5)
@@ -161,22 +197,34 @@ nonisolated struct WallMotionPlan: Equatable, Sendable {
 }
 
 nonisolated enum WallMotionGeometry {
+    static func primaryFace(_ asset: PhotoAsset) -> FaceRegion? {
+        asset.faces?.sorted {
+            if $0.width * $0.height != $1.width * $1.height { return $0.width * $0.height > $1.width * $1.height }
+            if $0.y != $1.y { return $0.y < $1.y }
+            return $0.x < $1.x
+        }.first
+    }
+
     nonisolated static func plan(
         for mode: WallMode,
         asset: PhotoAsset,
         viewport: CGSize,
         settings: WallSettings,
         reverse: Bool = false,
-        center: CGPoint = CGPoint(x: 0.5, y: 0.5)
+        center: CGPoint = CGPoint(x: 0.5, y: 0.5),
+        displayRegions: [CGRect] = []
     ) -> WallMotionPlan {
         switch mode {
         case .verticalPan:
-            let face = settings.stopAtFace ? asset.faces?.min(by: { $0.y < $1.y }) : nil
+            let directionFace = settings.faceAwarePanDirection ? primaryFace(asset) : nil
+            let face = settings.stopAtFace ? directionFace ?? asset.faces?.min(by: { $0.y < $1.y }) : nil
             var width = viewport.width * settings.panWidthFraction
             if let face { width = min(width, viewport.height * 0.92 * asset.aspectRatio / face.height) }
             let height = width / asset.aspectRatio
             let overflow = max(0, height - viewport.height)
-            var end: CGFloat = 0
+            let towardBottom = directionFace.map { $0.y + $0.height / 2 > 0.5 } ?? false
+            let start: CGFloat = towardBottom ? 0 : -overflow
+            var end: CGFloat = towardBottom ? -overflow : 0
             if let face {
                 let half = face.height * height / 2
                 let lower = half + viewport.height * 0.04, upper = viewport.height - half - viewport.height * 0.04
@@ -184,20 +232,23 @@ nonisolated enum WallMotionGeometry {
                 end = min(0, max(-overflow, target - (face.y + face.height * 0.5) * height))
             }
             let left = (viewport.width - width) / 2
-            let seconds = end + overflow > 0
-                ? max(0.1, TimeInterval(end + overflow) / settings.panPixelsPerSecond)
+            let seconds = abs(end - start) > 0
+                ? max(0.1, TimeInterval(abs(end - start)) / settings.panPixelsPerSecond)
                 : 5
-            return WallMotionPlan(
+            let original = WallMotionPlan(
                 width: width,
                 height: height,
                 fromX: left,
-                fromY: -overflow,
+                fromY: start,
                 toX: left,
                 toY: end,
-                seconds: seconds
+                seconds: seconds, frameTop: (viewport.height - min(viewport.height, height)) / 2
             )
+            return settings.avoidFaceDisplayBoundaries && FaceSafeLayout.requiresProtection(viewport, displays: displayRegions)
+                ? FaceSafeLayout.verticalPan(asset, viewport: viewport, settings: settings, displays: displayRegions, original: original) : original
 
         case .horizontalPan:
+            let reverse = settings.faceAwarePanDirection ? primaryFace(asset).map { $0.x + $0.width / 2 < 0.5 } ?? reverse : reverse
             let width = viewport.height * asset.aspectRatio
             let overflow = max(0, width - viewport.width)
             return WallMotionPlan(
@@ -260,7 +311,9 @@ nonisolated enum WallMotionGeometry {
         settings: WallSettings
     ) -> TimeInterval {
         guard let asset = scene.assets.first else { return 5 }
-        let seconds = duration(for: scene.mode, asset: asset, viewport: viewport, settings: settings)
+        let seconds = [.verticalPan, .horizontalPan, .zoom].contains(scene.mode)
+            ? plan(for: scene.mode, asset: asset, viewport: viewport, settings: settings, reverse: scene.reverse, displayRegions: scene.displayRegions).seconds
+            : duration(for: scene.mode, asset: asset, viewport: viewport, settings: settings)
         return seconds + (scene.mode == .verticalPan && settings.stopAtFace && !(asset.faces ?? []).isEmpty ? 3 : 0)
     }
 

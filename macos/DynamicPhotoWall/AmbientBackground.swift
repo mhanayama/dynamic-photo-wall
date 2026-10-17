@@ -15,7 +15,7 @@ nonisolated enum ForegroundGeometry {
         switch p.scene.mode {
         case .gallery:
             let frames = p.galleryLayout?.frames(elapsed: p.elapsed, duration: s.fadeSeconds)
-                ?? GalleryLayout.frames(assets: p.slots.map(\.asset), in: v, gap: s.gap)
+                ?? FaceSafeLayout.gallery(p.slots.map(\.asset), viewport: v, gap: s.gap, displays: s.avoidFaceDisplayBoundaries ? p.scene.displayRegions : [])
             return p.slots.enumerated().flatMap { index, slot -> [ForegroundPlacement] in
                 guard frames.indices.contains(index) else { return [] }
                 let frame = frames[index]
@@ -36,10 +36,10 @@ nonisolated enum ForegroundGeometry {
         case .verticalPan, .horizontalPan, .zoom:
             guard let asset = p.scene.assets.first else { return [] }
             let plan = WallMotionGeometry.plan(for: p.scene.mode, asset: asset, viewport: v, settings: s,
-                                               reverse: p.scene.reverse, center: p.scene.zoomCenter)
+                                               reverse: p.scene.reverse, center: p.scene.zoomCenter, displayRegions: p.scene.displayRegions)
             let progress = min(1, max(0, p.elapsed / plan.seconds))
             var frame = plan.frame(at: progress)
-            if p.scene.mode == .verticalPan, plan.height < v.height { frame.origin.y += (v.height - plan.height) / 2 }
+            if p.scene.mode == .verticalPan { frame.origin.y += plan.frameTop }
             let scale = plan.fromScale + (plan.toScale - plan.fromScale) * WallAnimation.ease(progress)
             frame.origin.x -= frame.width * (scale - 1) * plan.center.x
             frame.origin.y -= frame.height * (scale - 1) * plan.center.y
