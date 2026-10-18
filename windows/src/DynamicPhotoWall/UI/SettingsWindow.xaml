@@ -139,6 +139,7 @@
                 <TextBlock Text="画像キャッシュ予算（MiB、64〜1024）"/><TextBox Text="{Binding CacheMegabytes, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="グループ内の全画面が同じ最大化アプリなどで覆われた間は、そのグループのモーションを一時停止します。ほかのグループは再生を続けます。" Style="{StaticResource Hint}"/>
             </StackPanel></ScrollViewer></TabItem>
+            <TabItem Header="ネットワーク"><ScrollViewer><ContentControl x:Name="NetworkPanelHost"/></ScrollViewer></TabItem>
         </TabControl>
         <TextBlock Grid.Row="2" x:Name="StatusText" Foreground="#ADCAFF" Margin="0,16,0,6"/>
         <DockPanel Grid.Row="3">

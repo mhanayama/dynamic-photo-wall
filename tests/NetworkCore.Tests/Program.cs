@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using DynamicPhotoWall.Core;
-using DynamicPhotoWall.Core.Networking;
+using DynamicPhotoWall.Networking;
 
+if (args.Length == 2 && args[0] == "--export-fixtures") { WireVectors.Export(Path.GetFullPath(args[1])); return 0; }
 if (args.Length != 1)
 {
     Console.Error.WriteLine("Usage: NetworkCore.Tests <isolated-artifact-directory>");
@@ -256,6 +256,16 @@ Test("failed and cancelled ingress never publishes plaintext or partial cache", 
     Check(cache.Read(photo.Key, now)!.Image.SequenceEqual(bytes), "a later valid ingress succeeds");
 });
 
+Test("state revisions and coordinator succession are independent of OS adapters", NetworkIntegration.StateAndLeadership);
+Test("actual mutually authenticated TLS loopback and packet framing", () => NetworkIntegration.TlsLoopback().GetAwaiter().GetResult());
+Test("selected-source background transfer preserves originals and face metadata", () => NetworkIntegration.PhotoTransfer(Path.Combine(runRoot, "transfer")).GetAwaiter().GetResult());
+Test("scene readiness barrier commits shared future time", () => NetworkIntegration.SceneBarrier().GetAwaiter().GetResult());
+Test("disk quota defers originals without a transfer loop", () => NetworkIntegration.TransferQuota(Path.Combine(runRoot, "quota")).GetAwaiter().GetResult());
+assertions += NetworkIntegration.Assertions;
+Test("three-peer configuration, transfer, failover and background rejoin", () => PeerMeshIntegration.Run(Path.Combine(runRoot, "mesh")).GetAwaiter().GetResult());
+Test("two connected walls merge into one four-peer inventory", () => PeerMeshIntegration.MergeExistingWalls(Path.Combine(runRoot, "merge")).GetAwaiter().GetResult());
+assertions += PeerMeshIntegration.Assertions;
+Test("shared native wire and encrypted cache vectors", () => WireVectors.Verify(Path.Combine(runRoot, "wire-vector")));
 fixture.Dispose();
 File.WriteAllText(Path.Combine(output, "test-results.json"), JsonSerializer.Serialize(new { failed, assertions, cases },
     new JsonSerializerOptions { WriteIndented = true }));

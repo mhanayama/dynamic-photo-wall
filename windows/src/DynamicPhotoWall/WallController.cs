@@ -29,17 +29,30 @@ public sealed class WallController : IAsyncDisposable
     public WallSettings Settings { get; private set; }
     public string Status { get; private set; } = "停止中";
     public int PhotoCount => library.Photos.Count;
-    public bool IsPaused => userPaused;
-    public bool IsRunning => (desiredRunning || TestPatternVisible) && sessions.Any(s => s.IsRunning);
+    public bool IsPaused => Network.IsDisplaying || Network.Session?.ConnectedPeers.Count > 0 ? Network.IsPaused : userPaused;
+    public bool IsRunning => Network.IsDisplaying ? Network.IsRunning : (desiredRunning || TestPatternVisible) && sessions.Any(s => s.IsRunning);
     public bool TestPatternVisible => testPatternSettings != null;
     public CompositionMode? CurrentMode => sessions.FirstOrDefault(s => s.IsRunning)?.CurrentMode;
     public IReadOnlyList<string> DisplayedPhotoPaths => sessions.SelectMany(s => s.DisplayedPhotoPaths).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     public IReadOnlyList<WallGroupState> GroupStates => sessions.Select(s => s.State).ToArray();
     public event Action? Changed;
+    public Networking.Windows.WindowsNetworkHost Network { get; }
 
     public WallController(WallSettings settings)
     {
         Settings = settings;
+        Network = new(() => Settings, () => library.Photos, async () =>
+        {
+            await operations.WaitAsync();
+            try { await StopSessionsAsync(); }
+            finally { operations.Release(); }
+        });
+        Network.Changed += () =>
+        {
+            if (Network.IsDisplaying)
+            { desiredRunning = !Network.Stopped; userPaused = Network.IsPaused; Status = Network.Stopped ? "停止中" : Network.IsPaused ? "一時停止中" : $"同期再生中 · {Network.Status}"; }
+            Changed?.Invoke();
+        };
         library.Changed += LibraryChanged;
         recovery.EnvironmentChanged += () => _ = GuardAsync(RecoverAsync);
         recovery.PowerSuspended += value => { sleeping = value; UpdatePause(); };
@@ -52,6 +65,11 @@ public sealed class WallController : IAsyncDisposable
         SetStatus("写真を検索中…");
         cache.BudgetBytes = Settings.CacheMegabytes * 1024L * 1024;
         await library.ConfigureAsync(Settings, lifetime.Token);
+        if (Settings.OnlineMode)
+        {
+            try { await Network.SetOnlineAsync(true); }
+            catch (Exception error) { Settings.OnlineMode = false; Log.Write("オンライン待受を開始できません。単体動作を継続します。", error); }
+        }
         if (Settings.StartOnLaunch && Settings.HasDisplaySelection && (Settings.DisplayTestPattern || Settings.Folders.Count > 0)) await StartAsync();
         else SetStatus($"停止中 · {PhotoCount}枚");
     }
@@ -65,12 +83,14 @@ public sealed class WallController : IAsyncDisposable
             cache.BudgetBytes = settings.CacheMegabytes * 1024L * 1024;
             await cache.ClearAsync();
             await library.ConfigureAsync(Settings, lifetime.Token);
-            if (desiredRunning || TestPatternVisible) StartSessions(); else SetStatus($"停止中 · {PhotoCount}枚");
+            Network.RefreshPhotos();
+            if (!Network.IsDisplaying && (desiredRunning || TestPatternVisible)) StartSessions(); else SetStatus($"停止中 · {PhotoCount}枚");
         }
         finally { operations.Release(); }
     }
     public async Task StartAsync()
     {
+        if (Network.IsDisplaying || Network.Session?.ConnectedPeers.Count > 0) { desiredRunning = true; await Network.ControlAsync("start"); return; }
         await operations.WaitAsync();
         try
         {
@@ -96,6 +116,7 @@ public sealed class WallController : IAsyncDisposable
     }
     public async Task StopAsync()
     {
+        if (Network.IsDisplaying || Network.Session?.ConnectedPeers.Count > 0) await Network.ControlAsync("stop");
         await operations.WaitAsync();
         try { desiredRunning = false; testPatternSettings = null; await StopSessionsAsync(); SetStatus("停止中"); }
         finally { operations.Release(); }
@@ -143,8 +164,16 @@ public sealed class WallController : IAsyncDisposable
         foreach (var session in sessions.ToArray()) await session.DisposeAsync();
         sessions.Clear();
     }
-    public void TogglePause() { userPaused = !userPaused; UpdatePause(); }
-    public void Next() { foreach (var session in sessions.ToArray()) session.Next(); }
+    public void TogglePause()
+    {
+        if (Network.IsDisplaying || Network.Session?.ConnectedPeers.Count > 0) { _ = GuardAsync(() => Network.ControlAsync(Network.IsPaused ? "resume" : "pause")); return; }
+        userPaused = !userPaused; UpdatePause();
+    }
+    public void Next()
+    {
+        if (Network.IsDisplaying || Network.Session?.ConnectedPeers.Count > 0) { _ = GuardAsync(() => Network.ControlAsync("next")); return; }
+        foreach (var session in sessions.ToArray()) session.Next();
+    }
     private void UpdatePause()
     {
         foreach (var session in sessions.ToArray()) session.SetPauseState(userPaused, sleeping);
@@ -158,6 +187,7 @@ public sealed class WallController : IAsyncDisposable
     private void LibraryChanged() => dispatcher.BeginInvoke(() =>
     {
         if (disposed) return;
+        Network.RefreshPhotos();
         foreach (var session in sessions.ToArray()) session.LibraryChanged();
         if (desiredRunning || TestPatternVisible) _ = GuardAsync(RecoverAsync);
         Changed?.Invoke();
@@ -173,10 +203,22 @@ public sealed class WallController : IAsyncDisposable
     {
         try { await action(); } catch (OperationCanceledException) { } catch (Exception e) { Log.Write("操作に失敗しました。", e); }
     }
+    public async Task SetNetworkOnlineAsync(bool online)
+    {
+        var paused = Network.IsDisplaying ? Network.IsPaused : userPaused;
+        await Network.SetOnlineAsync(online); Settings.OnlineMode = online;
+        if (!online && desiredRunning)
+        {
+            await operations.WaitAsync();
+            try { userPaused = paused; if (sessions.Count == 0) StartSessions(); UpdatePause(); }
+            finally { operations.Release(); }
+        }
+    }
     public async ValueTask DisposeAsync()
     {
         if (disposed) return;
         disposed = true; desiredRunning = false; testPatternSettings = null; lifetime.Cancel(); recovery.Dispose(); occlusionDebounce.Stop();
+        await Network.DisposeAsync();
         await StopSessionsAsync(); library.Changed -= LibraryChanged; library.Dispose(); await cache.ClearAsync(); await faces.SaveAsync(); lifetime.Dispose();
     }
 }

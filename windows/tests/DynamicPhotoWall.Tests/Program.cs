@@ -98,6 +98,8 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("network native planning and timed crops across all five modes", () => NetworkAdapterTests.PlanningAndRendering(root));
+        await Test("network keys are protected by the Windows user", () => Sync(() => NetworkAdapterTests.ProtectedSecrets(root)));
         await Test("Gallery compacts rows and resamples only known face geometry", () => Sync(() =>
         {
             var viewport = new Viewport(800, 300); FrameRect[] displays = [new(0, 0, 400, 300), new(400, 0, 400, 300)];
@@ -486,7 +488,7 @@ internal static class Program
             foreach (var width in new[] { 1040d, 920d })
             {
                 window.Width = width; window.Height = width == 920 ? 700 : 820;
-                for (var i = 0; i < 3; i++)
+                for (var i = 0; i < pages.Items.Count; i++)
                 {
                     pages.SelectedIndex = i; await Task.Delay(100); window.UpdateLayout();
                     SaveRender(window, $"settings-page-{i + 1}-{width:0}.png");

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>オンラインモードで近くのPhoto Wallを検出し、写真と表示タイミングを同期するために使用します。</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>選択した写真アプリのアルバムをデスクトップのフォトウォールに表示するため、写真を読み取ります。</string>
     <key>LSMultipleInstancesProhibited</key>

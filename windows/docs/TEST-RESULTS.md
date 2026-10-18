@@ -1,5 +1,9 @@
 # 実施した検証
 
+## 2026-10-18 — 分離したネットワーク基盤とWindowsアダプター
+
+ネットワーク18ケース／131 assertionsとWindows22ケースが成功。TLS loopback、3ピアの設定・転送・交代・再接続、2壁の4ピアへの合流とpause引継ぎ、予約テスト表示、容量制限、DPAPI、5表示モードの計画と時刻からの描画・切出しを含む。共通fixture704 assertions・OS差分fixture472 assertionsも成功。結果は`artifacts/windows/network-core/`と`artifacts/windows/smoke-data/`。設定UI全8ページの描画結果は`artifacts/windows/settings-ui/`とsmoke-dataのPNG。Macのビルドと両OS実機の同期精度は未実施で、自動試験の合格には含めない。[構成と確認手順](../../docs/NETWORK-CORE.md)を参照。
+
 ## 2026-10-17 — 顔矩形キャッシュによるGalleryの余白改善
 
 - 各写真の許容位置の共通範囲を求め、通常Gap・共通の高さと基準線を保った写真列を優先する。無理な場合は従来の写真別配置・必要時の縮小を維持する。顔の包含・非重複・写真全体の表示を保つ。

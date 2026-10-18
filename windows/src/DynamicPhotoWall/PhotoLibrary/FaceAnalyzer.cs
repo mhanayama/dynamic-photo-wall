@@ -15,9 +15,12 @@ public sealed class FaceAnalyzer
     private FaceDetector? detector;
     private bool unavailable;
     private int dirty;
+    private readonly bool persistCache;
     private string CachePath => Path.Combine(Log.DataDirectory, "faces.json");
-    public FaceAnalyzer()
+    public FaceAnalyzer(bool persistCache = true)
     {
+        this.persistCache = persistCache;
+        if (!persistCache) return;
         try
         {
             if (File.Exists(CachePath)) foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, FaceRegion[]>>(File.ReadAllText(CachePath)) ?? [])
@@ -60,6 +63,7 @@ public sealed class FaceAnalyzer
     }
     public async Task SaveAsync()
     {
+        if (!persistCache) return;
         if (dirty == 0) return;
         try
         {

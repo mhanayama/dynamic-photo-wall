@@ -2,8 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Diagnostics.CodeAnalysis;
 
-namespace DynamicPhotoWall.Core.Networking;
+namespace DynamicPhotoWall.Networking;
 
 // Versioned DTOs contain identifiers and geometry, never local paths or credentials.
 public static class PeerProtocol
@@ -24,7 +25,7 @@ public static class PeerProtocol
         return options;
     }
 
-    internal static void Require(bool condition, string message)
+    internal static void Require([DoesNotReturnIf(false)] bool condition, string message)
     {
         if (!condition) throw new InvalidDataException(message);
     }
@@ -65,17 +66,26 @@ public sealed record PeerDisplay(PeerDisplayKey Key, bool Selected, Guid? GroupI
 
 public static class PeerGroupLayout
 {
-    public static WallLayout Create(Guid groupId, IReadOnlyList<PeerDisplay> displays)
+    public static PeerCanvasLayout Create(Guid groupId, IReadOnlyList<PeerDisplay> displays)
     {
         PeerProtocol.Require(groupId != Guid.Empty, "Missing group identity.");
         foreach (var display in displays) display.Validate();
         PeerProtocol.Require(displays.Select(d => d.Key).Distinct().Count() == displays.Count, "Duplicate display identity.");
-        return new WallLayout(displays.Where(d => d.Selected && d.GroupId == groupId).Select(d => new DisplayPlacement
-        {
-            Id = d.Key.LayoutId, GroupId = groupId.ToString("D"), X = d.X, Y = d.Y, Width = d.Width, Height = d.Height
-        }).ToArray());
+        var members = displays.Where(d => d.Selected && d.GroupId == groupId).ToArray();
+        PeerProtocol.Require(members.Length > 0, "Group has no selected displays.");
+        var left = members.Min(d => (long)d.X); var top = members.Min(d => (long)d.Y);
+        var width = members.Max(d => (long)d.X + d.Width) - left;
+        var height = members.Max(d => (long)d.Y + d.Height) - top;
+        PeerProtocol.Require(width <= 32768 && height <= 32768, "Canvas exceeds 32768 pixels.");
+        return new(new(width, height), members.ToDictionary(d => d.Key.LayoutId,
+            d => new FrameRect(d.X - left, d.Y - top, d.Width, d.Height)));
     }
 }
+
+public sealed record FaceRegion(double X, double Y, double Width, double Height);
+public sealed record Viewport(double Width, double Height);
+public sealed record FrameRect(double X, double Y, double Width, double Height);
+public sealed record PeerCanvasLayout(Viewport Viewport, IReadOnlyDictionary<string, FrameRect> Regions);
 
 public enum FaceAnalysisState { Pending, Complete, Failed }
 
@@ -112,11 +122,12 @@ public sealed record SharedAssetKey(Guid ProviderId, Guid SourceId, Guid Generat
 
 public sealed record SharedPhoto(SharedAssetKey Key, int PixelWidth, int PixelHeight, long ByteLength, SharedFaceMetadata FaceMetadata)
 {
+    public int Orientation { get; init; } = 1;
     public void Validate()
     {
         PeerProtocol.Require(Key != null && FaceMetadata != null, "Missing photo identity or face metadata.");
         Key!.Validate(); FaceMetadata!.Validate();
-        PeerProtocol.Require(PixelWidth > 0 && PixelHeight > 0 && ByteLength > 0
+        PeerProtocol.Require(PixelWidth > 0 && PixelHeight > 0 && ByteLength > 0 && Orientation is >= 1 and <= 8
             && PixelWidth == FaceMetadata.PixelWidth && PixelHeight == FaceMetadata.PixelHeight, "Photo/metadata dimensions differ.");
     }
 

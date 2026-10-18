@@ -33,6 +33,7 @@ final class AppModel {
     private(set) var albumPreviewWarning: String?
     var photoAssets: [PhotoAsset] = []
     var settings = WallSettings()
+    var network: PNNetworkModel?
     private(set) var isScanning = false
     private(set) var wallAttached = false
     private(set) var desiredRunning = false
@@ -127,6 +128,15 @@ final class AppModel {
             observeSystemEnvironment()
         }
         reloadPhotos()
+        network = PNNetworkModel(defaults: defaults, settings: { [weak self] in self?.settings ?? WallSettings() },
+            displays: { [weak self] in self?.appliedDisplays ?? [] }, folders: { [weak self] in self?.folders ?? [] },
+            albums: { [weak self] in self?.appliedPhotoAlbums ?? [] }, assets: { [weak self] in self?.photoAssets ?? [] },
+            enter: { [weak self] in self?.suspendWall() }, sharedSettings: { [weak self] options in
+                guard let self else { return }; if let updated = try? options.applying(to: self.settings) { self.settings = updated }
+            }, leave: { [weak self] in self?.reconcilePlayback() }, playbackState: { [weak self] stopped, paused in
+                self?.desiredRunning = !stopped; self?.userPaused = paused
+            })
+        if observeEnvironment { network?.restore() }
     }
 
     static func makeLaunchModel() -> AppModel {
@@ -148,12 +158,16 @@ final class AppModel {
     var displayConnectionMessage: String {
         "\(screens.count)台接続中 · \(displays.filter(\.enabled).count)台選択。未接続画面の配置も保持します。"
     }
-    var canStart: Bool { displays.contains { display in display.enabled && screens.contains(where: { $0.id == display.id }) } && (!folders.isEmpty || !photoAlbums.isEmpty) && !isScanning }
-    var canStartApplied: Bool { appliedDisplays.contains(where: \.enabled) && (!folderStore.folders.isEmpty || !appliedPhotoAlbums.isEmpty) && !isScanning }
-    var isPlaying: Bool { !testPatternVisible && sessions.contains { $0.primary.currentScene != nil && !$0.isWaiting } }
+    var canStart: Bool {
+        if let network, network.online { return network.draft?.displays.contains(where: \.selected) == true && network.draft?.sources.isEmpty == false }
+        return displays.contains { display in display.enabled && screens.contains(where: { $0.id == display.id }) } && (!folders.isEmpty || !photoAlbums.isEmpty) && !isScanning
+    }
+    var canStartApplied: Bool { network?.isDisplaying == true || network?.connected.isEmpty == false || (appliedDisplays.contains(where: \.enabled) && (!folderStore.folders.isEmpty || !appliedPhotoAlbums.isEmpty) && !isScanning) }
+    var isPlaying: Bool { network?.isDisplaying == true ? network?.isRunning == true : !testPatternVisible && sessions.contains { $0.primary.currentScene != nil && !$0.isWaiting } }
     var isWaiting: Bool { !testPatternVisible && desiredRunning && (!wallAttached || sessions.allSatisfy(\.isWaiting)) }
-    var canAdvance: Bool { !testPatternVisible && desiredRunning && wallAttached }
+    var canAdvance: Bool { network?.isDisplaying == true || network?.connected.isEmpty == false || (!testPatternVisible && desiredRunning && wallAttached) }
     var playbackStateLabel: String {
+        if let network, network.isDisplaying { return network.isPaused ? "一時停止中" : network.isRunning ? "同期再生中" : "停止中" }
         if testPatternVisible { return "テスト表示中" }
         if !desiredRunning { return "停止中" }
         if isWaiting { return "待機中" }
@@ -164,7 +178,8 @@ final class AppModel {
         return "再生中"
     }
     var displayStatusMessage: String {
-        testPatternVisible ? "テストパターンを表示中" : playback.imageFailureMessage
+        if let network, network.isDisplaying { return network.status }
+        return testPatternVisible ? "テストパターンを表示中" : playback.imageFailureMessage
             ?? ((playback.waitingForImages || playback.waitingForScrollImage)
                 ? "次の写真を準備中 · 現在の表示を保持しています" : statusMessage)
     }
@@ -370,11 +385,13 @@ final class AppModel {
         applySettings(startRequested: selectedScreenID != nil && (!folders.isEmpty || !photoAlbums.isEmpty))
     }
     func start() {
+        if let network, network.isDisplaying || !network.connected.isEmpty { applySettings(startRequested: true, endPreview: true); network.control("start"); desiredRunning = true; return }
         guard !isScanning else { return }
         applySettings(startRequested: true, endPreview: true)
     }
 
     func startApplied() {
+        if network?.isDisplaying == true { network?.control("start"); desiredRunning = true; return }
         guard canStartApplied else { return }
         if let previewDisplays { pendingPreviewRestore = (previewDisplays, desiredRunning, userPaused) }
         testPatternVisible = false; previewDisplays = nil
@@ -419,6 +436,7 @@ final class AppModel {
             if startRequested && !testPatternVisible { desiredRunning = true; userPaused = false }
             if !testPatternVisible { suspendWall() }
             reloadPhotos(preparedAlbums: preparedAlbums)
+            if let network, network.online { Task { await network.apply(normalized) } }
         } catch {
             statusMessage = error.localizedDescription
             WallLog.write("設定を適用できません。", error: error)
@@ -426,6 +444,7 @@ final class AppModel {
     }
 
     func stop() {
+        if let network, network.isDisplaying || !network.connected.isEmpty { network.control("stop") }
         desiredRunning = false
         userPaused = false
         testPatternVisible = false; previewDisplays = nil; pendingPreviewRestore = nil
@@ -434,6 +453,7 @@ final class AppModel {
     }
 
     func togglePause() {
+        if let network, network.isDisplaying || !network.connected.isEmpty { network.control(network.isPaused ? "resume" : "pause"); return }
         guard desiredRunning else { return }
         userPaused.toggle()
         for session in sessions { session.setPaused(userPaused || sleeping || covered || coveredGroupIDs.contains(session.group.id)) }
@@ -446,6 +466,7 @@ final class AppModel {
     }
 
     func showNextScene() {
+        if let network, network.isDisplaying || !network.connected.isEmpty { network.control("next"); return }
         guard canAdvance else { return }
         for session in sessions { session.next() }
         updatePlayingStatus()
@@ -502,6 +523,7 @@ final class AppModel {
                 self.albumPhotoCount = albumResult.assets.count
             }
             self.photoAssets = updated
+            self.network?.refreshPhotos()
             self.isScanning = false
             self.scanTask = nil
             if self.desiredRunning, !self.testPatternVisible, self.wallAttached {
@@ -538,6 +560,7 @@ final class AppModel {
     }
 
     private func reconcileOutputs() throws {
+        if network?.isDisplaying == true { return }
         if testPatternVisible, let previewDisplays {
             let groups = try DisplayLayout.groups(previewDisplays)
             let outputs = makeOutputs(groups: groups, sessions: [])
@@ -681,6 +704,7 @@ final class AppModel {
     func shutdown() {
         guard !terminated else { return }
         terminated = true
+        network?.stop()
         desiredRunning = false
         scanGeneration += 1
         scanTask?.cancel()

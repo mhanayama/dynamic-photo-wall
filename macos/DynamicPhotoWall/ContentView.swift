@@ -11,9 +11,15 @@ struct ContentView: View {
                 DisplaySettingsView(model: model)
                     .tabItem { Label("一般", systemImage: "display") }
 
-                UsedDisplaysView(model: model)
+                Group {
+                    if let network = model.network, network.online { NetworkDisplaySettingsView(network: network, layout: false) }
+                    else { UsedDisplaysView(model: model) }
+                }
                     .tabItem { Label("使用ディスプレイ", systemImage: "display.2") }
-                DisplayGroupingView(model: model)
+                Group {
+                    if let network = model.network, network.online { NetworkDisplaySettingsView(network: network) }
+                    else { DisplayGroupingView(model: model) }
+                }
                     .tabItem { Label("画面グルーピング", systemImage: "rectangle.3.group") }
 
                 PhotoSettingsView(model: model)
@@ -27,6 +33,9 @@ struct ContentView: View {
 
                 AppearanceSettingsView(settings: $model.settings)
                     .tabItem { Label("見た目", systemImage: "paintpalette") }
+                if let network = model.network {
+                    NetworkSettingsView(network: network).tabItem { Label("ネットワーク", systemImage: "network") }
+                }
             }
 
             .tabViewStyle(.grouped)
@@ -36,6 +45,7 @@ struct ContentView: View {
         }
         .padding(24)
         .frame(minWidth: 900, idealWidth: 1040, minHeight: 680, idealHeight: 800)
+        .onChange(of: model.settings) { _, _ in model.network?.optionsEdited(model.settings) }
     }
 }
 

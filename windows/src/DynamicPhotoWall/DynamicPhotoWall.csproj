@@ -14,6 +14,7 @@
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../DynamicPhotoWall.Core/DynamicPhotoWall.Core.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../shared/DynamicPhotoWall.Networking/DynamicPhotoWall.Networking.csproj" /></ItemGroup>
   <ItemGroup><PackageReference Include="SkiaSharp" Version="3.119.4" /></ItemGroup>
   <ItemGroup><Resource Include="../../assets/PhotoWall-apple-style.ico" Link="Assets/PhotoWall.ico" /></ItemGroup>
 </Project>

@@ -4,7 +4,8 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../windows/src/DynamicPhotoWall.Core/DynamicPhotoWall.Core.csproj" />
+    <ProjectReference Include="../../shared/DynamicPhotoWall.Networking/DynamicPhotoWall.Networking.csproj" />
     <None Include="../Fixtures/PeerProtocol.v1.json" Link="Fixtures/PeerProtocol.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Fixtures/NetworkWire.v1.json" Link="Fixtures/NetworkWire.v1.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../Fixtures/NetworkWire.v1.json')" />
   </ItemGroup>
 </Project>

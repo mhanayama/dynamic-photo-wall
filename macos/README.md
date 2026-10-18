@@ -89,6 +89,12 @@ DMG用の一時フォルダはプロジェクト外に作成し、終了時に�
 
 [macOS v1.1.0（build 4）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)は2026-10-18の更新です。変更点と検証状況は[リリースノート](docs/RELEASE-NOTES-v1.1.0.md)を参照してください。v1.0.1以前のReleaseも保持します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
 
+## ネットワーク機能の追加実装
+
+Swiftネイティブの通信・Keychain保存・PhotoKit原写真転送・同期表示を`DynamicPhotoWall/Networking/`へ分割して追加しました。既存の単体表示と、Dock／メニューバーをOS設定に従わせる方針を保持します。**この追加分はWindowsで記述しており、Macのコンパイルと相互接続は未確認です。** 公開済みv1.1.0の検証結果に含めないでください。
+
+同じコミットを取り込んで`bash macos/scripts/verify.sh --unit-only`を実行してください。`NetworkModuleTests`はC#との共有データ・暗号文の復号・期限・切断状態・予約Commitを検証します。その後のMac↔Windowsの手動確認項目は[ネットワーク実装記録](../docs/NETWORK-CORE.md#手元のMacでの確認)へまとめました。
+
 ## アイコンと管理ファイル
 
 Icon Composerの `DynamicPhotoWall/PhotoWall.icon` を使用し、DefaultにLight、DarkにDark、MonoにLiquid Glass用PNGを割り当てています。Debug／ReleaseともApp Icon名は `PhotoWall` です。[アイコンリソース](../assets/app-icon/README.md)を参照してください。

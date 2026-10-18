@@ -27,7 +27,7 @@ public sealed class SceneVisual
     public IEnumerable<PhotoInfo> DisplayedPhotos => Surfaces.SelectMany(s => s.Photos);
 }
 
-public sealed class PhotoRenderer : Window
+public sealed partial class PhotoRenderer : Window
 {
     private readonly Canvas layers;
     private readonly Viewport viewport;

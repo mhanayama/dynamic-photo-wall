@@ -29,12 +29,14 @@ public sealed class TrayController : IDisposable
             trayIcon = (System.Drawing.Icon)source.Clone();
         icon = new Forms.NotifyIcon { Text = "Dynamic Photo Wall", Icon = trayIcon, ContextMenuStrip = menu, Visible = true };
         icon.DoubleClick += (_, _) => OpenSettings(); controller.Changed += Update;
+        controller.Network.Notification += NetworkNotification;
     }
     private void Update()
     {
         pause.Text = controller.IsPaused ? "再開" : "一時停止";
         var text = $"Dynamic Photo Wall — {controller.Status}"; icon.Text = text[..Math.Min(text.Length, 63)];
     }
+    private void NetworkNotification(string title, string text) => icon.ShowBalloonTip(5000, title, text, Forms.ToolTipIcon.Info);
     public void OpenSettings()
     {
         if (settings == null) { settings = new(controller, manager); settings.Closed += (_, _) => settings = null; }
@@ -45,5 +47,5 @@ public sealed class TrayController : IDisposable
         if (exiting) return; exiting = true;
         settings?.Close(); icon.Visible = false; await controller.DisposeAsync(); Dispose(); Application.Current.Shutdown();
     }
-    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); trayIcon.Dispose(); }
+    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; controller.Network.Notification -= NetworkNotification; icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); trayIcon.Dispose(); }
 }

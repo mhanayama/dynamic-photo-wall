@@ -21,6 +21,7 @@ public sealed record MotionPlan(double Width, double Height, double FromX, doubl
 
 public sealed class WallSettings
 {
+    public bool OnlineMode { get; set; }
     public string? MonitorId { get; set; }
     public List<DisplayPlacement> Displays { get; set; } = [];
     public List<string> DisplayGroupNames { get; set; } = [];

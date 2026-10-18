@@ -12,15 +12,34 @@ public partial class SettingsWindow : Window
     private readonly WallSettings draft;
     private readonly ObservableCollection<string> folders;
     private readonly DisplayLayoutEditor displayEditor = new();
+    private readonly NetworkSettingsPanel networkPanel;
     public SettingsWindow(WallController controller, SettingsManager manager)
     {
         InitializeComponent(); this.controller = controller; this.manager = manager;
+        networkPanel = new(controller, manager); NetworkPanelHost.Content = networkPanel;
         draft = SettingsManager.Clone(controller.Settings); folders = new(draft.Folders);
+        if (controller.Network.Session is { } session) Networking.Windows.WindowsPlaybackOptions.Apply(session.Snapshot.Playback, draft);
+        networkPanel.SharedOptionsChanged += options =>
+        {
+            Networking.Windows.WindowsPlaybackOptions.Apply(options, draft);
+            DataContext = null; DataContext = draft;
+        };
         draft.DisplayTestPattern = false;
         DataContext = draft; FolderList.ItemsSource = folders; DisplayEditorHost.Content = displayEditor;
         DisplaySelectionHost.Content = displayEditor.SelectionView; TaskbarSettingsHost.Content = displayEditor.TaskbarView; LoadMonitors();
-        controller.Changed += UpdateStatus; Closed += (_, _) => controller.Changed -= UpdateStatus;
+        controller.Changed += UpdateStatus; Closed += (_, _) => { controller.Changed -= UpdateStatus; networkPanel.Dispose(); };
         UpdateStatus();
+        AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler((_, e) => MarkSharedEdit(e.OriginalSource)));
+        AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler((_, e) => MarkSharedEdit(e.OriginalSource)));
+    }
+    private void MarkSharedEdit(object source)
+    {
+        for (var node = source as DependencyObject; node != null; node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+            if (node is TabItem tab)
+            {
+                if (tab.Header is "写真" or "表示モード" or "動き" or "見た目") networkPanel.MarkOptionsEdited();
+                return;
+            }
     }
     private void LoadMonitors()
     {
@@ -30,14 +49,25 @@ public partial class SettingsWindow : Window
     private void RefreshDisplays(object sender, RoutedEventArgs e) => LoadMonitors();
     private void UpdateStatus()
     {
+        if (controller.Network.Online)
+        {
+            DisplayEditorHost.Content = networkPanel.GroupView;
+            DisplaySelectionHost.Content = networkPanel.SelectionView;
+        }
+        else
+        {
+            DisplayEditorHost.Content = displayEditor;
+            DisplaySelectionHost.Content = displayEditor.SelectionView;
+        }
         StatusText.Text = $"{controller.Status}  ·  ライブラリ {controller.PhotoCount}枚";
-        TestPatternButton.Content = controller.TestPatternVisible ? "表示停止" : "表示";
+        TestPatternButton.Content = controller.TestPatternVisible || controller.Network.PreviewVisible ? "表示停止" : "表示";
     }
     private async void TestPatternClicked(object sender, RoutedEventArgs e)
     {
         TestPatternButton.IsEnabled = false;
         try
         {
+            if (controller.Network.Online) { await networkPanel.TogglePreviewAsync(); return; }
             if (controller.TestPatternVisible) await controller.HideTestPatternAsync();
             else
             {
@@ -47,7 +77,7 @@ public partial class SettingsWindow : Window
             }
         }
         catch (Exception error) { Log.Write("テストパターンを切り替えられません。", error); StatusText.Text = error.Message; }
-        finally { TestPatternButton.IsEnabled = true; TestPatternButton.Content = controller.TestPatternVisible ? "表示停止" : "表示"; }
+        finally { TestPatternButton.IsEnabled = true; TestPatternButton.Content = controller.TestPatternVisible || controller.Network.PreviewVisible ? "表示停止" : "表示"; }
     }
     private void AddFolder(object sender, RoutedEventArgs e)
     {
@@ -68,14 +98,16 @@ public partial class SettingsWindow : Window
             if (HasErrors(this)) throw new InvalidOperationException("数値を正しく入力してください。");
             draft.Folders = folders.ToList(); draft.Displays = displayEditor.SelectedPlacements();
             draft.DisplayGroupNames = displayEditor.GroupNames.ToList(); draft.DisplayTestPattern = false;
-            if (draft.Displays.Count == 0) throw new InvalidOperationException("表示する画面を1台以上選択してください。");
+            if (draft.Displays.Count == 0 && !controller.Network.Online) throw new InvalidOperationException("表示する画面を1台以上選択してください。");
             foreach (var group in DisplayGroups.Create(draft.Displays)) _ = new WallLayout(group.Displays);
-            draft.MonitorId = draft.Displays[0].Id;
+            draft.MonitorId = draft.Displays.FirstOrDefault()?.Id;
             if (!((draft.GalleryEnabled || draft.GalleryScrollEnabled) && draft.GalleryWeight > 0 || (draft.VerticalPanEnabled || draft.HorizontalPanEnabled) && draft.PanWeight > 0 || draft.ZoomEnabled && draft.ZoomWeight > 0))
                 throw new InvalidOperationException("少なくとも1つの表示モードを有効にして、ウェイトを1以上にしてください。");
             _ = new BrushConverter().ConvertFromString(draft.Background);
             draft.Normalize();
+            draft.OnlineMode = controller.Network.Online;
             SaveButton.IsEnabled = false;
+            if (!await networkPanel.ApplyAsync(draft)) return false;
             if (draft.AutoStart != controller.Settings.AutoStart) SettingsManager.SetAutoStart(draft.AutoStart);
             manager.Save(draft);
             await controller.ApplyAsync(SettingsManager.Clone(draft));

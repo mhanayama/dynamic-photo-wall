@@ -3,9 +3,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace DynamicPhotoWall.Core.Networking;
+namespace DynamicPhotoWall.Networking;
 
 public sealed record CachedPhoto(PhotoCacheHeader Header, byte[] Image);
+public sealed class PhotoCacheBudgetException() : IOException("写真キャッシュのディスク予算に達しました。ソースを減らすかキャッシュを更新してください。");
 
 // This storage primitive never persists a key. Production callers must supply an
 // OS-protected key; only synthetic fixtures and ephemeral keys are used by tests.
@@ -19,14 +20,18 @@ public sealed class EncryptedPhotoCache : IDisposable
     private readonly string root;
     private readonly byte[] masterKey;
     private readonly long maxImageBytes;
+    private readonly long maxDiskBytes;
     private readonly Dictionary<Guid, Guid> activeGenerations = [];
     private bool disposed;
 
-    public EncryptedPhotoCache(string directory, ReadOnlySpan<byte> key, long maxImageBytes = 256L * 1024 * 1024)
+    public EncryptedPhotoCache(string directory, ReadOnlySpan<byte> key, long maxImageBytes = 256L * 1024 * 1024,
+        long maxDiskBytes = 10L * 1024 * 1024 * 1024)
     {
         if (key.Length != 32) throw new ArgumentException("A 256-bit cache key is required.", nameof(key));
         if (maxImageBytes <= 0 || maxImageBytes > int.MaxValue) throw new ArgumentOutOfRangeException(nameof(maxImageBytes));
         root = Path.GetFullPath(directory); masterKey = key.ToArray(); this.maxImageBytes = maxImageBytes;
+        if (maxDiskBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxDiskBytes));
+        this.maxDiskBytes = maxDiskBytes;
         Directory.CreateDirectory(root); CheckDirectory(root);
     }
 
@@ -51,6 +56,7 @@ public sealed class EncryptedPhotoCache : IDisposable
             }
             var current = DirectoryPath(providerId, generationId);
             Directory.CreateDirectory(current); CheckDirectory(current);
+            foreach (var file in Directory.EnumerateFiles(current, "*.tmp")) { RejectLink(file); File.Delete(file); }
         }
     }
 
@@ -66,6 +72,19 @@ public sealed class EncryptedPhotoCache : IDisposable
         {
             CheckAlive(); RequireActive(photo.Key);
             var path = ObjectPath(photo.Key);
+            var projected = photo.ByteLength + headerBytes.Length + 40 + 20 * ((photo.ByteLength + ChunkBytes - 1) / ChunkBytes + 1);
+            long occupied = 0;
+            foreach (var provider in Directory.EnumerateDirectories(root))
+            {
+                CheckDirectory(provider);
+                foreach (var generation in Directory.EnumerateDirectories(provider))
+                {
+                    CheckDirectory(generation);
+                    foreach (var file in Directory.EnumerateFiles(generation, "*.pwc"))
+                    { RejectLink(file); if (file != path) occupied = checked(occupied + new FileInfo(file).Length); }
+                }
+            }
+            if (occupied + projected > maxDiskBytes) throw new PhotoCacheBudgetException();
             var temporary = Path.Combine(Path.GetDirectoryName(path)!, $"{Guid.NewGuid():N}.tmp");
             var salt = RandomNumberGenerator.GetBytes(32);
             var fileKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt, KeyInfo);
@@ -107,6 +126,71 @@ public sealed class EncryptedPhotoCache : IDisposable
                 CryptographicOperations.ZeroMemory(headerBytes);
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
+        }
+    }
+
+    // Recover the encrypted catalog without decoding or reading photo bodies.
+    // The opaque filename supplies the authenticated header's AAD, not a plaintext index.
+    public IReadOnlyList<PhotoCacheHeader> Catalog(DateTimeOffset now)
+    {
+        lock (gate)
+        {
+            CheckAlive(); var result = new List<PhotoCacheHeader>();
+            foreach (var (provider, generation) in activeGenerations)
+            {
+                var directory = DirectoryPath(provider, generation); CheckDirectory(directory);
+                foreach (var path in Directory.EnumerateFiles(directory, "*.pwc"))
+                {
+                    RejectLink(path);
+                    try
+                    {
+                        using var input = File.OpenRead(path);
+                        var magic = new byte[8]; input.ReadExactly(magic);
+                        PeerProtocol.Require(magic.AsSpan().SequenceEqual(Magic), "Invalid cache format.");
+                        var salt = new byte[32]; input.ReadExactly(salt);
+                        var fileKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt, KeyInfo);
+                        byte[]? bytes = null;
+                        try
+                        {
+                            using var cipher = new AesGcm(fileKey, 16);
+                            bytes = ReadBlock(input, cipher, Path.GetFileNameWithoutExtension(path), 0, MaxHeaderBytes);
+                            var header = JsonSerializer.Deserialize<PhotoCacheHeader>(bytes, PeerProtocol.Json)!;
+                            header.Validate();
+                            PeerProtocol.Require(header.Photo.Key.ProviderId == provider && header.Photo.Key.GenerationId == generation
+                                && header.Photo.Key.OpaqueId == Path.GetFileNameWithoutExtension(path), "Cache scope differs.");
+                            if (now >= header.ExpiresAt) { input.Dispose(); File.Delete(path); }
+                            else if (now >= header.CachedAt) result.Add(header);
+                        }
+                        finally { CryptographicOperations.ZeroMemory(fileKey); if (bytes != null) CryptographicOperations.ZeroMemory(bytes); }
+                    }
+                    catch (Exception error) when (error is InvalidDataException or CryptographicException or EndOfStreamException
+                        or JsonException or NullReferenceException) { File.Delete(path); }
+                }
+            }
+            return result;
+        }
+    }
+    public void Delete(SharedAssetKey key)
+    {
+        lock (gate) { CheckAlive(); RequireActive(key); var path = ObjectPath(key); if (File.Exists(path)) { RejectLink(path); File.Delete(path); } }
+    }
+    public void RetainProviders(IEnumerable<Guid> providers)
+    {
+        var keep = providers.Select(id => id.ToString("N")).ToHashSet(StringComparer.Ordinal);
+        lock (gate)
+        {
+            CheckAlive();
+            foreach (var provider in Directory.EnumerateDirectories(root).Where(path => !keep.Contains(Path.GetFileName(path))))
+            {
+                CheckDirectory(provider);
+                foreach (var generation in Directory.EnumerateDirectories(provider))
+                {
+                    CheckDirectory(generation);
+                    foreach (var file in Directory.EnumerateFiles(generation).Where(path => Path.GetExtension(path) is ".pwc" or ".tmp"))
+                    { RejectLink(file); File.Delete(file); }
+                }
+            }
+            foreach (var id in activeGenerations.Keys.Where(id => !keep.Contains(id.ToString("N"))).ToArray()) activeGenerations.Remove(id);
         }
     }
 
@@ -188,6 +272,8 @@ public sealed class EncryptedPhotoCache : IDisposable
     }
 
     private static byte[] ReadBlock(Stream stream, AesGcm cipher, SharedAssetKey key, ulong block, int maximum)
+        => ReadBlock(stream, cipher, key.OpaqueId, block, maximum);
+    private static byte[] ReadBlock(Stream stream, AesGcm cipher, string opaqueId, ulong block, int maximum)
     {
         Span<byte> length = stackalloc byte[4]; stream.ReadExactly(length);
         var count = BinaryPrimitives.ReadInt32LittleEndian(length);
@@ -195,7 +281,7 @@ public sealed class EncryptedPhotoCache : IDisposable
         var encrypted = new byte[count]; stream.ReadExactly(encrypted);
         Span<byte> tag = stackalloc byte[16]; stream.ReadExactly(tag);
         var plain = new byte[count];
-        try { cipher.Decrypt(Nonce(block), encrypted, tag, plain, AssociatedData(key, block, count)); return plain; }
+        try { cipher.Decrypt(Nonce(block), encrypted, tag, plain, Encoding.UTF8.GetBytes(FormattableString.Invariant($"DPWCAC01:{opaqueId}:{block}:{count}"))); return plain; }
         catch { CryptographicOperations.ZeroMemory(plain); throw; }
     }
 

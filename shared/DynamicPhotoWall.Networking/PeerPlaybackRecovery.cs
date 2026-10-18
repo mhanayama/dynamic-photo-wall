@@ -1,4 +1,4 @@
-namespace DynamicPhotoWall.Core.Networking;
+namespace DynamicPhotoWall.Networking;
 
 public enum PeerPlaybackState { Offline, Synchronized, IsolatedRepeating, Standalone }
 public enum PeerConnectionNotice { Disconnected, Reconnected }

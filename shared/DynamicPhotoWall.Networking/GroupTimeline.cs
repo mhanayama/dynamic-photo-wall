@@ -1,4 +1,4 @@
-namespace DynamicPhotoWall.Core.Networking;
+namespace DynamicPhotoWall.Networking;
 
 // Shared seconds are supplied by a clock adapter. No receive timestamp is used here.
 public sealed record PlaybackAnchor(double SharedTime, double Position, bool Paused)
