@@ -62,6 +62,7 @@ internal static class Program
             if (args.Contains("--scan-only") && args.Contains("--mode-weights")) await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
             if (args.Contains("--scan-only") && args.Contains("--gallery-face")) await GalleryFaces();
+            if (args.Contains("--scan-only") && args.Contains("--tray-menu")) await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -130,6 +131,7 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
         await GalleryFaces();
         await AmbientTransitions();
         await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);

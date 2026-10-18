@@ -1,4 +1,6 @@
 using DynamicPhotoWall.Configuration;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using Forms = System.Windows.Forms;
 
 namespace DynamicPhotoWall.UI;
@@ -7,7 +9,7 @@ public sealed class TrayController : IDisposable
 {
     private readonly Forms.NotifyIcon icon;
     private readonly System.Drawing.Icon trayIcon;
-    private readonly Forms.ToolStripMenuItem pause;
+    private readonly TrayMenu menu;
     private readonly WallController controller;
     private readonly SettingsManager manager;
     private SettingsWindow? settings;
@@ -16,24 +18,39 @@ public sealed class TrayController : IDisposable
     public TrayController(WallController controller, SettingsManager manager)
     {
         this.controller = controller; this.manager = manager;
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("スライドショー開始", null, async (_, _) => await WallController.GuardAsync(controller.StartAsync));
-        pause = new Forms.ToolStripMenuItem("一時停止", null, (_, _) => controller.TogglePause()); menu.Items.Add(pause);
-        menu.Items.Add("次の写真 / 構成", null, (_, _) => controller.Next());
-        menu.Items.Add("表示停止", null, async (_, _) => await WallController.GuardAsync(controller.StopAsync));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("設定を開く", null, (_, _) => OpenSettings());
-        menu.Items.Add("終了", null, async (_, _) => await ExitAsync());
+        menu = new TrayMenu(controller.StartAsync, controller.TogglePause, controller.Next,
+            controller.StopAsync, OpenSettings, ExitAsync);
+        menu.Opened += (_, _) =>
+        {
+            // A tray popup has no owner window. Foreground it so outside clicks
+            // and keyboard navigation work even when settings are closed.
+            if (PresentationSource.FromVisual(menu) is HwndSource source)
+                DesktopIntegration.Native.SetForegroundWindow(source.Handle);
+            menu.Focus();
+        };
         using (var stream = Application.GetResourceStream(new Uri("/DynamicPhotoWall;component/Assets/PhotoWall.ico", UriKind.Relative))!.Stream)
         using (var source = new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize))
             trayIcon = (System.Drawing.Icon)source.Clone();
-        icon = new Forms.NotifyIcon { Text = "Dynamic Photo Wall", Icon = trayIcon, ContextMenuStrip = menu, Visible = true };
+        // Keep WinForms only for the shell icon. Its dropdown window and error
+        // dialog bypass WPF's dispatcher exception handling.
+        icon = new Forms.NotifyIcon { Text = "Dynamic Photo Wall", Icon = trayIcon, Visible = true };
+        icon.MouseUp += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Right)
+                menu.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (disposed || exiting) return;
+                    Update();
+                    menu.Placement = PlacementMode.MousePoint;
+                    menu.IsOpen = true;
+                }));
+        };
         icon.DoubleClick += (_, _) => OpenSettings(); controller.Changed += Update;
         controller.Network.Notification += NetworkNotification;
     }
     private void Update()
     {
-        pause.Text = controller.IsPaused ? "再開" : "一時停止";
+        menu.UpdatePause(controller.IsPaused);
         var text = $"Dynamic Photo Wall — {controller.Status}"; icon.Text = text[..Math.Min(text.Length, 63)];
     }
     private void NetworkNotification(string title, string text) => icon.ShowBalloonTip(5000, title, text, Forms.ToolTipIcon.Info);
@@ -45,7 +62,7 @@ public sealed class TrayController : IDisposable
     public async Task ExitAsync()
     {
         if (exiting) return; exiting = true;
-        settings?.Close(); icon.Visible = false; await controller.DisposeAsync(); Dispose(); Application.Current.Shutdown();
+        menu.IsOpen = false; settings?.Close(); icon.Visible = false; await controller.DisposeAsync(); Dispose(); Application.Current.Shutdown();
     }
-    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; controller.Network.Notification -= NetworkNotification; icon.Visible = false; icon.ContextMenuStrip?.Dispose(); icon.Dispose(); trayIcon.Dispose(); }
+    public void Dispose() { if (disposed) return; disposed = true; controller.Changed -= Update; controller.Network.Notification -= NetworkNotification; menu.IsOpen = false; icon.Visible = false; icon.Dispose(); trayIcon.Dispose(); }
 }
