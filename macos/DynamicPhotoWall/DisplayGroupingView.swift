@@ -108,19 +108,19 @@ private struct DisplayLayoutEditor: View {
                         .overlay(Text(display.name).font(.caption).lineLimit(2).padding(4))
                         .frame(width: region.width * scale, height: region.height * scale)
                         .offset(x: 12 + region.minX * scale, y: 12 + region.minY * scale)
-                        .gesture(DragGesture().onChanged { value in
+                        .gesture(DragGesture(coordinateSpace: .named("localDisplayLayout")).onChanged { value in
                             guard let i = displays.firstIndex(where: { $0.id == display.id }) else { return }
                             if editingBounds == nil { editingBounds = group.bounds }
                             let origin = dragOrigins[display.id] ?? CGPoint(x: display.x, y: display.y)
                             dragOrigins[display.id] = origin
                             let rect = CGRect(x: origin.x + value.translation.width / scale,
                                 y: origin.y + value.translation.height / scale, width: display.width, height: display.height)
-                            let snapped = DisplayLayout.snapped(rect, against: group.displays.filter { $0.id != display.id }.map(\.rect), threshold: 10 / scale)
+                            let snapped = DisplayLayout.snapped(rect, against: group.displays.filter { $0.id != display.id }.map(\.rect), threshold: 12 / scale)
                             displays[i].x = snapped.x.rounded(); displays[i].y = snapped.y.rounded()
                         }.onEnded { _ in dragOrigins.removeValue(forKey: display.id); editingBounds = nil })
                 }
             }
-            .clipped()
+            .coordinateSpace(name: "localDisplayLayout").clipped()
         }
     }
 }

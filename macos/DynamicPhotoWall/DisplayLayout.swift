@@ -128,11 +128,20 @@ nonisolated enum DisplayLayout {
     }
 
     static func snapped(_ rect: CGRect, against others: [CGRect], threshold: CGFloat) -> CGPoint {
-        func adjustment(_ anchors: [CGFloat], _ targets: [CGFloat]) -> CGFloat {
-            let distances = anchors.flatMap { a in targets.map { $0 - a } }.filter { abs($0) <= threshold }
-            return distances.min(by: { abs($0) < abs($1) }) ?? 0
+        func gap(_ a: CGFloat, _ sizeA: CGFloat, _ b: CGFloat, _ sizeB: CGFloat) -> CGFloat {
+            max(0, max(a, b) - min(a + sizeA, b + sizeB))
         }
-        return CGPoint(x: rect.minX + adjustment([rect.minX, rect.midX, rect.maxX], others.flatMap { [$0.minX, $0.midX, $0.maxX] }),
-                       y: rect.minY + adjustment([rect.minY, rect.midY, rect.maxY], others.flatMap { [$0.minY, $0.midY, $0.maxY] }))
+        func closest(_ value: CGFloat, _ targets: [CGFloat]) -> CGFloat {
+            targets.filter { abs($0 - value) <= threshold }.min {
+                abs($0 - value) == abs($1 - value) ? $0 < $1 : abs($0 - value) < abs($1 - value)
+            } ?? value
+        }
+        let horizontal = others.filter { gap(rect.minY, rect.height, $0.minY, $0.height) <= threshold }.flatMap {
+            [$0.minX - rect.width, $0.maxX, $0.minX, $0.maxX - rect.width, $0.midX - rect.width / 2]
+        }
+        let vertical = others.filter { gap(rect.minX, rect.width, $0.minX, $0.width) <= threshold }.flatMap {
+            [$0.minY - rect.height, $0.maxY, $0.minY, $0.maxY - rect.height, $0.midY - rect.height / 2]
+        }
+        return CGPoint(x: closest(rect.minX, horizontal), y: closest(rect.minY, vertical))
     }
 }

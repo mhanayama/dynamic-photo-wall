@@ -1,0 +1,19 @@
+{
+  "cases": [
+    { "name": "right and top edges", "moving": { "x": 109, "y": 4, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 0 },
+    { "name": "left and top edges", "moving": { "x": -109, "y": 4, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": -100, "expectedY": 0 },
+    { "name": "bottom and left edges", "moving": { "x": 4, "y": 109, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 0, "expectedY": 100 },
+    { "name": "top and left edges", "moving": { "x": 4, "y": -109, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 0, "expectedY": -100 },
+    { "name": "small overlap closes", "moving": { "x": 94, "y": 3, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 0 },
+    { "name": "outside threshold stays free", "moving": { "x": 113, "y": 13, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 113, "expectedY": 13 },
+    { "name": "corner", "moving": { "x": 109, "y": 109, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 100 },
+    { "name": "distant row does not attract", "moving": { "x": 109, "y": 300, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 109, "expectedY": 300 },
+    { "name": "different height bottom aligned", "moving": { "x": 109, "y": 63, "width": 80, "height": 40 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 60 },
+    { "name": "different height centered", "moving": { "x": 109, "y": 34, "width": 80, "height": 40 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 30 },
+    { "name": "preview scale converts tolerance", "moving": { "x": 2000, "y": 70, "width": 1920, "height": 1080 }, "others": [{ "x": 0, "y": 0, "width": 1920, "height": 1080 }], "threshold": 120, "expectedX": 1920, "expectedY": 0 },
+    { "name": "negative layout coordinates", "moving": { "x": -1912, "y": -1086, "width": 1920, "height": 1080 }, "others": [{ "x": -1920, "y": 0, "width": 1920, "height": 1080 }], "threshold": 12, "expectedX": -1920, "expectedY": -1080 },
+    { "name": "exact threshold", "moving": { "x": 112, "y": 0, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 0 },
+    { "name": "equal distances choose lower coordinate", "moving": { "x": 105, "y": 0, "width": 100, "height": 100 }, "others": [{ "x": 0, "y": 0, "width": 100, "height": 100 }, { "x": 210, "y": 0, "width": 100, "height": 100 }], "threshold": 12, "expectedX": 100, "expectedY": 0 },
+    { "name": "no neighbors", "moving": { "x": 37, "y": -21, "width": 100, "height": 100 }, "others": [], "threshold": 12, "expectedX": 37, "expectedY": -21 }
+  ]
+}

@@ -43,18 +43,20 @@ public sealed class WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOn
                 .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().Select(name =>
                     new Net.SharedGroup(WindowsPhotoProvider.StableId($"{identity.PeerId:N}:{name}"), name)).ToArray();
             var saved = s.Displays;
-            var allDisplays = saved.Concat(DesktopIntegration.MonitorManager.Enumerate().Where(m => !saved.Any(d => d.Id == m.Id))
+            var monitors = DesktopIntegration.MonitorManager.Enumerate();
+            var allDisplays = saved.Concat(monitors.Where(m => !saved.Any(d => d.Id == m.Id))
                 .Select(m => new DisplayPlacement { Id = m.Id, Width = m.Width, Height = m.Height, GroupId = null })).ToArray();
             var displays = allDisplays.Select(d => new Net.PeerDisplay(new(identity.PeerId, d.Id), saved.Any(a => a.Id == d.Id),
                 string.IsNullOrWhiteSpace(d.GroupId) ? null : groups.First(g => g.Name == d.GroupId).Id,
-                d.X, d.Y, d.Width, d.Height)).ToArray();
+                d.X, d.Y, d.Width, d.Height) { Name = monitors.FirstOrDefault(m => m.Id == d.Id)?.Name }).ToArray();
             Net.PeerSession? running = null;
             var provider = new WindowsPhotoProvider(identity.PeerId, settings, photos, key => running?.Photos.IsAvailable(key) == true);
             cache = new(Path.Combine(root, "cache"), identity.CacheKey);
             var initial = new Net.WallSnapshot(Guid.NewGuid(), Guid.NewGuid(), identity.PeerId, 0, groups, displays, [], WindowsPlaybackOptions.Export(s));
             var planner = new WindowsScenePlanner(key => running!.Photos.ReadImage(key));
             output = new(identity.PeerId, clock, settings, enterNetwork);
-            running = new(local, displays, new Net.TlsPeerTransport(local, identity.Certificate, identity), new Net.LanPeerDiscovery(),
+            running = new(local, displays.Where(d => monitors.Any(m => m.Id == d.Key.DisplayId)).ToArray(),
+                new Net.TlsPeerTransport(local, identity.Certificate, identity), new Net.LanPeerDiscovery(),
                 new Net.EncryptedStateStore(Path.Combine(root, "wall.encrypted"), identity.CacheKey), provider, cache,
                 planner, output, clock, this, initial);
             output.Bind(planner, running.Photos); output.Changed += Raise;

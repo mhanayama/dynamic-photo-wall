@@ -8,23 +8,30 @@ public sealed class NetworkLayoutPreview : Canvas
 {
     private readonly Func<IReadOnlyList<Net.PeerDisplay>> read;
     private readonly Func<Guid, string> peerName;
+    private readonly Func<Net.PeerDisplayKey, bool> connected;
     private readonly Action<Net.PeerDisplayKey, int, int> move;
     private (Net.PeerDisplay Display, Point Point)? dragging;
     private double scale = 1, left, top;
-    public NetworkLayoutPreview(Func<IReadOnlyList<Net.PeerDisplay>> read, Func<Guid, string> peerName, Action<Net.PeerDisplayKey, int, int> move)
+    public NetworkLayoutPreview(Func<IReadOnlyList<Net.PeerDisplay>> read, Func<Guid, string> peerName,
+        Func<Net.PeerDisplayKey, bool> connected, Action<Net.PeerDisplayKey, int, int> move)
     {
-        this.read = read; this.peerName = peerName; this.move = move;
+        this.read = read; this.peerName = peerName; this.connected = connected; this.move = move;
         Height = 270; ClipToBounds = true; Background = new SolidColorBrush(Color.FromRgb(20, 22, 28));
+        ToolTip = "ドラッグして隣の画面の端に近づけると、配置が揃います。";
         SizeChanged += (_, _) => Refresh();
         MouseMove += (_, e) =>
         {
             if (dragging is not { } start) return;
             var delta = e.GetPosition(this) - start.Point;
-            move(start.Display.Key, (int)Math.Clamp(Math.Round(start.Display.X + delta.X / scale), -100000, 100000),
-                (int)Math.Clamp(Math.Round(start.Display.Y + delta.Y / scale), -100000, 100000));
+            var snapped = Net.DisplaySnapping.Snap(new(start.Display.X + delta.X / scale, start.Display.Y + delta.Y / scale,
+                start.Display.Width, start.Display.Height),
+                read().Where(d => d.Selected && d.Key != start.Display.Key).Select(d => new Net.FrameRect(d.X, d.Y, d.Width, d.Height)), 12 / scale);
+            move(start.Display.Key, (int)Math.Clamp(Math.Round(snapped.X, MidpointRounding.AwayFromZero), -100000, 100000),
+                (int)Math.Clamp(Math.Round(snapped.Y, MidpointRounding.AwayFromZero), -100000, 100000));
             Refresh();
         };
         MouseLeftButtonUp += (_, _) => { dragging = null; ReleaseMouseCapture(); Refresh(); };
+        LostMouseCapture += (_, _) => { if (dragging != null) { dragging = null; Refresh(); } };
     }
     public void Refresh()
     {
@@ -39,8 +46,11 @@ public sealed class NetworkLayoutPreview : Canvas
         }
         foreach (var display in displays)
         {
-            var name = $"{peerName(display.Key.PeerId)} / {display.Key.DisplayId}\n{display.Width}×{display.Height}";
+            var available = connected(display.Key);
+            var name = $"{peerName(display.Key.PeerId)} / {display.DisplayName}{(available ? "" : "（未接続）")}\n{display.Width}×{display.Height}";
             var card = new Border { Width = Math.Max(20, display.Width * scale), Height = Math.Max(20, display.Height * scale),
+                ToolTip = name,
+                Opacity = available ? 1 : .5,
                 BorderThickness = new Thickness(2), BorderBrush = display.GroupId == null ? Brushes.SlateGray : Brushes.CornflowerBlue,
                 Background = new SolidColorBrush(Color.FromArgb(220, 38, 57, 82)), Cursor = System.Windows.Input.Cursors.SizeAll,
                 Child = new TextBlock { Text = name, FontSize = 11, Foreground = Brushes.White, Margin = new Thickness(5), TextTrimming = TextTrimming.CharacterEllipsis } };

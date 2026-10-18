@@ -299,7 +299,7 @@ private struct CompositionSettingsView: View {
             }
 
             Section("構成") {
-                NumericField(title: "Galleryの最大枚数（1〜5）", value: $settings.galleryMax)
+                NumericField(title: "Galleryの最大枚数（1〜20）", value: $settings.galleryMax)
                 DoubleField(title: "パンで許容する拡大率（1〜12倍、初期値4倍）", value: $settings.maxPanUpscale)
                 DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0）", value: $settings.panWidthFraction)
                 Toggle("顔が見える位置で縦パンを止める", isOn: $settings.stopAtFace)

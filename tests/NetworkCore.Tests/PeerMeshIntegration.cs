@@ -23,12 +23,13 @@ internal static class PeerMeshIntegration
             {
                 var cache = new EncryptedPhotoCache(Path.Combine(root, i.ToString()), RandomNumberGenerator.GetBytes(32)); caches.Add(cache);
                 var hello = new PeerHello(1, ids[i], $"peer{i}", i == 0 ? "macos" : "windows");
-                var display = new PeerDisplay(new(ids[i], "screen"), true, null, i * 100, 0, 100, 100);
+                var display = new PeerDisplay(new(ids[i], "screen"), true, null, i * 100, 0, 100, 100) { Name = $"Monitor {i}" };
                 var provider = new NetworkIntegration.FixtureProvider(ids[i], source, i == 0 ? new byte[150000] : []);
                 var session = new PeerSession(hello, [display], new Transport(mesh, hello), new Discovery(),
                     new NetworkIntegration.MemoryPersistence(), provider, cache, new NetworkIntegration.FixturePlanner(), outputs[i], clocks[i],
-                    notices[i], NetworkIntegration.Initial(ids[i], [display]));
+                    notices[i], NetworkIntegration.Initial(ids[i], [display with { Name = null }]));
                 sessions.Add(session); await session.StartAsync(automaticPump: false);
+                Check(session.Snapshot.Displays.Single().Name == display.Name, "startup restores the local display name in an old saved layout");
             }
             await sessions[1].ConnectAsync(new(new(1, ids[0], "peer0", "macos"), "127.0.0.1", 1));
             await Until(() => sessions[0].Snapshot.Displays.Length == 2 && sessions[1].Snapshot.WallId == sessions[0].Snapshot.WallId);
@@ -36,6 +37,8 @@ internal static class PeerMeshIntegration
             await Rounds(8);
             await Until(() => sessions.All(s => s.ConnectedPeers.Count == 2 && s.Snapshot.Displays.Length == 3));
             Check(sessions.All(s => s.Snapshot.LeaderId == ids[0]), "connecting peers preserve existing coordinator");
+            Check(sessions.All(s => s.Snapshot.Displays.All(d => d.Name == $"Monitor {Array.IndexOf(ids, d.Key.PeerId)}")),
+                "every peer receives the display names of the integrated wall");
             var group = Guid.NewGuid(); var draft = sessions[1].Snapshot;
             var accepted = await sessions[1].ProposeAsync(new(Guid.NewGuid(), draft.Revision, [new(group, "combined")],
                 draft.Displays.Select(d => d with { GroupId = group }).ToArray(), [new(ids[0], source, Guid.NewGuid())], new()));
@@ -63,6 +66,7 @@ internal static class PeerMeshIntegration
             await Until(() => sessions.All(s => s.ConnectedPeers.Count == 2));
             await Rounds(8);
             Check(sessions.All(s => s.Snapshot.LeaderId == ids[1]), "returning former coordinator adopts the successor authority");
+            Check(sessions.All(s => s.Snapshot.Displays.All(d => !string.IsNullOrWhiteSpace(d.Name))), "display names survive failover and reconnection");
             Check(notices[0].DisconnectedCount == 2 && notices[0].ReconnectedCount == 2, "OS notices fire once for each lost and recovered connection");
         }
         finally { foreach (var session in sessions) await session.DisposeAsync(); foreach (var cache in caches) cache.Dispose(); }
@@ -123,6 +127,45 @@ internal static class PeerMeshIntegration
             for (var round = 0; round < n; round++) { for (var i = 0; i < sessions.Count; i++) { clocks[i].Time += 1; await sessions[i].PumpAsync(); }; await Task.Delay(30); }
         }
     }
+    public static async Task SavedDisplaysAreNotConnections(string root)
+    {
+        var mesh = new Mesh(); var a = Guid.NewGuid(); var b = Guid.NewGuid(); var stalePeer = Guid.NewGuid();
+        var helloA = new PeerHello(1, a, "current", "windows"); var helloB = new PeerHello(1, b, "other", "macos");
+        var local = new PeerDisplay(new(a, "present"), true, null, 0, 0, 100, 100) { Name = "Current monitor" };
+        var removed = local with { Key = new(a, "old-monitor"), X = -100, Name = "Removed monitor" };
+        var remote = local with { Key = new(b, "present"), X = 100, Name = "Other monitor" };
+        var stale = local with { Key = new(stalePeer, "old-remote"), X = 200, Name = "Old peer" };
+        var saved = NetworkIntegration.Initial(a, [removed, remote, stale]);
+        using var cacheA = new EncryptedPhotoCache(Path.Combine(root, "a"), RandomNumberGenerator.GetBytes(32));
+        using var cacheB = new EncryptedPhotoCache(Path.Combine(root, "b"), RandomNumberGenerator.GetBytes(32));
+        var discovery = new Discovery();
+        await using var sessionA = new PeerSession(helloA, [local], new Transport(mesh, helloA), discovery,
+            new NetworkIntegration.MemoryPersistence { Value = saved }, new NetworkIntegration.FixtureProvider(a, Guid.NewGuid(), []),
+            cacheA, new NetworkIntegration.FixturePlanner(), new NetworkIntegration.FixtureOutput(), new NetworkIntegration.FixtureClock(), new Notices(), NetworkIntegration.Initial(a));
+        await using var sessionB = new PeerSession(helloB, [remote], new Transport(mesh, helloB), new Discovery(),
+            new NetworkIntegration.MemoryPersistence(), new NetworkIntegration.FixtureProvider(b, Guid.NewGuid(), []),
+            cacheB, new NetworkIntegration.FixturePlanner(), new NetworkIntegration.FixtureOutput(), new NetworkIntegration.FixtureClock(), new Notices(), NetworkIntegration.Initial(b, [remote]));
+        await sessionA.StartAsync(false); await sessionB.StartAsync(false);
+        Check(sessionA.Snapshot.Displays.Length == 4 && sessionA.Snapshot.Displays.Any(d => d.Key == local.Key) && sessionA.IsDisplayConnected(local.Key),
+            "restart retains saved layout and adds a newly detected local monitor");
+        Check(!sessionA.IsDisplayConnected(remote.Key) && !sessionA.IsDisplayConnected(stale.Key) && !sessionA.IsDisplayConnected(removed.Key),
+            "saved peers and removed local monitors are not current connections");
+        discovery.Offer(new(helloB, "127.0.0.1", 1));
+        Check(sessionA.Candidates.Count == 1 && !sessionA.IsDisplayConnected(remote.Key), "LAN discovery alone cannot confirm a display connection");
+        var previousWall = sessionB.Snapshot.WallId;
+        await sessionB.ConnectAsync(new(helloA, "127.0.0.1", 1));
+        await Until(() => sessionA.IsDisplayConnected(remote.Key) && sessionB.IsDisplayConnected(local.Key)
+            && sessionA.Snapshot.MergedWalls.Contains(previousWall) && sessionB.Snapshot.WallId == sessionA.Snapshot.WallId);
+        Check(!sessionB.IsDisplayConnected(removed.Key) && !sessionA.IsDisplayConnected(stale.Key), "authenticated inventories exclude saved-only monitors");
+        var previous = sessionA.Snapshot.Displays.ToArray();
+        mesh.Block(b, true);
+        await Until(() => sessionA.ConnectedPeers.Count == 0 && sessionB.ConnectedPeers.Count == 0 && !sessionA.IsDisplayConnected(remote.Key));
+        Check(sessionA.Snapshot.Displays.SequenceEqual(previous), "disconnection changes availability without deleting placement or selection");
+        mesh.Block(b, false);
+        await sessionB.ConnectAsync(new(helloA, "127.0.0.1", 1));
+        await Until(() => sessionA.IsDisplayConnected(remote.Key) && sessionB.IsDisplayConnected(local.Key));
+        Check(!sessionA.IsDisplayConnected(stale.Key) && sessionA.Snapshot.Displays.Length == 4, "reconnection restores confirmed monitors and retains hidden saved entries");
+    }
     private sealed class Notices : IConnectionNotifications
     {
         public int DisconnectedCount, ReconnectedCount;
@@ -131,7 +174,8 @@ internal static class PeerMeshIntegration
     }
     private sealed class Discovery : IPeerDiscovery
     {
-        public event Action<PeerCandidate>? Found { add { } remove { } }
+        public event Action<PeerCandidate>? Found;
+        public void Offer(PeerCandidate candidate) => Found?.Invoke(candidate);
         public Task StartAsync(PeerHello local, int port, CancellationToken token) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

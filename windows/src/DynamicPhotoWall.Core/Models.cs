@@ -85,7 +85,7 @@ public sealed class WallSettings
             .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()).Distinct(StringComparer.Ordinal).ToList();
         Folders = (Folders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         RecentCount = Math.Clamp(RecentCount, 0, 10000);
-        GalleryMax = Math.Clamp(GalleryMax, 1, 5);
+        GalleryMax = Math.Clamp(GalleryMax, 1, 20);
         GalleryWeight = Math.Clamp(GalleryWeight, 0, 1000);
         PanWeight = Math.Clamp(PanWeight, 0, 1000);
         ZoomWeight = Math.Clamp(ZoomWeight, 0, 1000);

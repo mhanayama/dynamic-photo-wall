@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../../shared/DynamicPhotoWall.Networking/DynamicPhotoWall.Networking.csproj" />
     <None Include="../Fixtures/PeerProtocol.v1.json" Link="Fixtures/PeerProtocol.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Fixtures/DisplaySnapping.v1.json" Link="Fixtures/DisplaySnapping.v1.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../Fixtures/NetworkWire.v1.json" Link="Fixtures/NetworkWire.v1.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('../Fixtures/NetworkWire.v1.json')" />
   </ItemGroup>
 </Project>

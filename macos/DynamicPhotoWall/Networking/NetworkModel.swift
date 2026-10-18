@@ -26,6 +26,8 @@ import UserNotifications
     var draft: PNSnapshot?
     private(set) var dirty = false
     private(set) var connected: Set<UUID> = []
+    private(set) var connectedDisplays: Set<PNDisplayKey> = []
+    var showDisconnectedDisplays = false
     @ObservationIgnored private(set) var session: PNPeerSession?
     @ObservationIgnored private var output: PNPlayback?
     @ObservationIgnored private var identity: PNIdentity?
@@ -54,7 +56,7 @@ import UserNotifications
     func restore() { if defaults.bool(forKey: "networkOnline") { Task { await setOnline(true) } } }
     func setOnline(_ enabled: Bool) async {
         guard enabled != online && !busy else { return }; busy = true; defer { busy = false }
-        if !enabled { session?.stop(); session = nil; output = nil; identity = nil; online = false; isDisplaying = false; isRunning = false; isPaused = false; previewVisible = false; status = "オフライン"; defaults.set(false, forKey: "networkOnline"); leave(); return }
+        if !enabled { session?.stop(); session = nil; output = nil; identity = nil; online = false; isDisplaying = false; isRunning = false; isPaused = false; previewVisible = false; clearSessionViewState(); status = "オフライン"; defaults.set(false, forKey: "networkOnline"); leave(); return }
         do {
             let secrets = PNKeychain(service: "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))")
             let identity = try PNIdentity(secrets: secrets); self.identity = identity
@@ -63,25 +65,30 @@ import UserNotifications
             let groups = Set(values.compactMap(\.groupID)).sorted().map { PNGroup(id: PNWire.id("\(identity.peerId.pnHex):\($0)"), name: $0) }
             let displays = values.map { d in PNDisplay(key: PNDisplayKey(peerId: identity.peerId, displayId: String(d.id)), selected: d.enabled,
                 groupId: groups.first(where: { $0.name == d.groupID })?.id,
-                x: Int(d.x), y: Int(d.y), width: Int(d.width), height: Int(d.height)) }
+                x: Int(d.x), y: Int(d.y), width: Int(d.width), height: Int(d.height), name: d.name) }
             let initial = PNSnapshot(wallId: UUID(), sessionId: UUID(), leaderId: identity.peerId, revision: 0, groups: groups, displays: displays, sources: [], playback: PNOptions(localSettings))
             let cache = try PNPhotoCache(root: root.appending(path: "cache"), key: identity.cacheKey)
             let clock = PNSharedClock(); let planner = PNScenePlanner(cache: cache)
             let output = PNPlayback(local: identity.peerId, clock: clock, cache: cache, budget: { [weak self] in self?.settings().cacheMegabytes ?? 256 }, enter: enter); self.output = output
             let provider = PNSystemPhotoProvider(peerId: identity.peerId, folders: folders, albums: albums, assets: assets,
                 cached: { [weak self] key in self?.session?.photos.available[key.opaqueId] != nil })
-            let session = try PNPeerSession(local: hello, displays: displays, transport: PNTLSTransport(local: hello, identity: identity), discovery: PNLanDiscovery(),
+            let present = Set(ScreenDescriptor.availableScreens().map { String($0.id) })
+            let session = try PNPeerSession(local: hello, displays: displays.filter { present.contains($0.key.displayId) }, transport: PNTLSTransport(local: hello, identity: identity), discovery: PNLanDiscovery(),
                 persistence: PNStateStore(file: root.appending(path: "wall.encrypted"), key: identity.cacheKey), provider: provider, cache: cache, planner: planner, output: output, clock: clock, notifications: notification, initial: initial)
             self.session = session; output.bind(planner: planner, photos: session.photos)
             output.changed = { [weak self] in self?.refresh() }; session.changed = { [weak self] in self?.refresh() }
             session.failed = { [weak self] error in self?.status = error.localizedDescription; WallLog.write("ネットワーク処理を再試行します。", error: error) }
             try await session.start(); online = true; defaults.set(true, forKey: "networkOnline"); notification.requestPermission(); refresh()
-        } catch { session?.stop(); session = nil; output = nil; identity = nil; status = error.localizedDescription }
+        } catch { session?.stop(); session = nil; output = nil; identity = nil; clearSessionViewState(); status = error.localizedDescription }
+    }
+    private func clearSessionViewState() {
+        connected = []; connectedDisplays = []; candidates = []; sources = []; draft = nil; dirty = false
     }
     private func refresh() {
         guard let session else { return }
         refreshing = true; defer { refreshing = false }
         connected = session.connectedPeers; candidates = session.candidates.values.filter { !connected.contains($0.id) }.sorted { $0.hello.name < $1.hello.name }
+        connectedDisplays = session.connectedDisplays
         isDisplaying = output?.isDisplaying == true; isRunning = output?.isRunning == true
         isPaused = connected.isEmpty ? output?.isPaused == true : session.playbackPaused; previewVisible = output?.previewVisible == true
         if isDisplaying { playbackState(connected.isEmpty ? output?.isStopped == true : session.playbackStopped, isPaused) }
@@ -90,10 +97,17 @@ import UserNotifications
             sources.append(PNSource(providerId: selection.providerId, sourceId: selection.sourceId, name: "未接続の写真ソース"))
         }
         if !dirty && draft != session.snapshot { draft = session.snapshot; sharedSettings(session.snapshot.playback) }
+        if dirty, var value = draft {
+            for index in value.displays.indices {
+                if let current = session.snapshot.displays.first(where: { $0.key == value.displays[index].key }) { value.displays[index].name = current.name }
+            }
+            draft = value
+        }
         status = connected.isEmpty ? "接続待機中" : "\(connected.count + 1)ピア接続 · \(session.photos.available.count)枚準備済み · \(session.playbackState.rawValue)"
         if session.photos.deferredCount > 0 { status += " · 容量上限で\(session.photos.deferredCount)枚待機" }
     }
     func peerName(_ peerId: UUID) -> String { session?.peerName(peerId) ?? "未接続の端末" }
+    func isDisplayConnected(_ key: PNDisplayKey) -> Bool { connectedDisplays.contains(key) }
     func markDirty() { if !refreshing && online { dirty = true } }
     func optionsEdited(_ settings: WallSettings) { if let draft, PNOptions(settings) != draft.playback { markDirty() } }
     func reload() { dirty = false; draft = nil; refresh() }
@@ -127,7 +141,7 @@ import UserNotifications
         else { Task { do { try await session?.control(operation) } catch { status = error.localizedDescription } } }
     }
     func refreshPhotos() { session?.refreshPhotos() }
-    func stop() { session?.stop(); session = nil; output = nil; identity = nil; online = false }
+    func stop() { session?.stop(); session = nil; output = nil; identity = nil; online = false; clearSessionViewState() }
 }
 
 struct NetworkSettingsView: View {
@@ -157,12 +171,15 @@ struct NetworkDisplaySettingsView: View {
     var body: some View {
         Form {
             Section("全ピアの画面") {
+                Toggle("未接続の画面も表示", isOn: $network.showDisconnectedDisplays)
+                Text("未接続の画面の配置・グループ設定は保持されています。").font(.caption).foregroundStyle(.secondary)
                 if layout { Button(network.previewVisible ? "テストパターンを停止" : "テストパターンを表示", action: network.togglePreview) }
                 if layout { NetworkLayoutPreview(network: network).frame(height: 240) }
                 if let snapshot = network.draft {
-                    ForEach(snapshot.displays.indices, id: \.self) { index in
+                    ForEach(snapshot.displays.indices.filter { network.showDisconnectedDisplays || network.isDisplayConnected(snapshot.displays[$0].key) }, id: \.self) { index in
                         HStack {
-                            Toggle("\(network.peerName(snapshot.displays[index].key.peerId)) / \(snapshot.displays[index].key.displayId)", isOn: binding(index, \.selected))
+                            Toggle("\(network.peerName(snapshot.displays[index].key.peerId)) / \(snapshot.displays[index].displayName)", isOn: binding(index, \.selected))
+                            Text(network.isDisplayConnected(snapshot.displays[index].key) ? "接続中" : "未接続").font(.caption).foregroundStyle(.secondary)
                             Picker("所属", selection: binding(index, \.groupId)) {
                                 Text("単独表示").tag(nil as UUID?)
                                 ForEach(snapshot.groups) { Text($0.name).tag(Optional($0.id)) }
@@ -199,7 +216,7 @@ private struct NetworkLayoutPreview: View {
     @State private var start: (id: String, x: Int, y: Int, left: Int, top: Int, scale: Double)?
     var body: some View {
         GeometryReader { proxy in
-            let displays = network.draft?.displays.filter(\.selected) ?? []
+            let displays = network.draft?.displays.filter { $0.selected && (network.showDisconnectedDisplays || network.isDisplayConnected($0.key)) } ?? []
             let left = start?.left ?? displays.map(\.x).min() ?? 0, top = start?.top ?? displays.map(\.y).min() ?? 0
             let width = max(1, (displays.map { $0.x + $0.width }.max() ?? 1) - left)
             let height = max(1, (displays.map { $0.y + $0.height }.max() ?? 1) - top)
@@ -207,19 +224,25 @@ private struct NetworkLayoutPreview: View {
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.15)
                 ForEach(displays) { display in
-                    Text("\(network.peerName(display.key.peerId)) / \(display.key.displayId)").font(.caption)
+                    Text("\(network.peerName(display.key.peerId)) / \(display.displayName)\(network.isDisplayConnected(display.key) ? "" : "（未接続）")").font(.caption)
                         .frame(width: max(20, Double(display.width) * scale), height: max(20, Double(display.height) * scale))
                         .background(display.groupId == nil ? Color.gray.opacity(0.5) : Color.blue.opacity(0.5))
+                        .opacity(network.isDisplayConnected(display.key) ? 1 : 0.5)
                         .border(.secondary).offset(x: 12 + Double(display.x - left) * scale, y: 12 + Double(display.y - top) * scale)
-                        .gesture(DragGesture().onChanged { value in
+                        .gesture(DragGesture(coordinateSpace: .named("networkDisplayLayout")).onChanged { value in
                             if start == nil { start = (display.id, display.x, display.y, left, top, scale) }
                             guard let origin = start, let index = network.draft?.displays.firstIndex(where: { $0.id == origin.id }) else { return }
-                            network.draft?.displays[index].x = origin.x + Int((value.translation.width / scale).rounded())
-                            network.draft?.displays[index].y = origin.y + Int((value.translation.height / scale).rounded())
+                            let moving = CGRect(x: Double(origin.x) + value.translation.width / origin.scale,
+                                y: Double(origin.y) + value.translation.height / origin.scale, width: Double(display.width), height: Double(display.height))
+                            let others = displays.filter { $0.id != origin.id }.map { CGRect(x: Double($0.x), y: Double($0.y), width: Double($0.width), height: Double($0.height)) }
+                            let snapped = DisplayLayout.snapped(moving, against: others, threshold: 12 / origin.scale)
+                            network.draft?.displays[index].x = Int(min(100000, max(-100000, snapped.x.rounded())))
+                            network.draft?.displays[index].y = Int(min(100000, max(-100000, snapped.y.rounded())))
                             network.markDirty()
                         }.onEnded { _ in start = nil })
                 }
-            }.clipped()
+            }.coordinateSpace(name: "networkDisplayLayout").clipped()
+                .help("ドラッグして隣の画面の端に近づけると、配置が揃います。")
         }
     }
 }

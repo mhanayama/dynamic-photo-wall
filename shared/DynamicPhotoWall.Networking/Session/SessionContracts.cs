@@ -45,7 +45,7 @@ public sealed record PlaybackOptions
     public string Background { get; init; } = "#101116";
     public void Validate()
     {
-        PeerProtocol.Require(RecentCount is >= 0 and <= 10000 && GalleryMax is >= 1 and <= 5
+        PeerProtocol.Require(RecentCount is >= 0 and <= 10000 && GalleryMax is >= 1 and <= 20
             && GalleryWeight is >= 0 and <= 10000 && PanWeight is >= 0 and <= 10000 && ZoomWeight is >= 0 and <= 10000,
             "Invalid playback weights or photo count.");
         foreach (var v in new[] { PanPixelsPerSecond, GalleryScrollPixelsPerSecond, PanWidthFraction,

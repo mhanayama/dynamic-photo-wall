@@ -41,7 +41,8 @@ public sealed partial class PeerSession
         if (previous.WallId == Snapshot.WallId) return;
         var groups = Snapshot.Groups.Concat(previous.Groups.Where(g => !Snapshot.Groups.Any(old => old.Id == g.Id)).Select(g =>
             Snapshot.Groups.Any(old => old.Name == g.Name) ? g with { Name = $"{g.Name[..Math.Min(110, g.Name.Length)]} ({g.Id.ToString("N")[..8]})" } : g)).ToArray();
-        var displays = previous.Displays.Concat(Snapshot.Displays.Where(d => !previous.Displays.Any(old => old.Key == d.Key))).ToArray();
+        var displays = previous.Displays.Select(d => d with { Name = Snapshot.Displays.FirstOrDefault(current => current.Key == d.Key)?.Name ?? d.Name })
+            .Concat(Snapshot.Displays.Where(d => !previous.Displays.Any(old => old.Key == d.Key))).ToArray();
         var sources = Snapshot.Sources.Concat(previous.Sources.Where(s => !Snapshot.Sources.Any(old => old.ProviderId == s.ProviderId))).ToArray();
         var next = Snapshot with { Revision = checked(Snapshot.Revision + 1), Groups = groups, Displays = displays, Sources = sources,
             AppliedRequests = Snapshot.AppliedRequests.Concat(previous.AppliedRequests).Distinct().TakeLast(1024).ToArray(),

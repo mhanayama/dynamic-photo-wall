@@ -79,6 +79,8 @@ nonisolated struct PNDisplayKey: Codable, Hashable, Sendable {
 }
 nonisolated struct PNDisplay: Codable, Equatable, Identifiable, Sendable {
     var key: PNDisplayKey; var selected: Bool; var groupId: UUID?; var x: Int; var y: Int; var width: Int; var height: Int
+    var name: String? = nil
+    var displayName: String { name.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? "ディスプレイ" }
     var id: String { key.layoutId }
     var unit: UUID { groupId ?? PNWire.id(key.layoutId) }
 }
@@ -103,6 +105,9 @@ nonisolated struct PNOptions: Codable, Equatable, Sendable {
             default: throw PNError.invalid("Invalid playback option")
             }
         }
+        if let value = values["galleryMax"] {
+            guard case .integer(let count) = value, (1...20).contains(count) else { throw PNError.invalid("Invalid gallery photo count") }
+        }
     }
 }
 nonisolated struct PNSnapshot: Codable, Equatable, Sendable {
@@ -117,6 +122,7 @@ nonisolated struct PNSnapshot: Codable, Equatable, Sendable {
             && Set(appliedRequests).count == appliedRequests.count && !appliedRequests.contains(.pnZero) && mergedWalls.count <= 1024 && !mergedWalls.contains(wallId), "Invalid wall identity or history")
         try PNWire.require(Set(groups.map(\.id)).count == groups.count && Set(displays.map(\.key)).count == displays.count, "Duplicate wall members")
         for d in displays {
+            try PNWire.require((d.name?.utf16.count ?? 0) <= 256, "Invalid display name")
             try PNWire.require(d.width > 0 && d.height > 0 && d.width <= 32768 && d.height <= 32768 && !d.key.displayId.isEmpty && d.key.displayId.utf16.count <= 256 && (d.groupId == nil || groups.contains { $0.id == d.groupId }), "Invalid display")
             try PNWire.require(d.x >= Int(Int32.min) && d.x <= Int(Int32.max) && d.y >= Int(Int32.min) && d.y <= Int(Int32.max), "Invalid physical coordinates")
         }

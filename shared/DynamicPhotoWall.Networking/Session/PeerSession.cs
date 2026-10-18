@@ -23,6 +23,7 @@ public sealed partial class PeerSession : IAsyncDisposable
     private readonly PeerDisplay[] localDisplays;
     private readonly IPhotoProvider provider;
     private readonly ConcurrentDictionary<Guid, LinkState> links = new();
+    private readonly ConcurrentDictionary<Guid, PeerDisplayKey[]> displayInventories = new();
     private readonly ConcurrentDictionary<Guid, PeerCandidate> candidates = new(), targets = new();
     private readonly ConcurrentDictionary<Guid, double> discoveredAt = new();
     private readonly ConcurrentDictionary<Guid, Task> connecting = new();
@@ -47,6 +48,10 @@ public sealed partial class PeerSession : IAsyncDisposable
     public IReadOnlyList<PeerCandidate> Candidates => candidates.Values.OrderBy(c => c.Hello.Name).ToArray();
     public IReadOnlyList<SharedSource> Sources => provider.Sources.Concat(remoteSources).DistinctBy(s => (s.ProviderId, s.SourceId)).ToArray();
     public IReadOnlyList<Guid> ConnectedPeers => links.Keys.ToArray();
+    public bool IsDisplayConnected(PeerDisplayKey key)
+        => started && !lifetime.IsCancellationRequested && (key.PeerId == local.PeerId
+            ? localDisplays.Any(d => d.Key == key)
+            : links.ContainsKey(key.PeerId) && displayInventories.TryGetValue(key.PeerId, out var confirmed) && confirmed.Contains(key));
     public string PeerName(Guid peerId)
     {
         if (peerId == local.PeerId) return local.Name;
@@ -84,6 +89,12 @@ public sealed partial class PeerSession : IAsyncDisposable
     {
         if (started) return;
         started = true; recovery.SetOnline(true, clock.Elapsed);
+        if (Snapshot.LeaderId == local.PeerId)
+        {
+            RefreshDisplayNames(localDisplays);
+            var added = localDisplays.Where(d => !Snapshot.Displays.Any(saved => saved.Key == d.Key)).Select(d => d with { GroupId = null }).ToArray();
+            if (added.Length > 0) state.Adopt(Snapshot with { Displays = Snapshot.Displays.Concat(added).ToArray(), Revision = checked(Snapshot.Revision + 1) });
+        }
         photos.Configure(Snapshot.Sources); importSources = Snapshot.Sources; StartImport();
         await transport.StartAsync(Attach, lifetime.Token);
         await discovery.StartAsync(local, transport.Port, lifetime.Token);
@@ -118,6 +129,7 @@ public sealed partial class PeerSession : IAsyncDisposable
                 if (old.Link.Outbound == preferOutbound || link.Outbound != preferOutbound) { await link.DisposeAsync(); return; }
                 links.TryRemove(peer, out _); await old.Link.DisposeAsync();
             }
+            displayInventories.TryRemove(peer, out _);
             links[peer] = new(link, clock.Elapsed);
             if (notices.Remove(peer)) notifications.Reconnected(link.Remote.Name);
             recovery.BeginConnection(clock.Elapsed); recovery.ConnectionRestored(clock.Elapsed);
@@ -161,13 +173,16 @@ public sealed partial class PeerSession : IAsyncDisposable
         {
             case "inventory":
                 var inventory = packet.Decode<PeerInventory>();
+                foreach (var display in inventory.Displays) display.Validate();
                 PeerProtocol.Require(inventory.Candidate.Hello.PeerId == peer && inventory.Displays.All(d => d.Key.PeerId == peer)
                     && inventory.Sources.All(s => s.ProviderId == peer), "Inventory identity differs.");
                 var endpoint = inventory.Candidate with { Host = link.RemoteHost };
+                displayInventories[peer] = inventory.Displays.Select(d => d.Key).ToArray();
                 targets[peer] = endpoint; candidates[peer] = endpoint;
                 remoteSources = remoteSources.Where(s => s.ProviderId != peer).Concat(inventory.Sources).ToArray();
                 if (Snapshot.LeaderId == local.PeerId)
                 {
+                    RefreshDisplayNames(inventory.Displays);
                     var added = inventory.Displays.Where(d => !Snapshot.Displays.Any(old => old.Key == d.Key))
                         .Select(d => d with { GroupId = null });
                     var next = Snapshot with { Displays = Snapshot.Displays.Concat(added).ToArray(), Revision = Snapshot.Revision + 1 };
@@ -365,6 +380,14 @@ public sealed partial class PeerSession : IAsyncDisposable
         await Broadcast(PeerPacket.Create("layoutPreview", plan)); output.Preview(plan);
     }
     private Task PublishState() => Broadcast(PeerPacket.Create("snapshot", new SnapshotNotice(Snapshot, LivePeers())));
+    private void RefreshDisplayNames(PeerDisplay[] inventory)
+    {
+        var names = inventory.ToDictionary(d => d.Key, d => d.Name);
+        var displays = Snapshot.Displays.Select(d => names.TryGetValue(d.Key, out var name) && !string.IsNullOrWhiteSpace(name)
+            ? d with { Name = name } : d).ToArray();
+        if (!displays.SequenceEqual(Snapshot.Displays))
+            state.Adopt(Snapshot with { Displays = displays, Revision = checked(Snapshot.Revision + 1) });
+    }
     private async Task Broadcast(PeerPacket packet)
     {
         foreach (var item in links.Values)
@@ -377,6 +400,7 @@ public sealed partial class PeerSession : IAsyncDisposable
     private async Task RemovePeer(Guid peer)
     {
         if (!links.TryRemove(peer, out var item)) return;
+        displayInventories.TryRemove(peer, out _);
         await item.Link.DisposeAsync(); photos.PeerLost(peer); await scenes.PeerLost(peer);
         if (notices.Add(peer)) notifications.Disconnected(item.Link.Remote.Name);
         recovery.ConnectionLost(clock.Elapsed, links.Count > 0);

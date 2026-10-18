@@ -11,6 +11,7 @@ public sealed class DisplayChoice : INotifyPropertyChanged
 {
     public required string Id { get; init; }
     public required string Label { get; init; }
+    public string Name { get; init; } = "ディスプレイ";
     public int Width { get; init; }
     public int Height { get; init; }
     private bool selected;
@@ -69,6 +70,7 @@ public sealed class DisplayLayoutEditor : StackPanel
             var m = connected.FirstOrDefault(m => m.Id == id); var p = saved.FirstOrDefault(p => p.Id == id);
             var old = previous.GetValueOrDefault(id);
             return new DisplayChoice { Id = id, Label = $"{m?.Device.Replace(@"\\.\", "") ?? "未接続"} · {m?.Name ?? "保存済み画面"} · {m?.Width ?? p!.Width} × {m?.Height ?? p!.Height}",
+                Name = m?.Name ?? old?.Name ?? "保存済み画面",
                 Selected = p != null || previous.Count == 0 && saved.Count == 0 && id == defaultId, X = old?.X ?? p?.X ?? m!.X, Y = old?.Y ?? p?.Y ?? m!.Y,
                 Width = m?.Width ?? p!.Width, Height = m?.Height ?? p!.Height,
                 GroupId = old != null ? old.GroupId : p?.GroupId, HideTaskbar = old?.HideTaskbar ?? p?.HideTaskbar ?? settings.HideTaskbar };
@@ -166,7 +168,7 @@ public sealed class DisplayLayoutEditor : StackPanel
             DockPanel.SetDock(remove, Dock.Right); header.Children.Add(remove);
             header.Children.Add(new TextBlock { Text = $"{name} · {members.Length}画面", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0) });
             content.Children.Add(header);
-            content.Children.Add(new TextBlock { Text = members.Length == 0 ? "画面未割り当て" : string.Join(", ", members.Select(c => c.Label.Split('·')[0].Trim())), Foreground = Brushes.LightSteelBlue, FontSize = 12, Margin = new Thickness(0) });
+            content.Children.Add(new TextBlock { Text = members.Length == 0 ? "画面未割り当て" : string.Join(", ", members.Select(c => c.Name)), Foreground = Brushes.LightSteelBlue, FontSize = 12, Margin = new Thickness(0) });
             groupList.Children.Add(new Border { Child = content, Background = GroupBrush(name), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 8, 8), MinWidth = 150, MaxWidth = 250 });
         }
     }
@@ -193,7 +195,7 @@ public sealed class DisplayLayoutEditor : StackPanel
         {
             var groupIndex = groups.ToList().FindIndex(g => g.Displays.Any(d => d.Id == choice.Id));
             var card = new Border { Width = choice.Width * scale, Height = choice.Height * scale, Background = GroupBrush(choice.GroupId), BorderBrush = Brushes.LightSkyBlue, BorderThickness = new Thickness(2), Cursor = Cursors.SizeAll,
-                Child = new TextBlock { Text = $"{Array.IndexOf(selected, choice) + 1} · {groups[groupIndex].Name}\n{choice.Width} × {choice.Height}", TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.White } };
+                Child = new TextBlock { Text = $"{choice.Name}\n{Array.IndexOf(selected, choice) + 1} · {groups[groupIndex].Name}\n{choice.Width} × {choice.Height}", TextAlignment = TextAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.White } };
             Canvas.SetLeft(card, originX + choice.X * scale); Canvas.SetTop(card, originY + choice.Y * scale); preview.Children.Add(card);
             Point start = default; int startX = 0, startY = 0;
             card.MouseLeftButtonDown += (_, e) => { dragging = true; start = e.GetPosition(preview); startX = choice.X; startY = choice.Y; card.CaptureMouse(); e.Handled = true; };
@@ -201,23 +203,15 @@ public sealed class DisplayLayoutEditor : StackPanel
             {
                 if (!card.IsMouseCaptured) return;
                 var point = e.GetPosition(preview);
-                choice.X = Snap((int)Math.Round(startX + (point.X - start.X) / scale), choice, true);
-                choice.Y = Snap((int)Math.Round(startY + (point.Y - start.Y) / scale), choice, false);
+                var snapped = Networking.DisplaySnapping.Snap(new(startX + (point.X - start.X) / scale,
+                    startY + (point.Y - start.Y) / scale, choice.Width, choice.Height),
+                    Choices.Where(c => c.Selected && c != choice).Select(c => new Networking.FrameRect(c.X, c.Y, c.Width, c.Height)), 12 / scale);
+                choice.X = (int)Math.Clamp(Math.Round(snapped.X, MidpointRounding.AwayFromZero), -32768, 32768);
+                choice.Y = (int)Math.Clamp(Math.Round(snapped.Y, MidpointRounding.AwayFromZero), -32768, 32768);
                 Canvas.SetLeft(card, originX + choice.X * scale); Canvas.SetTop(card, originY + choice.Y * scale);
             };
             card.MouseLeftButtonUp += (_, _) => { card.ReleaseMouseCapture(); dragging = false; Draw(); };
             card.LostMouseCapture += (_, _) => { dragging = false; Draw(); };
         }
-    }
-    private int Snap(int value, DisplayChoice moving, bool horizontal)
-    {
-        var size = horizontal ? moving.Width : moving.Height;
-        var candidates = Choices.Where(c => c.Selected && c != moving && !string.IsNullOrWhiteSpace(moving.GroupId) && c.GroupId?.Trim() == moving.GroupId.Trim()).SelectMany(c =>
-        {
-            var pos = horizontal ? c.X : c.Y; var otherSize = horizontal ? c.Width : c.Height;
-            return new[] { pos, pos + otherSize, pos - size, pos + otherSize - size, pos + (otherSize - size) / 2 };
-        }).ToArray();
-        var closest = candidates.OrderBy(c => Math.Abs((double)c - value)).FirstOrDefault(value);
-        return Math.Clamp(Math.Abs((double)closest - value) * scale <= 10 ? closest : value, -32768, 32768);
     }
 }

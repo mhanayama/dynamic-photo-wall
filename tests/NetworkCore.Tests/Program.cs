@@ -63,6 +63,33 @@ Test("cross-peer groups retain standalone screens and normalized geometry", () =
     Check(!json.Contains("LayoutId") && json.Contains("protocolVersion"), "wire JSON uses declared camelCase names");
 });
 
+Test("display names travel independently of stable layout identities", () =>
+{
+    var legacy = Decode<PeerDisplay[]>(fixture.RootElement.GetProperty("displays"))[0];
+    Check(legacy.DisplayName == "ディスプレイ", "old settings without a name do not expose an internal ID");
+    var named = legacy with { Name = "DELL U2723QE" }; named.Validate();
+    var json = JsonSerializer.Serialize(named, PeerProtocol.Json);
+    var copy = JsonSerializer.Deserialize<PeerDisplay>(json, PeerProtocol.Json)!;
+    Check(copy.Name == named.Name && copy.DisplayName == named.Name, "friendly name survives network serialization");
+    Check(copy.Key == legacy.Key && copy.Key.LayoutId == legacy.Key.LayoutId, "display names cannot change layout identity");
+    Check((copy with { Name = "別の表示名" }).Key == copy.Key, "renaming preserves group membership keys");
+    Throws<InvalidDataException>(() => (copy with { Name = new string('x', 257) }).Validate());
+});
+
+Test("display snapping matches native fixtures without requiring a GUI", () =>
+{
+    using var vectors = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "DisplaySnapping.v1.json")));
+    foreach (var sample in vectors.RootElement.GetProperty("cases").EnumerateArray())
+    {
+        var moving = Decode<FrameRect>(sample.GetProperty("moving"));
+        var others = Decode<FrameRect[]>(sample.GetProperty("others"));
+        var threshold = sample.GetProperty("threshold").GetDouble();
+        var expected = (sample.GetProperty("expectedX").GetDouble(), sample.GetProperty("expectedY").GetDouble());
+        Check(DisplaySnapping.Snap(moving, others, threshold) == expected, sample.GetProperty("name").GetString()!);
+        Check(DisplaySnapping.Snap(moving, others.Reverse(), threshold) == expected, "neighbor enumeration does not change the chosen edge");
+    }
+});
+
 Test("photo and face metadata have a strict shared wire representation", () =>
 {
     var photo = Decode<SharedPhoto>(fixture.RootElement.GetProperty("photo")); photo.Validate();
@@ -264,6 +291,7 @@ Test("disk quota defers originals without a transfer loop", () => NetworkIntegra
 assertions += NetworkIntegration.Assertions;
 Test("three-peer configuration, transfer, failover and background rejoin", () => PeerMeshIntegration.Run(Path.Combine(runRoot, "mesh")).GetAwaiter().GetResult());
 Test("two connected walls merge into one four-peer inventory", () => PeerMeshIntegration.MergeExistingWalls(Path.Combine(runRoot, "merge")).GetAwaiter().GetResult());
+Test("saved display inventories require a current authenticated connection", () => PeerMeshIntegration.SavedDisplaysAreNotConnections(Path.Combine(runRoot, "display-presence")).GetAwaiter().GetResult());
 assertions += PeerMeshIntegration.Assertions;
 Test("shared native wire and encrypted cache vectors", () => WireVectors.Verify(Path.Combine(runRoot, "wire-vector")));
 fixture.Dispose();

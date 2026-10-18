@@ -21,7 +21,8 @@ internal static class WireVectors
         using var cache = new EncryptedPhotoCache(cacheRoot, masterKey);
         cache.ActivateGeneration(a, generation); cache.Put(photo, new MemoryStream(original), now);
         var encrypted = File.ReadAllBytes(Path.Combine(cacheRoot, a.ToString("N"), generation.ToString("N"), photo.Key.OpaqueId + ".pwc"));
-        var displays = new[] { new PeerDisplay(new(a, "screen1"), true, group, 0, 0, 1920, 1080), new PeerDisplay(new(b, "screen1"), true, group, 1920, 0, 1920, 1080) };
+        var displays = new[] { new PeerDisplay(new(a, "screen1"), true, group, 0, 0, 1920, 1080) { Name = "DELL U2723QE" },
+            new PeerDisplay(new(b, "screen1"), true, group, 1920, 0, 1920, 1080) { Name = "Studio Display" } };
         var wall = new WallSnapshot(Guid.Parse("50000000-0000-0000-0000-000000000001"), Guid.Parse("60000000-0000-0000-0000-000000000001"), a, 1,
             [new(group, "shared wall")], displays, [new(a, source, generation)], new()) { AppliedRequests = [Guid.Parse("70000000-0000-0000-0000-000000000001")] };
         var scene = new SharedScenePlan(Guid.Parse("80000000-0000-0000-0000-000000000001"), group, wall.SessionId, wall.Revision, SceneMode.HorizontalPan,

@@ -10,11 +10,17 @@ namespace DynamicPhotoWall.UI;
 public sealed class NetworkSettingsPanel : StackPanel, IDisposable
 {
     private sealed record GroupChoice(Guid? Id, string Name);
-    private sealed class DisplayRow(Net.PeerDisplay value, Func<Guid, string> peerName, Action changed) : INotifyPropertyChanged
+    private sealed class DisplayRow(Net.PeerDisplay value, Func<Guid, string> peerName, Func<Net.PeerDisplayKey, bool> connected, Action changed) : INotifyPropertyChanged
     {
         public Net.PeerDisplay Value = value;
-        public string Name => $"{peerName(Value.Key.PeerId)} / {Value.Key.DisplayId}";
-        public void RefreshName() => PropertyChanged?.Invoke(this, new(nameof(Name)));
+        public string Name => $"{peerName(Value.Key.PeerId)} / {Value.DisplayName}";
+        public bool IsConnected => connected(Value.Key);
+        public string Connection => IsConnected ? "接続中" : "未接続";
+        public void RefreshName()
+        {
+            PropertyChanged?.Invoke(this, new(nameof(Name)));
+            PropertyChanged?.Invoke(this, new(nameof(Connection)));
+        }
         public bool Selected { get => Value.Selected; set { Value = Value with { Selected = value }; Notify(nameof(Selected)); } }
         public Guid? GroupId { get => Value.GroupId; set { Value = Value with { GroupId = value }; Notify(nameof(GroupId)); } }
         public int X { get => Value.X; set { Value = Value with { X = value }; Notify(nameof(X)); } }
@@ -34,6 +40,16 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
     private readonly TextBlock draftStatus = new();
     private readonly NetworkLayoutPreview preview;
     private readonly ObservableCollection<DisplayRow> rows = [];
+    private readonly ICollectionView visibleRows;
+    private string displayVisibilitySignature = "";
+    private static readonly DependencyProperty ShowDisconnectedDisplaysProperty = DependencyProperty.Register(
+        nameof(ShowDisconnectedDisplays), typeof(bool), typeof(NetworkSettingsPanel),
+        new PropertyMetadata(false, (owner, _) => ((NetworkSettingsPanel)owner).RefreshDisplayVisibility()));
+    public bool ShowDisconnectedDisplays
+    {
+        get => (bool)GetValue(ShowDisconnectedDisplaysProperty);
+        set => SetValue(ShowDisconnectedDisplaysProperty, value);
+    }
     private readonly ObservableCollection<GroupChoice> groupChoices = [new(null, "単独表示")];
     private readonly Dictionary<(Guid, Guid), (Net.SharedSource Source, CheckBox Check)> sourceChecks = [];
     private readonly HashSet<Guid> refreshProviders = [];
@@ -50,7 +66,8 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
     public NetworkSettingsPanel(WallController controller, SettingsManager manager)
     {
         this.controller = controller; this.manager = manager;
-        preview = new(() => rows.Select(r => r.Value).ToArray(), PeerName, (key, x, y) =>
+        visibleRows = new ListCollectionView(rows) { Filter = item => ShowDisconnectedDisplays || ((DisplayRow)item).IsConnected };
+        preview = new(() => rows.Where(r => ShowDisconnectedDisplays || r.IsConnected).Select(r => r.Value).ToArray(), PeerName, IsDisplayConnected, (key, x, y) =>
         { var row = rows.First(r => r.Value.Key == key); row.X = x; row.Y = y; });
         Children.Add(new TextBlock { Text = "ピア接続", FontSize = 24 });
         Children.Add(new TextBlock { Text = $"このPC: {Environment.MachineName}", TextWrapping = TextWrapping.Wrap });
@@ -94,18 +111,19 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 groupList.Children.Add(line);
             }
         };
-        groupView.Children.Add(preview); groupView.Children.Add(CreateGrid(includeLayout: true)); GroupView = groupView;
-        SelectionView = CreateGrid(includeLayout: false);
+        groupView.Children.Add(CreateDisplayFilter()); groupView.Children.Add(preview); groupView.Children.Add(CreateGrid(includeLayout: true)); GroupView = groupView;
+        var selection = new StackPanel(); selection.Children.Add(CreateDisplayFilter()); selection.Children.Add(CreateGrid(includeLayout: false)); SelectionView = selection;
         online.Checked += OnlineChanged; online.Unchecked += OnlineChanged;
         controller.Network.Changed += Refresh; Refresh();
     }
     private DataGrid CreateGrid(bool includeLayout)
     {
-        var grid = new DataGrid { ItemsSource = rows, AutoGenerateColumns = false, CanUserAddRows = false,
+        var grid = new DataGrid { ItemsSource = visibleRows, AutoGenerateColumns = false, CanUserAddRows = false,
             CanUserDeleteRows = false, MinHeight = 150, MaxHeight = 400, Background = new SolidColorBrush(Color.FromRgb(28, 32, 42)),
             Foreground = Brushes.White, RowBackground = new SolidColorBrush(Color.FromRgb(37, 42, 54)) };
         grid.Columns.Add(new DataGridCheckBoxColumn { Header = "使用", Binding = new Binding(nameof(DisplayRow.Selected)) });
         grid.Columns.Add(new DataGridTextColumn { Header = "画面", Binding = new Binding(nameof(DisplayRow.Name)), IsReadOnly = true, Width = new(1, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = "接続", Binding = new Binding(nameof(DisplayRow.Connection)), IsReadOnly = true });
         grid.Columns.Add(new DataGridComboBoxColumn { Header = "所属", ItemsSource = groupChoices, DisplayMemberPath = "Name", SelectedValuePath = "Id",
             SelectedValueBinding = new Binding(nameof(DisplayRow.GroupId)) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged } });
         if (includeLayout)
@@ -115,6 +133,20 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
             grid.Columns.Add(new DataGridTextColumn { Header = "解像度", Binding = new Binding(nameof(DisplayRow.Size)), IsReadOnly = true });
         }
         return grid;
+    }
+    private CheckBox CreateDisplayFilter()
+    {
+        var check = new CheckBox { Content = "未接続の画面も表示", ToolTip = "未接続の画面の配置・グループ設定は保持されています。" };
+        check.SetBinding(CheckBox.IsCheckedProperty, new Binding(nameof(ShowDisconnectedDisplays)) { Source = this, Mode = BindingMode.TwoWay });
+        return check;
+    }
+    private bool IsDisplayConnected(Net.PeerDisplayKey key) => controller.Network.Session?.IsDisplayConnected(key) == true;
+    private void RefreshDisplayVisibility()
+    {
+        var signature = $"{ShowDisconnectedDisplays}:" + string.Join(",", rows.Select(r => r.IsConnected));
+        if (displayVisibilitySignature != signature && visibleRows is IEditableCollectionView { IsEditingItem: false, IsAddingNew: false })
+        { visibleRows.Refresh(); displayVisibilitySignature = signature; }
+        preview?.Refresh();
     }
     private void AddButton(Panel panel, string name, Func<Task> action)
     {
@@ -155,7 +187,12 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
             online.IsChecked = controller.Network.Online; status.Text = controller.Network.Status;
             var session = controller.Network.Session;
             var selected = (candidates.SelectedItem as Net.PeerCandidate)?.Hello.PeerId;
-            if (session == null) { candidates.ItemsSource = null; return; }
+            if (session == null)
+            {
+                candidates.ItemsSource = null; rows.Clear(); sources.Children.Clear(); sourceChecks.Clear();
+                baseline = null; groups.Clear(); UpdateChoices(); refreshProviders.Clear(); dirty = false; sourceSignature = "";
+                RefreshDisplayVisibility(); return;
+            }
             candidates.ItemsSource = session.Candidates.Where(c => !session.ConnectedPeers.Contains(c.Hello.PeerId)).ToArray();
             candidates.SelectedItem = candidates.Items.OfType<Net.PeerCandidate>().FirstOrDefault(c => c.Hello.PeerId == selected);
             if (!dirty && (baseline == null || baseline.SessionId != session.Snapshot.SessionId || baseline.Revision != session.Snapshot.Revision))
@@ -163,11 +200,16 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 baseline = session.Snapshot; groups = baseline.Groups.ToList();
                 sourceSignature = "";
                 UpdateChoices();
-                rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, PeerName, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
+                rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, PeerName, IsDisplayConnected, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
                 SharedOptionsChanged?.Invoke(baseline.Playback);
             }
-            foreach (var row in rows) row.RefreshName();
-            preview.Refresh();
+            foreach (var row in rows)
+            {
+                var current = session.Snapshot.Displays.FirstOrDefault(d => d.Key == row.Value.Key);
+                if (current != null) row.Value = row.Value with { Name = current.Name };
+                row.RefreshName();
+            }
+            RefreshDisplayVisibility();
             foreach (var item in sourceChecks.Values)
                 item.Check.Content = $"{item.Source.Name}（{PeerName(item.Source.ProviderId)}）";
             draftStatus.Text = dirty && baseline?.Revision != session.Snapshot.Revision ? "他のピアで設定が更新されました。未保存の編集を保持しています。" : "画面はピアをまたいでグループまたは単独表示へ割り当てられます。";

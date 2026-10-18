@@ -23,6 +23,16 @@ import Testing
         #expect(v.scene.placements[0].evaluate(2.1).x == -21)
         let roundtrip = try PNWire.decode(PNSnapshot.self, PNWire.encode(v.wall))
         #expect(roundtrip == v.wall)
+        #expect(roundtrip.displays[0].name == "DELL U2723QE")
+        #expect(roundtrip.displays[1].displayName == "Studio Display")
+    }
+    @Test func displayNamesAreOptionalWithoutChangingTheLayoutIdentity() throws {
+        let v = try vector(); let display = v.wall.displays[0]
+        var value = try #require(JSONSerialization.jsonObject(with: PNWire.encode(display)) as? [String: Any])
+        value.removeValue(forKey: "name")
+        let legacy = try PNWire.decode(PNDisplay.self, JSONSerialization.data(withJSONObject: value))
+        #expect(legacy.name == nil); #expect(legacy.displayName == "ディスプレイ")
+        #expect(legacy.key == display.key); #expect(legacy.id == display.id)
     }
     @Test func windowsEncryptedOriginalIsReadableNativelyAndExpiresWithoutExtension() async throws {
         let v = try vector(); let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Network.Cache.\(UUID())")

@@ -131,7 +131,7 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
         galleryWeight = galleryWeight.clamped(to: 0...1_000)
         panWeight = panWeight.clamped(to: 0...1_000)
         zoomWeight = zoomWeight.clamped(to: 0...1_000)
-        galleryMax = galleryMax.clamped(to: 1...5)
+        galleryMax = galleryMax.clamped(to: 1...20)
         panPixelsPerSecond = (panPixelsPerSecond.isFinite ? panPixelsPerSecond : 120.0).clamped(to: 5...500)
         maxPanUpscale = (maxPanUpscale.isFinite ? maxPanUpscale : 4.0).clamped(to: 1...12)
         panWidthFraction = (panWidthFraction.isFinite ? panWidthFraction : 0.96).clamped(to: 0.3...1)

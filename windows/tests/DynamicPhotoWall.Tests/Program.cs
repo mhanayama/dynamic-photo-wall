@@ -49,6 +49,7 @@ internal static class Program
             if (args.Contains("--per-display-modes")) await Test("per-mode display routing, face-safe rendering and lifecycle", PerDisplayModesAsync);
             if (args.Contains("--mirror-gallery")) await Test("automatic same-photo vertical mirrors and smooth face-safe Gallery reflow", MirrorGalleryAsync);
             if (args.Contains("--gallery-fill")) await Test("cached faces improve Gallery filling at start and replacement", GalleryFillAsync);
+            if (args.Contains("--scan-only") && args.Contains("--gallery-capacity")) await Test("Gallery supports twenty photos across a wide display group", GalleryCapacityTests.Run);
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -98,6 +99,7 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("Gallery supports twenty photos across a wide display group", GalleryCapacityTests.Run);
         await Test("network native planning and timed crops across all five modes", () => NetworkAdapterTests.PlanningAndRendering(root));
         await Test("network keys are protected by the Windows user", () => Sync(() => NetworkAdapterTests.ProtectedSecrets(root)));
         await Test("Gallery compacts rows and resamples only known face geometry", () => Sync(() =>

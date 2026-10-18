@@ -121,6 +121,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     private(set) var candidates: [UUID: PNCandidate] = [:]
     private var discovered: [UUID: Double] = [:], targets: [UUID: PNCandidate] = [:]
     private var links: [UUID: LinkState] = [:], connecting: Set<UUID> = []
+    private var displayInventories: [UUID: Set<PNDisplayKey>] = [:]
     private var readTasks: [UUID: Task<Void, Never>] = [:], jobs: [UUID: Task<Void, Never>] = [:]
     private var remoteSources: [PNSource] = [], knownPlans: [UUID: PNScene] = [:]
     private var results: [UUID: PNResult] = [:]
@@ -134,6 +135,10 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     var changed: (() -> Void)?
     var failed: ((Error) -> Void)?
     var connectedPeers: Set<UUID> { Set(links.keys) }
+    var connectedDisplays: Set<PNDisplayKey> {
+        guard !stopped else { return [] }
+        return Set(displays.map(\.key)).union(displayInventories.filter { links[$0.key] != nil }.values.flatMap { $0 })
+    }
     func peerName(_ peerId: UUID) -> String {
         if peerId == local.peerId { return local.name }
         return links[peerId]?.link.remote.name ?? targets[peerId]?.hello.name ?? candidates[peerId]?.hello.name ?? "未接続の端末"
@@ -158,6 +163,11 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         discovery.found = { [weak self] in guard let self else { return }; candidates[$0.id] = $0; discovered[$0.id] = clock.elapsed; changed?() }
     }
     func start(automaticPump: Bool = true) async throws {
+        if snapshot.leaderId == local.peerId {
+            _ = try refreshDisplayNames(displays)
+            let added = displays.filter { d in !snapshot.displays.contains { $0.key == d.key } }.map { d in var d = d; d.groupId = nil; return d }
+            if !added.isEmpty { var next = snapshot; next.displays += added; next.revision += 1; try adopt(next) }
+        }
         try await photos.configure(snapshot.sources)
         try await transport.start { [weak self] link in await self?.attach(link) }
         try discovery.start(local, port: transport.port)
@@ -183,6 +193,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             if old.link.outbound == outbound || link.outbound != outbound { link.close(); return }
             old.link.close()
         }
+        displayInventories.removeValue(forKey: id)
         links[id] = LinkState(link: link, seen: clock.elapsed)
         if notices.remove(id) != nil { notifications.reconnected(link.remote.name) }
         recovery.connected()
@@ -205,12 +216,16 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         switch packet.type {
         case "inventory":
             let inventory = try packet.decode(PNInventory.self)
+            try PNWire.require(inventory.displays.allSatisfy { ($0.name?.utf16.count ?? 0) <= 256 }, "Invalid display name")
             try PNWire.require(inventory.candidate.id == peer && inventory.displays.allSatisfy { $0.key.peerId == peer } && inventory.sources.allSatisfy { $0.providerId == peer }, "Inventory identity differs")
             var endpoint = inventory.candidate; endpoint.host = link.remoteHost; targets[peer] = endpoint; candidates[peer] = endpoint
+            displayInventories[peer] = Set(inventory.displays.map(\.key))
             remoteSources.removeAll { $0.providerId == peer }; remoteSources += inventory.sources
             if snapshot.leaderId == local.peerId {
+                let renamed = try refreshDisplayNames(inventory.displays)
                 let added = inventory.displays.filter { d in !snapshot.displays.contains { $0.key == d.key } }.map { d in var d = d; d.groupId = nil; return d }
-                if !added.isEmpty { var next = snapshot; next.displays += added; next.revision += 1; try adopt(next); try await publish() }
+                if !added.isEmpty { var next = snapshot; next.displays += added; next.revision += 1; try adopt(next) }
+                if renamed || !added.isEmpty { try await publish() }
             }
         case "welcome":
             let notice = try packet.decode(PNNotice.self); try notice.snapshot.validate()
@@ -308,6 +323,17 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         else if let leader = links[snapshot.leaderId]?.link { try await leader.send(PNPacket("playbackRequest", PNOperation(requestId: UUID(), operation: operation))) }
     }
     private func publish() async throws { try await broadcast(PNPacket("snapshot", PNNotice(snapshot: snapshot, members: Array(links.keys) + [local.peerId]))) }
+    private func refreshDisplayNames(_ inventory: [PNDisplay]) throws -> Bool {
+        var next = snapshot
+        for index in next.displays.indices {
+            if let name = inventory.first(where: { $0.key == next.displays[index].key })?.name,
+               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                next.displays[index].name = name
+            }
+        }
+        guard next.displays != snapshot.displays else { return false }
+        next.revision += 1; try adopt(next); return true
+    }
     func preview(_ request: PNPreviewRequest) async throws {
         if snapshot.leaderId == local.peerId { try await schedulePreview(request) }
         else if let leader = links[snapshot.leaderId]?.link { try await leader.send(PNPacket("layoutPreviewRequest", request)) }
@@ -322,6 +348,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     }
     private func remove(_ peer: UUID) async {
         guard let item = links.removeValue(forKey: peer) else { return }; item.link.close(); photos.lost(peer)
+        displayInventories.removeValue(forKey: peer)
         do { try await scenes.lost(peer) } catch { failed?(error) }
         if notices.insert(peer).inserted && !stopped { notifications.disconnected(item.link.remote.name) }
         recovery.lost(at: clock.elapsed, remaining: !links.isEmpty)

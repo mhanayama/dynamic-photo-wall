@@ -18,6 +18,26 @@ struct PlaybackRegressionTests {
         return settings
     }
 
+    @Test func wideGallerySupportsTwentyPhotosAndPreservesSharedSettings() throws {
+        var settings = WallSettings(); settings.randomOrder = false
+        settings.galleryScrollEnabled = false; settings.verticalPanEnabled = false
+        settings.horizontalPanEnabled = false; settings.zoomEnabled = false
+        let assets = (0..<40).map { PhotoAsset(url: URL(filePath: "/fixture/\($0).jpg"), pixelWidth: 800, pixelHeight: 1600) }
+        let wide = CGSize(width: 15360, height: 1080)
+        for limit in [1, 5, 12, 20] {
+            settings.galleryMax = limit; settings.normalize()
+            let scene = try #require(WallScenePlanner(seed: 42).next(assets: assets, settings: settings, viewport: wide))
+            #expect(scene.assets.count == limit); #expect(Set(scene.assets.map(\.url)).count == limit)
+            let frames = GalleryLayout.frames(assets: scene.assets, in: wide, gap: settings.gap)
+            #expect(frames.count == limit)
+            #expect(frames.allSatisfy { $0.width > 0 && $0.height > 0 && $0.minX >= 0 && $0.minY >= 0 && $0.maxX <= wide.width + 1e-7 && $0.maxY <= wide.height + 1e-7 })
+        }
+        #expect(try PNOptions(settings).applying().galleryMax == 20)
+        #expect(try PNWire.decode(WallSettings.self, PNWire.encode(settings)).galleryMax == 20)
+        #expect(throws: (any Error).self) { try PNOptions(values: ["galleryMax": .integer(21)]).validate() }
+        settings.galleryMax = 21; settings.normalize(); #expect(settings.galleryMax == 20)
+    }
+
     @Test func disabledOrIneligibleModesNeverFallBackToGallery() {
         var settings = zoomOnly
         settings.zoomEnabled = false

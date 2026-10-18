@@ -56,10 +56,13 @@ public sealed record PeerDisplayKey(Guid PeerId, string DisplayId)
 
 public sealed record PeerDisplay(PeerDisplayKey Key, bool Selected, Guid? GroupId, int X, int Y, int Width, int Height)
 {
+    public string? Name { get; init; }
+    [JsonIgnore] public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "ディスプレイ" : Name;
     public void Validate()
     {
         PeerProtocol.Require(Key != null, "Missing display identity.");
         Key!.Validate();
+        PeerProtocol.Require(Name == null || Name.Length <= 256, "Invalid display name.");
         PeerProtocol.Require(GroupId != Guid.Empty && Width > 0 && Height > 0, "Invalid display placement.");
     }
 }
