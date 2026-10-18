@@ -168,9 +168,7 @@ public sealed partial class PhotoRenderer : Window
             var glass = new System.Windows.Shapes.Rectangle { Width = viewport.Width, Height = viewport.Height, Fill = backgroundBrush };
             RenderOptions.SetBitmapScalingMode(glass, BitmapScalingMode.Linear); scene.Canvas.Children.Add(glass);
             scene.Ambient = new GlassBackground(scene.Foreground, viewport, scheduler, backgroundBrush);
-            scene.Canvas.Children.Add(new Border { Width = viewport.Width, Height = viewport.Height, Background = new SolidColorBrush(Color.FromArgb(90, 12, 17, 28)) });
-            scene.Canvas.Children.Add(new Border { Width = viewport.Width, Height = viewport.Height, Background = new LinearGradientBrush(
-                Color.FromArgb(35, 255, 255, 255), Color.FromArgb(10, 255, 255, 255), 90) });
+            scene.Canvas.Children.Add(new Border { Width = viewport.Width, Height = viewport.Height, Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
         }
         scene.Canvas.Children.Add(scene.Foreground);
         if (plan.Mode == CompositionMode.Gallery)

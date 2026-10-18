@@ -67,7 +67,7 @@ public sealed partial class PeerSession : IAsyncDisposable
     public event Action<Exception>? Error;
 
     public PeerSession(PeerHello local, PeerDisplay[] displays, IPeerTransport transport, IPeerDiscovery discovery,
-        INetworkPersistence persistence, IPhotoProvider provider, EncryptedPhotoCache cache,
+        INetworkPersistence persistence, IPhotoProvider provider, IPhotoCache cache,
         IScenePlanner planner, IPlaybackOutput output, ISharedClock clock, IConnectionNotifications notifications,
         WallSnapshot initial)
     {
@@ -85,7 +85,8 @@ public sealed partial class PeerSession : IAsyncDisposable
             Changed?.Invoke();
         };
     }
-    public async Task StartAsync(bool automaticPump = true)
+    public Task StartAsync(bool automaticPump = true) => Task.Run(() => StartCoreAsync(automaticPump), lifetime.Token);
+    private async Task StartCoreAsync(bool automaticPump)
     {
         if (started) return;
         started = true; recovery.SetOnline(true, clock.Elapsed);
@@ -247,9 +248,11 @@ public sealed partial class PeerSession : IAsyncDisposable
                 });
                 break;
             case "assetChunk":
-                photos.Receive(peer, packet.Decode<AssetChunk>());
-                foreach (var request in photos.MissingRequests(peer))
-                    await link.SendAsync(PeerPacket.Create("assetRequest", request), lifetime.Token);
+                var receivedChunk = packet.Decode<AssetChunk>();
+                photos.Receive(peer, receivedChunk);
+                if (receivedChunk.Last)
+                    foreach (var request in photos.MissingRequests(peer))
+                        await link.SendAsync(PeerPacket.Create("assetRequest", request), lifetime.Token);
                 break;
             case "scenePrepare":
                 if (peer != Snapshot.LeaderId) break;
@@ -291,7 +294,7 @@ public sealed partial class PeerSession : IAsyncDisposable
             case "layoutPreview": if (peer == Snapshot.LeaderId) output.Preview(packet.Decode<LayoutPreviewPlan>()); break;
             default: throw new InvalidDataException("Unknown peer message type.");
         }
-        Changed?.Invoke();
+        if (packet.Type is not ("assetChunk" or "catalog" or "clockPing" or "clockPong" or "heartbeat")) Changed?.Invoke();
     }
     private Guid[] LivePeers() => links.Keys.Append(local.PeerId).Distinct().ToArray();
     private void ApplyState(bool invalidate = true)
@@ -330,7 +333,9 @@ public sealed partial class PeerSession : IAsyncDisposable
             finally { operations.Release(); }
         });
     }
-    public async Task<StateResult> ProposeAsync(StateProposal proposal, CancellationToken token = default)
+    public Task<StateResult> ProposeAsync(StateProposal proposal, CancellationToken token = default)
+        => Task.Run(() => ProposeCoreAsync(proposal, token), token);
+    private async Task<StateResult> ProposeCoreAsync(StateProposal proposal, CancellationToken token)
     {
         Task<StateResult>? waiting = null;
         await operations.WaitAsync(token);

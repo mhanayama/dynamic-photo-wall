@@ -16,10 +16,13 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         public string Name => $"{peerName(Value.Key.PeerId)} / {Value.DisplayName}";
         public bool IsConnected => connected(Value.Key);
         public string Connection => IsConnected ? "接続中" : "未接続";
+        private string? lastName;
+        private bool? lastConnected;
         public void RefreshName()
         {
-            PropertyChanged?.Invoke(this, new(nameof(Name)));
-            PropertyChanged?.Invoke(this, new(nameof(Connection)));
+            var name = Name; var available = IsConnected;
+            if (lastName != name) { lastName = name; PropertyChanged?.Invoke(this, new(nameof(Name))); }
+            if (lastConnected != available) { lastConnected = available; PropertyChanged?.Invoke(this, new(nameof(Connection))); }
         }
         public bool Selected { get => Value.Selected; set { Value = Value with { Selected = value }; Notify(nameof(Selected)); } }
         public Guid? GroupId { get => Value.GroupId; set { Value = Value with { GroupId = value }; Notify(nameof(GroupId)); } }
@@ -42,6 +45,7 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
     private readonly ObservableCollection<DisplayRow> rows = [];
     private readonly ICollectionView visibleRows;
     private string displayVisibilitySignature = "";
+    private (Net.PeerDisplay Display, string PeerName, bool Connected)[] previewState = [];
     private static readonly DependencyProperty ShowDisconnectedDisplaysProperty = DependencyProperty.Register(
         nameof(ShowDisconnectedDisplays), typeof(bool), typeof(NetworkSettingsPanel),
         new PropertyMetadata(false, (owner, _) => ((NetworkSettingsPanel)owner).RefreshDisplayVisibility()));
@@ -146,7 +150,9 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         var signature = $"{ShowDisconnectedDisplays}:" + string.Join(",", rows.Select(r => r.IsConnected));
         if (displayVisibilitySignature != signature && visibleRows is IEditableCollectionView { IsEditingItem: false, IsAddingNew: false })
         { visibleRows.Refresh(); displayVisibilitySignature = signature; }
-        preview?.Refresh();
+        var state = rows.Where(r => ShowDisconnectedDisplays || r.IsConnected)
+            .Select(r => (r.Value, PeerName(r.Value.Key.PeerId), r.IsConnected)).ToArray();
+        if (!previewState.SequenceEqual(state)) { previewState = state; preview?.Refresh(); }
     }
     private void AddButton(Panel panel, string name, Func<Task> action)
     {
@@ -193,15 +199,20 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 baseline = null; groups.Clear(); UpdateChoices(); refreshProviders.Clear(); dirty = false; sourceSignature = "";
                 RefreshDisplayVisibility(); return;
             }
-            candidates.ItemsSource = session.Candidates.Where(c => !session.ConnectedPeers.Contains(c.Hello.PeerId)).ToArray();
-            candidates.SelectedItem = candidates.Items.OfType<Net.PeerCandidate>().FirstOrDefault(c => c.Hello.PeerId == selected);
+            var discovered = session.Candidates.Where(c => !session.ConnectedPeers.Contains(c.Hello.PeerId)).ToArray();
+            if (!candidates.Items.OfType<Net.PeerCandidate>().SequenceEqual(discovered))
+            {
+                candidates.ItemsSource = discovered;
+                candidates.SelectedItem = candidates.Items.OfType<Net.PeerCandidate>().FirstOrDefault(c => c.Hello.PeerId == selected);
+            }
             if (!dirty && (baseline == null || baseline.SessionId != session.Snapshot.SessionId || baseline.Revision != session.Snapshot.Revision))
             {
+                var optionsChanged = baseline == null || baseline.Playback != session.Snapshot.Playback;
                 baseline = session.Snapshot; groups = baseline.Groups.ToList();
                 sourceSignature = "";
                 UpdateChoices();
                 rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, PeerName, IsDisplayConnected, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
-                SharedOptionsChanged?.Invoke(baseline.Playback);
+                if (optionsChanged) SharedOptionsChanged?.Invoke(baseline.Playback);
             }
             foreach (var row in rows)
             {
@@ -211,7 +222,10 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
             }
             RefreshDisplayVisibility();
             foreach (var item in sourceChecks.Values)
-                item.Check.Content = $"{item.Source.Name}（{PeerName(item.Source.ProviderId)}）";
+            {
+                var label = $"{item.Source.Name}（{PeerName(item.Source.ProviderId)}）";
+                if (!Equals(item.Check.Content, label)) item.Check.Content = label;
+            }
             draftStatus.Text = dirty && baseline?.Revision != session.Snapshot.Revision ? "他のピアで設定が更新されました。未保存の編集を保持しています。" : "画面はピアをまたいでグループまたは単独表示へ割り当てられます。";
             var advertised = session.Sources.Concat(session.Snapshot.Sources.Where(s => !session.Sources.Any(a => a.ProviderId == s.ProviderId && a.SourceId == s.SourceId))
                 .Select(s => new Net.SharedSource(s.ProviderId, s.SourceId, "未接続の写真ソース"))).ToArray();

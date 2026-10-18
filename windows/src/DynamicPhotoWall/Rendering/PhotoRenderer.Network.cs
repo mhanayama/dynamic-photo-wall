@@ -46,7 +46,7 @@ public sealed partial class PhotoRenderer
                 var b = new System.Windows.Controls.Image { Width = a.Width, Height = a.Height, Stretch = Stretch.Fill };
                 surface.Canvas.Children.Add(a); surface.Canvas.Children.Add(b);
                 surface.Canvas.Children.Add(new Border { Width = a.Width, Height = a.Height,
-                    Background = new SolidColorBrush(Color.FromArgb(90, 12, 17, 28)) });
+                    Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
                 var bitmaps = frames.Select(frame =>
                 {
                     using var stream = new MemoryStream(frame.Png, false);

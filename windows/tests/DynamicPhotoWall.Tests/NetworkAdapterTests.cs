@@ -42,7 +42,11 @@ internal static class NetworkAdapterTests
             var plan = await planner.PrepareAsync(wall, group, photos, CancellationToken.None);
             Check(plan != null && plan.Mode == mode, $"existing composition engine plans shared {mode}, per-display={individual}"); plan!.Validate();
             Check(plan.Ambient.Length > 0 && plan.Ambient.All(p => p.Png.Length > 0), "leader preloads shared ambient samples");
-            Check(plan.Placements.All(p => (p.DisplayId != null) == individual), "explicit per-display routing remains distinct from a shared canvas");
+            var selected = photos.Single(p => p.Key == plan.Placements[0].Asset);
+            var automaticMirror = !individual && mode is (Net.SceneMode.VerticalPan or Net.SceneMode.HorizontalPan or Net.SceneMode.Zoom)
+                && MirrorPolicy.IsBelowHalf(selected.PixelWidth, selected.PixelHeight, new(1000, 400));
+            Check(plan.Placements.All(p => (p.DisplayId != null) == (individual || automaticMirror)), "small motion photos mirror while other shared scenes span");
+            if (automaticMirror) Check(plan.Placements.Select(p => p.Asset).Distinct().Count() == 1, "automatic mirrors share one photo");
             var renderer = new PhotoRenderer(new(1000, 400), WindowsPlaybackOptions.Import(options), new TransitionController(), new AnimationScheduler());
             try
             {
@@ -51,7 +55,7 @@ internal static class NetworkAdapterTests
                 var full = Snapshot((FrameworkElement)renderer.Content, 1000, 400);
                 var localA = renderer.CreateDisplayRegion(new(0, 0, 400, 400), displays[0].Key.LayoutId);
                 var localB = renderer.CreateDisplayRegion(new(400, 0, 600, 400), displays[1].Key.LayoutId);
-                if (!individual)
+                if (!individual && !automaticMirror)
                 {
                     var a = Snapshot(localA, 400, 400); var b = Snapshot(localB, 600, 400);
                     Directory.CreateDirectory(Path.Combine(root, "network-adapters"));

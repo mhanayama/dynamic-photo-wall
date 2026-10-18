@@ -50,6 +50,13 @@ internal static class Program
             if (args.Contains("--mirror-gallery")) await Test("automatic same-photo vertical mirrors and smooth face-safe Gallery reflow", MirrorGalleryAsync);
             if (args.Contains("--gallery-fill")) await Test("cached faces improve Gallery filling at start and replacement", GalleryFillAsync);
             if (args.Contains("--scan-only") && args.Contains("--gallery-capacity")) await Test("Gallery supports twenty photos across a wide display group", GalleryCapacityTests.Run);
+            if (args.Contains("--scan-only") && args.Contains("--network-responsiveness")) await Test("network update bursts yield to dispatcher input without windows", NetworkResponsivenessTests.NotificationsYieldToInput);
+            if (args.Contains("--scan-only") && args.Contains("--network-responsiveness")) await Test("cached originals bypass redundant provider face analysis after restart", () => NetworkResponsivenessTests.CachedOriginalSkipsFaceAnalysis(root));
+            if (args.Contains("--scan-only") && args.Contains("--mirror-ambient"))
+            {
+                await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);
+                await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
+            }
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -99,6 +106,10 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);
+        await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
+        await Test("network update bursts yield to dispatcher input without windows", NetworkResponsivenessTests.NotificationsYieldToInput);
+        await Test("cached originals bypass redundant provider face analysis after restart", () => NetworkResponsivenessTests.CachedOriginalSkipsFaceAnalysis(root));
         await Test("Gallery supports twenty photos across a wide display group", GalleryCapacityTests.Run);
         await Test("network native planning and timed crops across all five modes", () => NetworkAdapterTests.PlanningAndRendering(root));
         await Test("network keys are protected by the Windows user", () => Sync(() => NetworkAdapterTests.ProtectedSecrets(root)));
@@ -135,7 +146,7 @@ internal static class Program
             settings.RandomOrder = false;
             Check(selector.Sample(new[] { a, bad, good }, settings, new HashSet<string>(), 12).Count == 0, "sequential playback is never rerolled");
         }));
-        await Test("small vertical photos mirror only when all local viewports fit", () => Sync(() =>
+        await Test("small motion photos mirror only when all local viewports fit", () => Sync(() =>
         {
             var s = new WallSettings { GalleryEnabled = false, GalleryScrollEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false };
             var engine = new CompositionEngine(new PhotoSelector(new Random(4)), new Random(4));
@@ -143,8 +154,8 @@ internal static class Program
             var small = Photo("small", 800, 2400);
             CompositionPlan? Plan(PhotoInfo p, IReadOnlyList<Viewport>? local = null) => engine.Next(new[] { p }, wall, s, displayViewports: local);
             Check(Plan(small, displays)?.MirrorPerDisplay == true, "a photo rejected at wall width is eligible as one shared mirror");
-            Check(Plan(Photo("large", 1600, 4800), displays)?.MirrorPerDisplay == false, "large photos keep spanning");
-            Check(Plan(Photo("limit", 1152, 3456), displays)?.MirrorPerDisplay == false, "exactly the upscale limit still spans");
+            Check(Plan(Photo("large", 4000, 12000), displays)?.MirrorPerDisplay == false, "large photos keep spanning");
+            Check(Plan(Photo("limit", 2400, 7200), displays)?.MirrorPerDisplay == false, "exactly half the group's long side still spans");
             Check(Plan(Photo("tiny", 400, 1200), displays) == null, "the same photo must meet the limit on every display");
             Check(Plan(small) == null && Plan(small, new[] { wall }) == null, "no fallback without a narrower connected output");
             Check(Plan(small, displays.Take(1).ToArray())?.MirrorPerDisplay == true, "a saved wall with one surviving output can mirror locally");
@@ -154,7 +165,7 @@ internal static class Program
             s.VerticalPanPerDisplay = true;
             Check(Plan(small, displays)?.MirrorPerDisplay == false, "explicit per-display mode keeps separate photo selection");
             s.VerticalPanPerDisplay = false; s.PanWidthFraction = .6;
-            Check(Plan(small, displays)?.MirrorPerDisplay == false, "configured narrower Pan can avoid fallback");
+            Check(Plan(small, displays)?.MirrorPerDisplay == true, "long-side resolution rule is independent of the configured Pan width");
         }));
         await Test("spanning face-safe Gallery and vertical Pan avoid display seams", () => Sync(FaceBoundaryGeometry));
         await Test("mode-specific physical viewports, selection and settings compatibility", () => Sync(() =>
@@ -667,11 +678,11 @@ internal static class Program
         controller.TogglePause(); controller.Next();
         await Until(() => live.Current != mirror, 10000);
         Check(live.Current != mirror && controller.GroupStates.Single().PhotoPaths.Distinct().Count() == 1, "Next replaces the whole mirror group together");
-        var spanning = SettingsManager.Clone(config); spanning.MaxPanUpscale = 12;
-        await controller.ApplyAsync(spanning); await controller.StartAsync();
+        var relaxedUpscale = SettingsManager.Clone(config); relaxedUpscale.MaxPanUpscale = 12;
+        await controller.ApplyAsync(relaxedUpscale); await controller.StartAsync();
         await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);
-        Check(controller.CurrentMode == CompositionMode.VerticalPan && !controller.GroupStates.Single().PerDisplay,
-            "a photo that fits the configured span width keeps spanning");
+        Check(controller.CurrentMode == CompositionMode.VerticalPan && controller.GroupStates.Single().PerDisplay,
+            "increasing the pan upscale limit does not force a small photo to span");
         var individual = SettingsManager.Clone(config); individual.VerticalPanPerDisplay = true;
         await controller.ApplyAsync(individual); await controller.StartAsync();
         await Until(() => controller.CurrentMode == CompositionMode.VerticalPan, 15000);

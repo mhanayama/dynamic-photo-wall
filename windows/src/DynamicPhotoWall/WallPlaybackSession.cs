@@ -204,7 +204,9 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         {
             // Decode and analyze only once. Every connected output receives the
             // same photo/bitmap at its own dimensions and on the group clock.
-            var single = await PreparePartAsync(plan, viewports.MaxBy(v => v.Width)!, token);
+            var photo = plan.Photos[0];
+            var single = await PreparePartAsync(plan, viewports.MaxBy(v => plan.Mode == CompositionMode.VerticalPan ? v.Width * Settings.PanWidthFraction
+                : plan.Mode == CompositionMode.HorizontalPan ? v.Height * photo.Aspect : Math.Max(v.Width, v.Height * photo.Aspect))!, token);
             return single == null ? null : new(plan.Mode, regions.Select(r => single with { DisplayId = r.Id, Region = r.Region }).ToArray());
         }
         if (!Settings.IsPerDisplay(plan.Mode))
@@ -250,7 +252,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         foreach (var photo in plan.Photos)
         {
             var targetWidth = plan.Mode is CompositionMode.Gallery or CompositionMode.GalleryScroll or CompositionMode.HorizontalPan ? (int)(viewport.Height * photo.Aspect)
-                : plan.Mode == CompositionMode.VerticalPan ? (int)(viewport.Width * Settings.PanWidthFraction) : (int)viewport.Width;
+                : plan.Mode == CompositionMode.VerticalPan ? (int)(viewport.Width * Settings.PanWidthFraction) : (int)Math.Max(viewport.Width, viewport.Height * photo.Aspect);
             var image = await cache.LoadAsync(photo, targetWidth, token);
             if (image == null) { failed.Add(photo.Path); continue; }
             var analyzeFace = (plan.Mode is CompositionMode.VerticalPan or CompositionMode.HorizontalPan) && Settings.FaceAwarePanDirection

@@ -208,7 +208,8 @@ struct DisplayParityRegressionTests {
         #expect(WallScenePlanner.shouldMirror(small, viewport: group.viewport, displays: group.displays, settings: s))
         #expect(!WallScenePlanner.shouldMirror(large, viewport: group.viewport, displays: group.displays, settings: s))
         var exact = s; exact.maxPanUpscale = group.viewport.width * s.panWidthFraction / 800
-        #expect(!WallScenePlanner.shouldMirror(small, viewport: group.viewport, displays: group.displays, settings: exact))
+        #expect(WallScenePlanner.shouldMirror(small, viewport: group.viewport, displays: group.displays, settings: exact))
+        #expect(!WallScenePlanner.shouldMirror(photo(width: 1920, height: 5760), viewport: group.viewport, displays: group.displays, settings: s))
         #expect(!WallScenePlanner.shouldMirror(photo(width: 100, height: 1000), viewport: group.viewport, displays: group.displays, settings: s))
         let pixels = try #require(AmbientProcessor.image(Array(repeating: [UInt8(255),0,0,255], count: 16).flatMap { $0 }, width: 4, height: 4))
         let images = PhotoImageStore(decode: { _ in DecodedPhoto(image: pixels) })

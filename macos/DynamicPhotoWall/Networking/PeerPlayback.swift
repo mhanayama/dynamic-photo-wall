@@ -272,7 +272,7 @@ nonisolated enum PNImageDecode {
                     let blend = min(1, max(0, (elapsed - a.frame.at) / max(0.001, b.frame.at - a.frame.at)))
                     b.image.draw(in: area, from: .zero, operation: .sourceOver, fraction: blend, respectFlipped: true, hints: nil)
                 }
-                context.setFillColor(NSColor.black.withAlphaComponent(0.35).cgColor); context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
+                context.setFillColor(NSColor.black.withAlphaComponent(0.18).cgColor); context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
             }
             context.translateBy(x: -dx, y: -dy)
             for p in plan.placements where p.displayId == nil || p.displayId == display.id {

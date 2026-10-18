@@ -32,6 +32,13 @@ public sealed class WindowsPhotoProvider(Guid peerId, Func<WallSettings> setting
             byte[] bytes;
             try { bytes = await File.ReadAllBytesAsync(photo.Path, cancellation); }
             catch (IOException) { continue; }
+            var key = new Net.SharedAssetKey(peerId, selection.SourceId, selection.GenerationId, Convert.ToHexStringLower(SHA256.HashData(bytes)));
+            if (cached?.Invoke(key) == true)
+            {
+                // A restarted provider has no fingerprint map, but the encrypted
+                // cache already owns the original and face metadata for this hash.
+                known[fingerprint] = key; CryptographicOperations.ZeroMemory(bytes); continue;
+            }
             BitmapSource image;
             try { image = NetworkBitmap.Decode(bytes, 1024, photo.Orientation); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or InvalidDataException)
@@ -45,7 +52,6 @@ public sealed class WindowsPhotoProvider(Guid peerId, Func<WallSettings> setting
                 .Where(f => f.Width > 0 && f.Height > 0).ToArray() ?? [];
             var metadata = new Net.SharedFaceMetadata(1, photo.Width, photo.Height, "windows-face-detector", "1",
                 withFaces.Faces == null ? Net.FaceAnalysisState.Failed : Net.FaceAnalysisState.Complete, faces);
-            var key = new Net.SharedAssetKey(peerId, selection.SourceId, selection.GenerationId, Convert.ToHexStringLower(SHA256.HashData(bytes)));
             known[fingerprint] = key;
             yield return (new(key, photo.Width, photo.Height, bytes.Length, metadata) { Orientation = photo.Orientation }, bytes);
         }

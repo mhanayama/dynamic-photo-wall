@@ -21,8 +21,10 @@ extension WallScenePlanner {
                 if settings.perDisplay(mode) {
                     return displays.contains { Self.isEligible(asset, for: mode, settings: settings, viewport: $0.rect.size) }
                 }
+                if Self.needsMirror(asset, for: mode, viewport: group.viewport, displays: displays, settings: settings) {
+                    return Self.shouldMirror(asset, for: mode, viewport: group.viewport, displays: displays, settings: settings)
+                }
                 return Self.isEligible(asset, for: mode, settings: settings, viewport: group.viewport)
-                    || (mode == .verticalPan && Self.shouldMirror(asset, viewport: group.viewport, displays: displays, settings: settings))
             }
             let available = settings.perDisplay(mode)
                 ? displays.allSatisfy { d in pool.contains { Self.isEligible($0, for: mode, settings: settings, viewport: d.rect.size) } }
@@ -43,10 +45,10 @@ extension WallScenePlanner {
             }
         }
         // The selected photo determines automatic mirroring, independently of faces.
-        if mode == .verticalPan {
+        if [.verticalPan, .horizontalPan, .zoom].contains(mode) {
             guard let asset = replacement(assets: pool, settings: settings, excluding: excluding)
                     ?? replacement(assets: pool, settings: settings, excluding: []) else { return nil }
-            if Self.shouldMirror(asset, viewport: group.viewport, displays: displays, settings: settings) {
+            if Self.shouldMirror(asset, for: mode, viewport: group.viewport, displays: displays, settings: settings) {
                 guard let scene = next(assets: [asset], settings: settings, viewport: displays[0].rect.size, forcedMode: mode) else { return nil }
                 return displays.map { WallSurfacePlan(displayID: $0.id, viewport: $0.rect.size, scene: scene) }
             }
@@ -59,11 +61,14 @@ extension WallScenePlanner {
         return [WallSurfacePlan(displayID: nil, viewport: group.viewport, scene: scene)]
     }
 
-    nonisolated static func shouldMirror(_ asset: PhotoAsset, viewport: CGSize, displays: [WallDisplay], settings: WallSettings) -> Bool {
-        !displays.isEmpty && asset.pixelWidth > 0
-            && viewport.width * settings.panWidthFraction / CGFloat(asset.pixelWidth) > settings.maxPanUpscale
-            && displays.contains { $0.width < viewport.width }
-            && displays.allSatisfy { isEligible(asset, for: .verticalPan, settings: settings, viewport: $0.rect.size) }
+    nonisolated static func needsMirror(_ asset: PhotoAsset, for mode: WallMode, viewport: CGSize, displays: [WallDisplay], settings: WallSettings) -> Bool {
+        [.verticalPan, .horizontalPan, .zoom].contains(mode) && !settings.perDisplay(mode)
+            && displays.contains { $0.width < viewport.width || $0.height < viewport.height }
+            && MirrorPolicy.isBelowHalf(imageWidth: asset.pixelWidth, imageHeight: asset.pixelHeight, group: viewport)
+    }
+    nonisolated static func shouldMirror(_ asset: PhotoAsset, for mode: WallMode = .verticalPan, viewport: CGSize, displays: [WallDisplay], settings: WallSettings) -> Bool {
+        needsMirror(asset, for: mode, viewport: viewport, displays: displays, settings: settings)
+            && displays.allSatisfy { isEligible(asset, for: mode, settings: settings, viewport: $0.rect.size) }
     }
 }
 

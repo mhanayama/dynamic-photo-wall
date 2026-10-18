@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Windows.Media.Imaging;
+using DynamicPhotoWall.Rendering;
 using SkiaSharp;
 using Net = DynamicPhotoWall.Networking;
 
@@ -40,7 +42,7 @@ internal static class WindowsAmbientBuilder
                 {
                     token.ThrowIfCancellationRequested(); var at = plan.Duration * index / (count - 1);
                     using var bitmap = new SKBitmap(256, Math.Min(256, h)); using var canvas = new SKCanvas(bitmap);
-                    canvas.Clear(SKColor.Parse(plan.Background)); canvas.Scale((float)(256 / width), (float)(bitmap.Height / height));
+                    canvas.Clear(SKColors.Transparent); canvas.Scale((float)(256 / width), (float)(bitmap.Height / height));
                     foreach (var p in plan.Placements.Where(p => p.DisplayId == surface))
                     {
                         var evaluated = Net.SceneEvaluation.Evaluate(p, Math.Min(at, plan.Duration - .001));
@@ -55,8 +57,11 @@ internal static class WindowsAmbientBuilder
                         canvas.Restore();
                     }
                     canvas.ResetMatrix();
+                    var pixels = new byte[bitmap.ByteCount]; Marshal.Copy(bitmap.GetPixels(), pixels, 0, pixels.Length);
+                    if (!AmbientPixels.ExtendPadding(pixels, bitmap.Width, bitmap.Height)) continue;
+                    Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
                     using var blurred = new SKBitmap(bitmap.Width, bitmap.Height); using var blurredCanvas = new SKCanvas(blurred);
-                    using var blur = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(7, 7) };
+                    using var blur = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(7, 7, SKShaderTileMode.Clamp) };
                     blurredCanvas.DrawBitmap(bitmap, 0, 0, blur);
                     using var image = SKImage.FromBitmap(blurred); using var png = image.Encode(SKEncodedImageFormat.Png, 100);
                     frames.Add(new(at, png.ToArray()) { DisplayId = surface });

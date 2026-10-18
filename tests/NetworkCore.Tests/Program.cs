@@ -294,6 +294,11 @@ Test("two connected walls merge into one four-peer inventory", () => PeerMeshInt
 Test("saved display inventories require a current authenticated connection", () => PeerMeshIntegration.SavedDisplaysAreNotConnections(Path.Combine(runRoot, "display-presence")).GetAwaiter().GetResult());
 assertions += PeerMeshIntegration.Assertions;
 Test("shared native wire and encrypted cache vectors", () => WireVectors.Verify(Path.Combine(runRoot, "wire-vector")));
+Test("UI notification bursts are coalesced and late updates are cancelled", ResponsivenessTests.Notifications);
+Test("UI progress never waits for cache IO and reconnect reuses validated cache", () => ResponsivenessTests.CacheProgress(Path.Combine(runRoot, "progress")).GetAwaiter().GetResult());
+Test("pending transfer checks perform no disk reads or UI notification loops", () => ResponsivenessTests.RequestScheduling(Path.Combine(runRoot, "pending")));
+Test("network startup and state changes never capture a caller UI context", () => ResponsivenessTests.CallerContext(Path.Combine(runRoot, "ui-context")).GetAwaiter().GetResult());
+assertions += ResponsivenessTests.Assertions;
 fixture.Dispose();
 File.WriteAllText(Path.Combine(output, "test-results.json"), JsonSerializer.Serialize(new { failed, assertions, cases },
     new JsonSerializerOptions { WriteIndented = true }));

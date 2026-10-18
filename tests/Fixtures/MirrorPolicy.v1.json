@@ -1,0 +1,12 @@
+{
+  "cases": [
+    { "groupWidth": 8000, "groupHeight": 1200, "imageWidth": 3999, "imageHeight": 10000, "mirror": true },
+    { "groupWidth": 8000, "groupHeight": 1200, "imageWidth": 4000, "imageHeight": 100, "mirror": false },
+    { "groupWidth": 8000, "groupHeight": 1200, "imageWidth": 5000, "imageHeight": 100, "mirror": false },
+    { "groupWidth": 1200, "groupHeight": 8000, "imageWidth": 10000, "imageHeight": 3999, "mirror": true },
+    { "groupWidth": 1200, "groupHeight": 8000, "imageWidth": 100, "imageHeight": 4000, "mirror": false },
+    { "groupWidth": 1200, "groupHeight": 8000, "imageWidth": 100, "imageHeight": 5000, "mirror": false },
+    { "groupWidth": 4000, "groupHeight": 4000, "imageWidth": 1999, "imageHeight": 8000, "mirror": true },
+    { "groupWidth": 4000, "groupHeight": 4000, "imageWidth": 2000, "imageHeight": 100, "mirror": false }
+  ]
+}

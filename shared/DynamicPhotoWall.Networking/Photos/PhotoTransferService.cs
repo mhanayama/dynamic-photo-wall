@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 
 namespace DynamicPhotoWall.Networking;
 
+public sealed record PhotoTransferProgress(int AvailableCount, int DeferredCount);
+
 public sealed class PhotoTransferService : IDisposable
 {
     private sealed class Incoming(SharedPhoto photo) : IDisposable
@@ -16,12 +18,13 @@ public sealed class PhotoTransferService : IDisposable
             Data.Dispose();
         }
     }
-    private readonly EncryptedPhotoCache cache;
+    private readonly IPhotoCache cache;
     private readonly Guid localPeer;
     private readonly IPhotoProvider provider;
     private readonly object gate = new();
     private readonly Dictionary<string, SharedPhoto> catalog = [];
     private readonly HashSet<string> available = [];
+    private readonly Dictionary<string, DateTimeOffset> expiresAt = [];
     private readonly Dictionary<Guid, Incoming> incoming = [];
     private readonly Dictionary<Guid, Guid> generations = [];
     private readonly Dictionary<Guid, SharedAssetKey> requested = [];
@@ -29,13 +32,17 @@ public sealed class PhotoTransferService : IDisposable
     private readonly HashSet<string> deferred = [];
     private readonly SemaphoreSlim importGate = new(1, 1);
     private SourceSelection[] selection = [];
+    private bool configured;
+    private PhotoTransferProgress progress = new(0, 0);
+    // UI readers never acquire the cache/transfer lock or enumerate the catalog.
+    public PhotoTransferProgress Progress => Volatile.Read(ref progress);
     public const long MaximumAssetBytes = 256L * 1024 * 1024;
     public event Action<CatalogBatch>? CatalogProduced;
     public event Action? Changed;
-    public int DeferredCount { get { lock (gate) return deferred.Count; } }
+    public int DeferredCount => Progress.DeferredCount;
     public bool HasMissingLocal { get { lock (gate) return catalog.Values.Any(p => p.Key.ProviderId == localPeer && !available.Contains(p.Key.OpaqueId) && !deferred.Contains(p.Key.OpaqueId)); } }
     public bool IsAvailable(SharedAssetKey key) { lock (gate) return available.Contains(key.OpaqueId); }
-    public PhotoTransferService(Guid localPeer, IPhotoProvider provider, EncryptedPhotoCache cache)
+    public PhotoTransferService(Guid localPeer, IPhotoProvider provider, IPhotoCache cache)
         { this.localPeer = localPeer; this.provider = provider; this.cache = cache; }
     public IReadOnlyList<SharedPhoto> Available
     {
@@ -46,6 +53,8 @@ public sealed class PhotoTransferService : IDisposable
     {
         lock (gate)
         {
+            if (configured && selection.SequenceEqual(sources)) return;
+            configured = false;
             var removed = selection.Select(s => s.ProviderId).Except(sources.Select(s => s.ProviderId)).ToArray();
             foreach (var id in removed)
             {
@@ -65,17 +74,19 @@ public sealed class PhotoTransferService : IDisposable
                 {
                     var photo = catalog[key];
                     if (generations.GetValueOrDefault(photo.Key.ProviderId) == photo.Key.GenerationId) cache.Delete(photo.Key);
-                    catalog.Remove(key); available.Remove(key);
+                    catalog.Remove(key); available.Remove(key); expiresAt.Remove(key);
                 }
             foreach (var header in cache.Catalog(DateTimeOffset.UtcNow))
             {
                 if (!Selected(header.Photo.Key)) { cache.Delete(header.Photo.Key); continue; }
                 catalog[header.Photo.Key.OpaqueId] = header.Photo; available.Add(header.Photo.Key.OpaqueId);
+                expiresAt[header.Photo.Key.OpaqueId] = header.ExpiresAt;
             }
             foreach (var request in incoming.Where(p => !Selected(p.Value.Photo.Key)).Select(p => p.Key).ToArray())
                 { incoming[request].Dispose(); incoming.Remove(request); requested.Remove(request); }
+            configured = true;
         }
-        Changed?.Invoke();
+        NotifyChanged();
     }
     public void Maintain(DateTimeOffset now)
     {
@@ -87,15 +98,20 @@ public sealed class PhotoTransferService : IDisposable
             foreach (var id in requestedAt.Where(p => now - p.Value > TimeSpan.FromSeconds(30)).Select(p => p.Key).ToArray())
             { requestedAt.Remove(id); requested.Remove(id); if (incoming.Remove(id, out var item)) item.Dispose(); }
         }
-        Changed?.Invoke();
+        NotifyChanged();
     }
     private bool Selected(SharedAssetKey key) => selection.Any(s => s.ProviderId == key.ProviderId
         && s.SourceId == key.SourceId && s.GenerationId == key.GenerationId);
     private CachedPhoto? ReadKnown(SharedAssetKey key)
     {
-        try { return cache.Read(key, DateTimeOffset.UtcNow); }
+        try
+        {
+            var found = cache.Read(key, DateTimeOffset.UtcNow);
+            if (found == null) { available.Remove(key.OpaqueId); expiresAt.Remove(key.OpaqueId); PublishProgress(); }
+            return found;
+        }
         catch (Exception error) when (error is CryptographicException or InvalidDataException or EndOfStreamException)
-        { cache.Delete(key); available.Remove(key.OpaqueId); return null; }
+        { cache.Delete(key); available.Remove(key.OpaqueId); expiresAt.Remove(key.OpaqueId); PublishProgress(); return null; }
     }
     public async Task ImportAsync(CancellationToken token)
     {
@@ -116,14 +132,15 @@ public sealed class PhotoTransferService : IDisposable
                             if (!Selected(photo.Key)) continue;
                             if (deferred.Contains(photo.Key.OpaqueId)) continue;
                             var existing = ReadKnown(photo.Key);
-                            if (existing == null) cache.Put(photo, new MemoryStream(original, false), DateTimeOffset.UtcNow, token);
+                            if (existing == null) expiresAt[photo.Key.OpaqueId] = cache.Put(photo, new MemoryStream(original, false), DateTimeOffset.UtcNow, token).ExpiresAt;
                             else CryptographicOperations.ZeroMemory(existing.Image);
+                            if (existing != null) expiresAt[photo.Key.OpaqueId] = existing.Header.ExpiresAt;
                             published = existing?.Header.Photo ?? photo;
                             catalog[photo.Key.OpaqueId] = published; available.Add(photo.Key.OpaqueId);
                         }
-                        CatalogProduced?.Invoke(new([published])); Changed?.Invoke();
+                        CatalogProduced?.Invoke(new([published])); NotifyChanged();
                     }
-                    catch (PhotoCacheBudgetException) { lock (gate) deferred.Add(photo.Key.OpaqueId); Changed?.Invoke(); }
+                    catch (PhotoCacheBudgetException) { lock (gate) deferred.Add(photo.Key.OpaqueId); NotifyChanged(); }
                     finally { CryptographicOperations.ZeroMemory(original); }
                 }
             }
@@ -133,7 +150,7 @@ public sealed class PhotoTransferService : IDisposable
     public AssetRequest[] AcceptCatalog(Guid sender, CatalogBatch batch)
     {
         PeerProtocol.Require(batch.Photos.Length <= 128, "Catalog batch is too large.");
-        var requests = new List<AssetRequest>();
+        AssetRequest[] requests;
         lock (gate)
         {
             foreach (var photo in batch.Photos)
@@ -142,25 +159,33 @@ public sealed class PhotoTransferService : IDisposable
                 PeerProtocol.Require(photo.Key.ProviderId == sender, "Catalog provider differs from sender.");
                 if (!Selected(photo.Key) || photo.ByteLength > MaximumAssetBytes) continue;
                 catalog[photo.Key.OpaqueId] = photo;
+                if (available.Contains(photo.Key.OpaqueId) && expiresAt.GetValueOrDefault(photo.Key.OpaqueId) > DateTimeOffset.UtcNow) continue;
                 if (ReadKnown(photo.Key) is { } known)
                 {
-                    CryptographicOperations.ZeroMemory(known.Image); available.Add(photo.Key.OpaqueId); continue;
+                    CryptographicOperations.ZeroMemory(known.Image); available.Add(photo.Key.OpaqueId);
+                    expiresAt[photo.Key.OpaqueId] = known.Header.ExpiresAt;
                 }
-                if (requested.Values.Contains(photo.Key) || deferred.Contains(photo.Key.OpaqueId)) continue;
-                if (requested.Count >= 2) continue;
-                var id = Guid.NewGuid(); requested[id] = photo.Key;
-                requestedAt[id] = DateTimeOffset.UtcNow;
-                requests.Add(new(id, photo.Key));
             }
+            requests = AllocateRequests(sender);
         }
-        Changed?.Invoke(); return requests.ToArray();
+        NotifyChanged(); return requests;
     }
     public AssetRequest[] MissingRequests(Guid providerId)
     {
-        SharedPhoto[] photos;
-        lock (gate) photos = catalog.Values.Where(p => p.Key.ProviderId == providerId
-            && !available.Contains(p.Key.OpaqueId)).Take(128).ToArray();
-        return AcceptCatalog(providerId, new(photos));
+        lock (gate) return AllocateRequests(providerId);
+    }
+    private AssetRequest[] AllocateRequests(Guid providerId)
+    {
+        var result = new List<AssetRequest>();
+        foreach (var photo in catalog.Values)
+        {
+            if (requested.Count >= 2) break;
+            if (photo.Key.ProviderId != providerId || !Selected(photo.Key) || available.Contains(photo.Key.OpaqueId)
+                || deferred.Contains(photo.Key.OpaqueId) || requested.Values.Contains(photo.Key)) continue;
+            var id = Guid.NewGuid(); requested[id] = photo.Key; requestedAt[id] = DateTimeOffset.UtcNow;
+            result.Add(new(id, photo.Key));
+        }
+        return result.ToArray();
     }
     public async IAsyncEnumerable<AssetChunk> SendAsync(AssetRequest request,
         [EnumeratorCancellation] CancellationToken token)
@@ -196,10 +221,10 @@ public sealed class PhotoTransferService : IDisposable
             {
                 PeerProtocol.Require(chunk.Index == item.Next && chunk.Photo.Key == item.Photo.Key
                     && item.Data.Length + chunk.Data.Length <= item.Photo.ByteLength, "Asset chunk order differs.");
-                item.Data.Write(chunk.Data); item.Next++;
+                item.Data.Write(chunk.Data); item.Next++; requestedAt[chunk.RequestId] = DateTimeOffset.UtcNow;
                 if (!chunk.Last) return;
                 PeerProtocol.Require(item.Data.Length == item.Photo.ByteLength, "Asset transfer is incomplete.");
-                item.Data.Position = 0; cache.Put(item.Photo, item.Data, DateTimeOffset.UtcNow);
+                item.Data.Position = 0; expiresAt[item.Photo.Key.OpaqueId] = cache.Put(item.Photo, item.Data, DateTimeOffset.UtcNow).ExpiresAt;
                 available.Add(item.Photo.Key.OpaqueId);
                 item.Dispose(); incoming.Remove(chunk.RequestId); requested.Remove(chunk.RequestId);
             }
@@ -207,7 +232,7 @@ public sealed class PhotoTransferService : IDisposable
             catch { item.Dispose(); incoming.Remove(chunk.RequestId); requested.Remove(chunk.RequestId); throw; }
             finally { if (!requested.ContainsKey(chunk.RequestId)) requestedAt.Remove(chunk.RequestId); }
         }
-        Changed?.Invoke();
+        NotifyChanged();
     }
     public byte[] ReadImage(SharedAssetKey key)
     {
@@ -221,7 +246,13 @@ public sealed class PhotoTransferService : IDisposable
     {
         lock (gate)
             foreach (var id in requested.Where(p => p.Value.ProviderId == peer).Select(p => p.Key).ToArray())
-            { requested.Remove(id); if (incoming.Remove(id, out var item)) item.Dispose(); }
+            { requested.Remove(id); requestedAt.Remove(id); if (incoming.Remove(id, out var item)) item.Dispose(); }
+    }
+    private void PublishProgress() => Volatile.Write(ref progress, new(available.Count, deferred.Count));
+    private void NotifyChanged()
+    {
+        lock (gate) PublishProgress();
+        Changed?.Invoke();
     }
     public void Dispose()
     {

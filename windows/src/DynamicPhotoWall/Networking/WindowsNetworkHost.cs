@@ -4,14 +4,18 @@ using Net = DynamicPhotoWall.Networking;
 
 namespace DynamicPhotoWall.Networking.Windows;
 
-public sealed class WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOnlyList<PhotoInfo>> photos,
-    Func<Task> enterNetwork) : IAsyncDisposable, Net.IConnectionNotifications
+public sealed class WindowsNetworkHost : IAsyncDisposable, Net.IConnectionNotifications
 {
-    private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly Dispatcher dispatcher;
+    private readonly Func<WallSettings> settings;
+    private readonly Func<IReadOnlyList<PhotoInfo>> photos;
+    private readonly Func<Task> enterNetwork;
+    private readonly DispatcherUpdateQueue updates;
     private Net.PeerIdentity? identity;
     private Net.EncryptedPhotoCache? cache;
     private WindowsPlaybackOutput? output;
     private Net.SharedClock? clock;
+    private string? pendingError;
     private readonly SemaphoreSlim operations = new(1, 1);
     public Net.PeerSession? Session { get; private set; }
     public bool Online => Session != null;
@@ -23,6 +27,12 @@ public sealed class WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOn
     public string Status { get; private set; } = "オフライン";
     public event Action? Changed;
     public event Action<string, string>? Notification;
+    public WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOnlyList<PhotoInfo>> photos, Func<Task> enterNetwork)
+    {
+        this.settings = settings; this.photos = photos; this.enterNetwork = enterNetwork;
+        dispatcher = Dispatcher.CurrentDispatcher;
+        updates = new(dispatcher, NotifyChanged);
+    }
     public async Task SetOnlineAsync(bool enabled)
     {
         await operations.WaitAsync();
@@ -60,14 +70,8 @@ public sealed class WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOn
                 new Net.EncryptedStateStore(Path.Combine(root, "wall.encrypted"), identity.CacheKey), provider, cache,
                 planner, output, clock, this, initial);
             output.Bind(planner, running.Photos); output.Changed += Raise;
-            running.Changed += () =>
-            {
-                Status = running.ConnectedPeers.Count == 0 ? "接続待機中" :
-                    $"{running.ConnectedPeers.Count + 1}ピア接続 · {running.Photos.Available.Count}枚準備済み · {running.PlaybackState}";
-                if (running.Photos.DeferredCount > 0) Status += $" · 容量上限で{running.Photos.DeferredCount}枚待機";
-                Raise();
-            };
-            running.Error += error => { Log.Write("ネットワーク処理を継続して再試行します。", error); Status = error.Message; Raise(); };
+            running.Changed += Raise;
+            running.Error += error => { Log.Write("ネットワーク処理を継続して再試行します。", error); Interlocked.Exchange(ref pendingError, error.Message); Raise(); };
             try { await running.StartAsync(); Session = running; Status = "接続候補を検索中"; Raise(); }
             catch
             {
@@ -84,8 +88,21 @@ public sealed class WindowsNetworkHost(Func<WallSettings> settings, Func<IReadOn
         else output?.Control(operation, clock!.Now);
     }
     public void RefreshPhotos() => Session?.RefreshLocalPhotos();
-    private void Raise() => dispatcher.BeginInvoke(() => Changed?.Invoke());
+    private void Raise() => updates.Request();
+    private void NotifyChanged()
+    {
+        var error = Interlocked.Exchange(ref pendingError, null);
+        if (Session is { } running)
+        {
+            var progress = running.Photos.Progress;
+            Status = running.ConnectedPeers.Count == 0 ? "接続待機中" :
+                $"{running.ConnectedPeers.Count + 1}ピア接続 · {progress.AvailableCount}枚準備済み · {running.PlaybackState}";
+            if (progress.DeferredCount > 0) Status += $" · 容量上限で{progress.DeferredCount}枚待機";
+            if (error != null) Status = error;
+        }
+        Changed?.Invoke();
+    }
     public void Disconnected(string name) => dispatcher.BeginInvoke(() => Notification?.Invoke("Photo Wall の接続が切れました", $"{name} へ再接続しています。"));
     public void Reconnected(string name) => dispatcher.BeginInvoke(() => Notification?.Invoke("Photo Wall に再接続しました", $"{name} との表示同期を準備しています。"));
-    public async ValueTask DisposeAsync() { await SetOnlineAsync(false); operations.Dispose(); }
+    public async ValueTask DisposeAsync() { await SetOnlineAsync(false); updates.Dispose(); operations.Dispose(); }
 }

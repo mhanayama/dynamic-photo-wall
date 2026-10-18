@@ -17,7 +17,7 @@ struct WallSceneLayer: View {
             Color(hex: settings.backgroundHex)
             if settings.glassBackground, let image = (sharedAmbient ?? ambient).image {
                 Image(nsImage: image).resizable().interpolation(.high)
-                    .overlay(Color.black.opacity(0.42))
+                    .overlay(Color.black.opacity(0.18))
             }
             let placements = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport)
             ForEach(Array(placements.enumerated()), id: \.offset) { _, item in

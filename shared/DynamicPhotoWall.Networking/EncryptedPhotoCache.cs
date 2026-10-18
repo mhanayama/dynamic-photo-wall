@@ -10,7 +10,7 @@ public sealed class PhotoCacheBudgetException() : IOException("写真キャッ�
 
 // This storage primitive never persists a key. Production callers must supply an
 // OS-protected key; only synthetic fixtures and ephemeral keys are used by tests.
-public sealed class EncryptedPhotoCache : IDisposable
+public sealed class EncryptedPhotoCache : IPhotoCache, IDisposable
 {
     private static readonly byte[] Magic = "DPWCAC01"u8.ToArray();
     private static readonly byte[] KeyInfo = "DynamicPhotoWall/photo-cache/v1"u8.ToArray();
