@@ -51,7 +51,16 @@ final class WallApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDe
             let loginLaunch = event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil ||
                 event?.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsServiceItem)) != nil
             if !loginLaunch || (model.folders.isEmpty && model.photoAlbums.isEmpty) || !model.hasSavedScreen { showSettings() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if await model.checkStartupPermissions() { showSettings() }
+            }
         }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard model.permissions?.presented == true else { return }
+        Task { await model.permissions?.check(); model.resumeAfterPermissions() }
     }
 
     func showSettings() {

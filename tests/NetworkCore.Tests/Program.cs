@@ -3,6 +3,9 @@ using System.Text;
 using System.Text.Json;
 using DynamicPhotoWall.Networking;
 
+if (args.Length == 2 && args[0] == "--interop") return await NetworkInterop.Run(Path.GetFullPath(args[1]));
+if (args.Length == 2 && args[0] == "--interop-discovery") return await NetworkInterop.Run(Path.GetFullPath(args[1]), withDiscovery: true);
+
 if (args.Length == 2 && args[0] == "--export-fixtures") { WireVectors.Export(Path.GetFullPath(args[1])); return 0; }
 if (args.Length != 1)
 {

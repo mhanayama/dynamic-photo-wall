@@ -34,6 +34,7 @@ final class AppModel {
     var photoAssets: [PhotoAsset] = []
     var settings = WallSettings()
     var network: PNNetworkModel?
+    private(set) var permissions: StartupPermissions?
     private(set) var isScanning = false
     private(set) var wallAttached = false
     private(set) var desiredRunning = false
@@ -85,7 +86,7 @@ final class AppModel {
          screenProvider: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
          scanner: @escaping Scanner = { await PhotoLibrary.scan(folderURL: $0, recursive: $1) },
          observeEnvironment: Bool = true, settingsFile: URL? = nil, loginItems: LoginItemService? = nil,
-         albumsClient: PhotosAlbumClient = .system) {
+         albumsClient: PhotosAlbumClient = .system, permissionClient: WallPermissionClient? = nil) {
         self.loginItems = loginItems ?? (observeEnvironment ? .system : .isolated)
         self.defaults = defaults
         self.repository = SettingsRepository(defaults: defaults, file: settingsFile)
@@ -136,7 +137,74 @@ final class AppModel {
             }, leave: { [weak self] in self?.reconcilePlayback() }, playbackState: { [weak self] stopped, paused in
                 self?.desiredRunning = !stopped; self?.userPaused = paused
             })
-        if observeEnvironment { network?.restore() }
+        if let permissionClient {
+            permissions = StartupPermissions(client: permissionClient)
+        } else if observeEnvironment {
+            permissions = StartupPermissions(client: .system(defaults: defaults,
+                keychain: { [weak self] interactive in
+                    guard let network = self?.network else { return .unavailable("ネットワーク機能を準備できません。") }
+                    do { try network.prepareKeychain(allowInteraction: interactive); return .granted }
+                    catch let error as PNKeychainError { return error.needsAuthorization ? .denied : .unavailable(error.localizedDescription) }
+                    catch { return .unavailable(error.localizedDescription) }
+                }, folders: { [weak self] in self?.folderPermissionStatus ?? .notDetermined },
+                requestFolders: { [weak self] in self?.recoverFolderPermissions() ?? .notDetermined }))
+        }
+    }
+
+    func checkStartupPermissions() async -> Bool {
+        guard let permissions else { return false }
+        await permissions.check(presentIfNeeded: true)
+        resumeAfterPermissions()
+        return permissions.presented
+    }
+    func showPermissions() {
+        guard let permissions else { return }
+        permissions.presented = true
+        Task { await permissions.check(forceNetwork: true) }
+    }
+    func resumeAfterPermissions() {
+        guard !terminated, let permissions, !permissions.busy else { return }
+        // Photo access can recover even if networking or notifications are denied.
+        reloadPhotos()
+        guard
+              permissions.statuses[.keychain]?.satisfied == true,
+              permissions.statuses[.localNetwork]?.satisfied == true else { return }
+        if network?.keychainNeedsAuthorization == true {
+            Task { await network?.setOnline(true) }
+        } else { network?.restore() }
+    }
+    private var folderPermissionStatus: WallPermissionStatus {
+        folderStore.folders.allSatisfy(\.isAccessible) ? .granted : .unavailable("再許可またはドライブの接続が必要です。")
+    }
+    private func recoverFolderPermissions() -> WallPermissionStatus {
+        retryFolders()
+        for folder in folderStore.folders where !folder.isAccessible {
+            let panel = NSOpenPanel()
+            panel.title = "写真フォルダーを再許可"
+            panel.message = "登録済みの「\(folder.path.map { URL(filePath: $0).lastPathComponent } ?? "写真フォルダー")」を選択してください。"
+            panel.prompt = "再許可"; panel.canChooseDirectories = true; panel.canChooseFiles = false
+            if let path = folder.path { panel.directoryURL = URL(filePath: path) }
+            guard panel.runModal() == .OK, let url = panel.url else { break }
+            do { try renewFolderPermission(folder, at: url) }
+            catch { return .unavailable(error.localizedDescription) }
+        }
+        retryFolders()
+        return folderPermissionStatus
+    }
+    func renewFolderPermission(_ folder: PhotoFolder, at url: URL) throws {
+        guard folder.path == url.standardizedFileURL.path else {
+            throw PNError.invalid("登録済みと同じフォルダーを選択してください。別のフォルダーは「写真」ページから追加できます。")
+        }
+        var renewed = try folderStore.makeDraftFolder(url)
+        renewed.id = folder.id
+        var records = folderStore.folders
+        guard let index = records.firstIndex(where: { $0.id == folder.id }) else { return }
+        records[index] = renewed
+        try repository.save(SettingsSnapshot(settings: appliedSettings, screenID: appliedScreenID, folders: records,
+            photoAlbums: appliedPhotoAlbums, displays: appliedDisplays, displayGroupNames: appliedGroupNames))
+        folderStore.replace(with: records)
+        if let draftIndex = folders.firstIndex(where: { $0.id == folder.id && $0.bookmark == folder.bookmark }) { folders[draftIndex] = renewed }
+        folderWarning = folderStore.warning
     }
 
     static func makeLaunchModel() -> AppModel {
@@ -366,6 +434,7 @@ final class AppModel {
         mergeDetectedScreens()
         folderStore.discardDraft()
         syncFolders()
+        network?.reload()
     }
 
     func retryFolders() {
@@ -704,6 +773,7 @@ final class AppModel {
     func shutdown() {
         guard !terminated else { return }
         terminated = true
+        permissions?.cancel()
         network?.stop()
         desiredRunning = false
         scanGeneration += 1

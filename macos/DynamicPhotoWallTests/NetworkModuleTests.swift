@@ -20,7 +20,7 @@ import Testing
         #expect(try v.packet.decode(PNScene.self).id == v.scene.id)
         #expect(v.photo.faceMetadata.faces == [PNFaceRegion(x: 0.1, y: 0.2, width: 0.3, height: 0.4)])
         #expect(v.scene.placements[0].evaluate(2).x == -20)
-        #expect(v.scene.placements[0].evaluate(2.1).x == -21)
+        #expect(abs(v.scene.placements[0].evaluate(2.1).x - (-21)) < 1e-9)
         let roundtrip = try PNWire.decode(PNSnapshot.self, PNWire.encode(v.wall))
         #expect(roundtrip == v.wall)
         #expect(roundtrip.displays[0].name == "DELL U2723QE")
@@ -91,6 +91,23 @@ import Testing
         #expect(merged.leaderId == v.wall.leaderId); #expect(merged.wallId == v.wall.wallId)
         #expect(merged.mergedWalls.contains(previous.wallId)); #expect(merged.groups[0].name != merged.groups[1].name)
         #expect(merged.sources.count == 2)
+    }
+    @Test func invalidRemoteDisplayAndSceneIdentitiesAreRejectedBeforeRendering() throws {
+        let v = try vector()
+        var wall = v.wall
+        wall.displays[0].key.peerId = .pnZero
+        #expect(throws: (any Error).self) { try wall.validate() }
+        wall = v.wall; wall.groups[0].name = "  "
+        #expect(throws: (any Error).self) { try wall.validate() }
+        wall = v.wall; wall.sources[0].generationId = .pnZero
+        #expect(throws: (any Error).self) { try wall.validate() }
+        var scene = v.scene
+        scene.displays[0].x = Int.max
+        #expect(throws: (any Error).self) { try scene.validate() }
+        scene = v.scene; scene.id = .pnZero
+        #expect(throws: (any Error).self) { try scene.validate() }
+        scene = v.scene; scene.placements.append(scene.placements[0])
+        #expect(throws: (any Error).self) { try scene.validate() }
     }
     private final class Clock: PNClock {
         var time = 0.0; var now: Double { 1000 + time }; var elapsed: Double { time }; func observe(_ pong: PNPong) {}

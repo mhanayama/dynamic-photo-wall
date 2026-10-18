@@ -2,6 +2,24 @@ import XCTest
 
 final class DynamicPhotoWallUITests: XCTestCase {
     @MainActor
+    func testNetworkSettingsAreAvailableWithoutStartingCommunication() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["DPW_UI_TEST_PROFILE"] = UUID().uuidString
+        app.launch(); app.activate()
+        defer { app.terminate() }
+        let tab = app.descendants(matching: .tab).matching(NSPredicate(format: "label == %@", "ネットワーク")).firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 5)); tab.click()
+        let online = app.descendants(matching: .any).matching(identifier: "network-online").firstMatch
+        XCTAssertTrue(online.waitForExistence(timeout: 5))
+        XCTAssertTrue(online.isEnabled)
+        XCTAssertTrue(app.staticTexts["オフライン"].exists)
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "network-settings-offline"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["変更を取り消す"].click()
+        XCTAssertTrue(app.staticTexts["オフライン"].exists)
+    }
+    @MainActor
     func testAlbumSelectionCanBeCancelledAndSavedWithoutFolders() {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_photowall._tcp</string>
+    </array>
     <key>NSLocalNetworkUsageDescription</key>
     <string>オンラインモードで近くのPhoto Wallを検出し、写真と表示タイミングを同期するために使用します。</string>
     <key>NSPhotoLibraryUsageDescription</key>

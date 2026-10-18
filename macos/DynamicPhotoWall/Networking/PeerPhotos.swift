@@ -131,6 +131,7 @@ nonisolated enum PNOriginalPhotos {
     let cache: PNPhotoCache
     private let local: UUID; private let provider: any PNPhotoProviding
     private var selection: [PNSelection] = []
+    private var configured = false
     private var generations: [UUID: UUID] = [:]
     private(set) var catalog: [String: PNPhoto] = [:]
     private(set) var available: [String: PNPhoto] = [:]
@@ -146,6 +147,8 @@ nonisolated enum PNOriginalPhotos {
     init(local: UUID, provider: any PNPhotoProviding, cache: PNPhotoCache) { self.local = local; self.provider = provider; self.cache = cache }
     private func selected(_ key: PNAssetKey) -> Bool { selection.contains { $0.providerId == key.providerId && $0.sourceId == key.sourceId && $0.generationId == key.generationId } }
     func configure(_ sources: [PNSelection]) async throws {
+        if configured && sources == selection { refresh(); return }
+        configured = false
         let sourceChanged = sources != selection
         if sourceChanged { importing?.cancel() }
         selection = sources; deferred.removeAll()
@@ -163,7 +166,7 @@ nonisolated enum PNOriginalPhotos {
             if selected(header.photo.key) { catalog[header.photo.key.opaqueId] = header.photo; available[header.photo.key.opaqueId] = header.photo }
             else { try await cache.delete(header.photo.key) }
         }
-        refresh(replace: sourceChanged); changed?()
+        configured = true; refresh(replace: sourceChanged); changed?()
     }
     func refresh(replace: Bool = false) {
         if importing != nil && !replace { return }
@@ -201,7 +204,7 @@ nonisolated enum PNOriginalPhotos {
             try photo.validate(); try PNWire.require(photo.key.providerId == sender, "Catalog provider differs")
             if !selected(photo.key) { continue }
             catalog[photo.key.opaqueId] = photo
-            if try await cache.read(photo.key) != nil { available[photo.key.opaqueId] = photo }
+            if available[photo.key.opaqueId] == nil, try await cache.read(photo.key) != nil { available[photo.key.opaqueId] = photo }
         }
         return missing(sender)
     }
@@ -212,16 +215,24 @@ nonisolated enum PNOriginalPhotos {
         }
         return requests
     }
+    func readOriginal(_ key: PNAssetKey) async throws -> Data? {
+        do {
+            if let bytes = try await cache.read(key) { return bytes }
+        } catch {
+            available.removeValue(forKey: key.opaqueId); changed?(); throw error
+        }
+        available.removeValue(forKey: key.opaqueId); changed?(); return nil
+    }
     func send(_ request: PNAssetRequest, to link: any PNPeerLink) async throws {
         try PNWire.require(selected(request.key), "Photo is no longer selected")
-        guard let photo = available[request.key.opaqueId], let bytes = try await cache.read(request.key) else { throw PNError.invalid("Original is unavailable") }
+        guard let photo = available[request.key.opaqueId], let bytes = try await readOriginal(request.key) else { throw PNError.invalid("Original is unavailable") }
         for offset in stride(from: 0, to: bytes.count, by: 65536) {
             try Task.checkCancellation()
             let end = min(bytes.count, offset + 65536)
             try await link.send(PNPacket("assetChunk", PNChunk(requestId: request.requestId, photo: photo, index: offset / 65536, data: bytes.subdata(in: offset..<end), last: end == bytes.count)))
         }
     }
-    func receive(_ sender: UUID, _ chunk: PNChunk) async throws {
+    @discardableResult func receive(_ sender: UUID, _ chunk: PNChunk) async throws -> Bool {
         try chunk.photo.validate()
         try PNWire.require(requested[chunk.requestId] == chunk.photo.key && sender == chunk.photo.key.providerId && selected(chunk.photo.key)
             && !chunk.data.isEmpty && chunk.data.count <= 65536, "Unexpected original chunk")
@@ -229,13 +240,14 @@ nonisolated enum PNOriginalPhotos {
         do {
             try PNWire.require(item.photo == chunk.photo && item.next == chunk.index && item.bytes.count + chunk.data.count <= item.photo.byteLength, "Original chunk order differs")
             item.bytes.append(chunk.data); item.next += 1
-            if !chunk.last { incoming[chunk.requestId] = item; return }
+            if !chunk.last { incoming[chunk.requestId] = item; return false }
             try await cache.put(item.photo, original: item.bytes)
             if selected(item.photo.key) { available[item.photo.key.opaqueId] = item.photo }
             incoming.removeValue(forKey: chunk.requestId); requested.removeValue(forKey: chunk.requestId); changed?()
         } catch PNError.budget { deferred.insert(item.photo.key.opaqueId); incoming.removeValue(forKey: chunk.requestId); requested.removeValue(forKey: chunk.requestId); changed?() }
         catch { incoming.removeValue(forKey: chunk.requestId); requested.removeValue(forKey: chunk.requestId); throw error }
         requestedAt.removeValue(forKey: chunk.requestId)
+        return true
     }
     func lost(_ peer: UUID) { for (id, key) in requested where key.providerId == peer { requested.removeValue(forKey: id); incoming.removeValue(forKey: id) } }
     func stop() { importing?.cancel(); importing = nil; requested.removeAll(); incoming.removeAll() }

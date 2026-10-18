@@ -89,13 +89,16 @@ private nonisolated final class PNConnectionReady: @unchecked Sendable {
 
 @MainActor final class PNTLSTransport: PNTransport {
     private let local: PNHello; private let identity: PNIdentity
+    private let listenHost: NWEndpoint.Host?
     private var listener: NWListener?
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private var connections: [NWConnection] = []
     private(set) var port = 0
     private var accept: (@MainActor (any PNPeerLink) async -> Void)?
     private let queue = DispatchQueue(label: "PhotoWall.TLS")
-    init(local: PNHello, identity: PNIdentity) { self.local = local; self.identity = identity }
+    init(local: PNHello, identity: PNIdentity, listenHost: NWEndpoint.Host? = nil) {
+        self.local = local; self.identity = identity; self.listenHost = listenHost
+    }
     private func parameters(_ digest: PNCertificateDigest) -> NWParameters {
         let options = NWProtocolTLS.Options()
         sec_protocol_options_set_min_tls_protocol_version(options.securityProtocolOptions, .TLSv12)
@@ -112,9 +115,11 @@ private nonisolated final class PNConnectionReady: @unchecked Sendable {
         self.accept = accept
         // Listener verification runs per accepted TLS connection; obtain that
         // connection's actual leaf again from its negotiated security metadata.
-        let listener = try NWListener(using: parameters(PNCertificateDigest()), on: .any)
+        let settings = parameters(PNCertificateDigest())
+        if let listenHost { settings.requiredLocalEndpoint = .hostPort(host: listenHost, port: .any) }
+        let listener = try NWListener(using: settings, on: .any)
         self.listener = listener
-        listener.newConnectionHandler = { [weak self] connection in Task { @MainActor in
+        listener.newConnectionHandler = { [weak self] connection in Task { @MainActor [weak self] in
             guard let self, self.tasks.count < 32 else { connection.cancel(); return }
             let id = UUID(); self.tasks[id] = Task { @MainActor in
                 defer { self.tasks.removeValue(forKey: id) }
@@ -190,6 +195,8 @@ private nonisolated final class PNConnectionReady: @unchecked Sendable {
     private var source: DispatchSourceRead?
     private var task: Task<Void, Never>?
     private var destination = sockaddr_in()
+    private let discoveryPort: UInt16
+    init(discoveryPort: UInt16 = 47391) { self.discoveryPort = discoveryPort }
     func start(_ hello: PNHello, port: Int) throws {
         let fd = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); try PNWire.require(fd >= 0, "Discovery socket failed")
         socketFD = fd
@@ -197,12 +204,12 @@ private nonisolated final class PNConnectionReady: @unchecked Sendable {
             var reuse: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout.size(ofValue: reuse)))
             setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuse, socklen_t(MemoryLayout.size(ofValue: reuse)))
-            var address = sockaddr_in(); address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size); address.sin_family = sa_family_t(AF_INET); address.sin_port = UInt16(47391).bigEndian; address.sin_addr.s_addr = INADDR_ANY
+            var address = sockaddr_in(); address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size); address.sin_family = sa_family_t(AF_INET); address.sin_port = discoveryPort.bigEndian; address.sin_addr.s_addr = INADDR_ANY
             let bound = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
             try PNWire.require(bound == 0, "Discovery bind failed")
             var membership = ip_mreq(); membership.imr_multiaddr.s_addr = inet_addr("239.255.77.87"); membership.imr_interface.s_addr = INADDR_ANY
             try PNWire.require(setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &membership, socklen_t(MemoryLayout.size(ofValue: membership))) == 0, "Multicast join failed")
-            fcntl(fd, F_SETFL, O_NONBLOCK)
+            try PNWire.require(fcntl(fd, F_SETFL, O_NONBLOCK) == 0, "Discovery nonblocking mode failed")
             destination = address; destination.sin_addr.s_addr = inet_addr("239.255.77.87")
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main); self.source = source
             source.setEventHandler { [weak self] in Task { @MainActor in self?.read(local: hello.peerId) } }; source.resume()

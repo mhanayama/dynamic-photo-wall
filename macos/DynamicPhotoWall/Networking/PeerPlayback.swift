@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor final class PNScenePlanner: PNScenePlanning {
     private let cache: PNPhotoCache
+    var readOriginal: ((PNAssetKey) async throws -> Data?)?
     private var planners: [UUID: WallScenePlanner] = [:]
     init(cache: PNPhotoCache) { self.cache = cache }
     func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? {
@@ -80,7 +81,10 @@ import SwiftUI
         let ids = Set(plan.placements.map(\.displayId)); let samples = max(2, min(24, 64 / max(1, ids.count)))
         var images: [String: DecodedPhoto] = [:]
         for key in Set(plan.placements.map(\.asset)) {
-            if let bytes = try await cache.read(key), let image = await Task.detached(priority: .utility, operation: { PNImageDecode.decode(bytes, maximum: 128) }).value { images[key.opaqueId] = image }
+            let bytes: Data?
+            if let readOriginal { bytes = try await readOriginal(key) }
+            else { bytes = try await cache.read(key) }
+            if let bytes, let image = await Task.detached(priority: .utility, operation: { PNImageDecode.decode(bytes, maximum: 128) }).value { images[key.opaqueId] = image }
         }
         var frames: [PNAmbient] = []
         for id in ids {
@@ -95,7 +99,7 @@ import SwiftUI
                     let frame = CGRect(x: value.x - ox - p.width * (value.scale - 1) * p.centerX, y: value.y - oy - p.height * (value.scale - 1) * p.centerY, width: p.width * value.scale, height: p.height * value.scale)
                     return AmbientCard(image: image.image, frame: frame, opacity: value.opacity, radius: p.cornerRadius)
                 }
-                if let image = await processor.render(cards: cards, viewport: size), let png = PNImageDecode.png(image.image) { frames.append(PNAmbient(at: at, png: png, displayId: id)) }
+                if let image = await processor.render(cards: cards, viewport: size, enhanceColors: false), let png = PNImageDecode.png(image.image) { frames.append(PNAmbient(at: at, png: png, displayId: id)) }
             }
         }
         return frames
@@ -113,179 +117,5 @@ nonisolated enum PNImageDecode {
         let data = NSMutableData()
         guard let output = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(output, image, nil); return CGImageDestinationFinalize(output) ? data as Data : nil
-    }
-}
-
-@MainActor final class PNPlayback: PNPlaybackOutput {
-    struct Frame { var plan: PNScene; var images: [String: DecodedPhoto]; var ambient: [PNAmbientImage]; var start = 0.0; var paused = 0.0 }
-    struct PNAmbientImage { var frame: PNAmbient; var image: NSImage }
-    private let local: UUID; private let clock: any PNClock; private let cache: PNPhotoCache
-    private let enter: () -> Void; private let budget: () -> Int
-    private var prepared: [UUID: Frame] = [:], current: [UUID: Frame] = [:], outgoing: [UUID: Frame] = [:]
-    private var commits: [UUID: PNCommit] = [:], controls: [PNControl] = []
-    private var windows: [String: NSWindow] = [:]
-    private var timer: Task<Void, Never>?, fallback: Task<Void, Never>?
-    private var recovery = PNRecoveryState.listening
-    private var repeating = false
-    private var snapshot: PNSnapshot?
-    private var planner: (any PNScenePlanning)?
-    private let layoutPreview: PNLayoutPreview
-    private var photos: PNPhotoTransfers?
-    private var pausedAt: Double?, stopped = false
-    private(set) var isDisplaying = false
-    var isPaused: Bool { pausedAt != nil }
-    var isStopped: Bool { stopped }
-    var isRunning: Bool { isDisplaying && !stopped && !current.isEmpty }
-    var previewVisible: Bool { layoutPreview.visible }
-    var changed: (() -> Void)?
-    init(local: UUID, clock: any PNClock, cache: PNPhotoCache, budget: @escaping () -> Int, enter: @escaping () -> Void) { self.local = local; self.clock = clock; self.cache = cache; self.budget = budget; self.enter = enter; layoutPreview = PNLayoutPreview(local: local) }
-    func preview(_ plan: PNPreviewPlan) { layoutPreview.schedule(plan); layoutPreview.changed = { [weak self] in self?.changed?() }; startTimer() }
-    func bind(planner: any PNScenePlanning, photos: PNPhotoTransfers) { self.planner = planner; self.photos = photos }
-    func prepare(_ scene: PNScene) async throws {
-        try Task.checkCancellation()
-        try scene.validate(); let own = Set(scene.displays.filter { $0.key.peerId == local }.map(\.id))
-        let keys = Set(scene.placements.filter { $0.displayId == nil || own.contains($0.displayId!) }.map(\.asset))
-        let pixels = min(16_000_000, max(65536, budget() * 1024 * 1024 / 8 / max(1, keys.count)))
-        var images: [String: DecodedPhoto] = [:]
-        for key in keys {
-            guard let bytes = try await cache.read(key), let photo = photos?.available[key.opaqueId] else { throw PNError.invalid("写真キャッシュを準備中です。") }
-            let maximum = min(4096, max(64, Int(sqrt(Double(pixels) * Double(max(photo.pixelWidth, photo.pixelHeight)) / Double(min(photo.pixelWidth, photo.pixelHeight))))))
-            guard let image = await Task.detached(priority: .utility, operation: { PNImageDecode.decode(bytes, maximum: maximum) }).value else { throw PNError.invalid("原寸画像をデコードできません。") }
-            images[key.opaqueId] = image
-            try Task.checkCancellation()
-        }
-        let ambient = scene.ambient.compactMap { frame in NSImage(data: frame.png).map { PNAmbientImage(frame: frame, image: $0) } }
-        prepared = prepared.filter { $0.value.plan.groupId != scene.groupId }; prepared[scene.id] = Frame(plan: scene, images: images, ambient: ambient)
-    }
-    func commit(_ commit: PNCommit) { guard prepared[commit.planId] != nil else { return }; commits[commit.groupId] = commit; startTimer() }
-    func control(_ control: PNControl) { controls.append(control); startTimer() }
-    private func startTimer() {
-        if timer != nil { return }
-        timer = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                self?.render()
-                do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
-            }
-        }
-    }
-    private func elapsed(_ frame: Frame) -> Double {
-        let value = max(0, (pausedAt ?? clock.now) - frame.start - frame.paused)
-        return repeating ? value.truncatingRemainder(dividingBy: frame.plan.duration) : min(value, frame.plan.duration - 0.00001)
-    }
-    private func render() {
-        let now = clock.now
-        layoutPreview.update(now)
-        for command in controls.filter({ $0.effectiveAt <= now }) {
-            switch command.operation {
-            case "pause": pausedAt = pausedAt ?? command.effectiveAt
-            case "resume":
-                if let pausedAt {
-                    let delay = max(0, command.effectiveAt - pausedAt)
-                    for id in current.keys { current[id]?.paused += delay }
-                    for id in outgoing.keys { outgoing[id]?.paused += delay }
-                    for id in commits.keys { commits[id]?.startAt += delay }
-                }; pausedAt = nil
-            case "stop": stopped = true; closeWindows(); current.removeAll(); outgoing.removeAll()
-            case "start": stopped = false; pausedAt = nil
-            default: break
-            }
-            changed?()
-        }
-        controls.removeAll { $0.effectiveAt <= now }
-        if stopped { return }
-        if pausedAt == nil {
-            for commit in commits.values.filter({ $0.startAt <= now }) {
-                guard var frame = prepared.removeValue(forKey: commit.planId) else { commits.removeValue(forKey: commit.groupId); continue }
-                if !isDisplaying { enter(); isDisplaying = true }
-                outgoing[commit.groupId] = current[commit.groupId]; frame.start = commit.startAt; current[commit.groupId] = frame
-                commits.removeValue(forKey: commit.groupId); changed?()
-            }
-        }
-        for frame in current.values {
-            if now - frame.start >= frame.plan.fadeSeconds { outgoing.removeValue(forKey: frame.plan.groupId) }
-            for display in frame.plan.displays where display.selected && display.key.peerId == local {
-                guard let id = UInt32(display.key.displayId), let screen = ScreenDescriptor.availableScreens().first(where: { $0.id == id }) else { continue }
-                let window: NSWindow
-                if let existing = windows[display.id] { window = existing }
-                else {
-                    window = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-                    window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
-                    window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]; window.backgroundColor = .black
-                    window.isOpaque = true; window.hasShadow = false; window.ignoresMouseEvents = true; window.isReleasedWhenClosed = false
-                    window.contentView = PNSceneView(); windows[display.id] = window
-                }
-                window.setFrame(screen.frame, display: true); if !layoutPreview.visible { window.orderFrontRegardless() }
-                if let view = window.contentView as? PNSceneView {
-                    view.display = display; view.layers = outgoing[frame.plan.groupId].map { [($0, elapsed($0), 1.0)] } ?? []
-                    let opacity = frame.plan.fadeSeconds <= 0 ? 1 : min(1, max(0, elapsed(frame) / frame.plan.fadeSeconds))
-                    view.layers.append((frame, elapsed(frame), opacity)); view.needsDisplay = true
-                }
-            }
-        }
-        let active = Set(current.values.flatMap { $0.plan.displays.filter { $0.selected && $0.key.peerId == local }.map(\.id) })
-        for id in windows.keys.filter({ !active.contains($0) }) { windows.removeValue(forKey: id)?.close() }
-        if recovery == .standalone && fallback == nil && current.values.contains(where: { now - $0.start - $0.paused >= $0.plan.duration - 2 }) { rebuildLocal() }
-    }
-    func recover(_ state: PNRecoveryState, wall: PNSnapshot) {
-        for id in current.keys.filter({ id in !wall.displays.contains { $0.selected && $0.key.peerId == local && $0.unit == id } }) { current.removeValue(forKey: id); outgoing.removeValue(forKey: id) }
-        snapshot = wall; guard recovery != state else { return }; recovery = state
-        if [.isolatedRepeating, .standalone].contains(state) { repeating = true }
-        if state == .synchronized { repeating = false }
-        if state == .standalone && isDisplaying { rebuildLocal() }; changed?()
-    }
-    private func rebuildLocal() {
-        guard fallback == nil, let planner, let photos, var wall = snapshot, isDisplaying else { return }
-        wall.displays.removeAll { $0.key.peerId != local }
-        fallback = Task { @MainActor [weak self] in
-            guard let self else { return }; defer { fallback = nil }
-            do {
-                for group in Set(wall.displays.filter(\.selected).map(\.unit)) {
-                    guard let plan = try await planner.prepare(wall: wall, group: group, photos: Array(photos.available.values)), !Task.isCancelled && recovery == .standalone else { continue }
-                    try await prepare(plan); commit(PNCommit(planId: plan.id, groupId: group, startAt: clock.now + 0.25))
-                }
-            } catch { if !Task.isCancelled { WallLog.write("単体表示の準備を再試行します。", error: error) } }
-        }
-    }
-    private func closeWindows() { for w in windows.values { w.orderOut(nil); w.close() }; windows.removeAll() }
-    func stop() { timer?.cancel(); timer = nil; fallback?.cancel(); fallback = nil; layoutPreview.close(); closeWindows(); current.removeAll(); outgoing.removeAll(); prepared.removeAll(); commits.removeAll(); controls.removeAll(); isDisplaying = false }
-}
-
-@MainActor private final class PNSceneView: NSView {
-    var display: PNDisplay?
-    var layers: [(PNPlayback.Frame, Double, Double)] = []
-    override var isFlipped: Bool { true }
-    override func draw(_ dirtyRect: NSRect) {
-        guard let display, let context = NSGraphicsContext.current?.cgContext else { return }
-        NSColor.black.setFill(); bounds.fill()
-        context.saveGState(); defer { context.restoreGState() }
-        context.scaleBy(x: bounds.width / Double(display.width), y: bounds.height / Double(display.height))
-        for (frame, elapsed, opacity) in layers {
-            let plan = frame.plan; let left = plan.displays.map(\.x).min()!, top = plan.displays.map(\.y).min()!
-            let dx = Double(display.x - left), dy = Double(display.y - top)
-            context.saveGState(); context.setAlpha(opacity)
-            context.setFillColor(NSColor(Color(hex: plan.background)).cgColor); context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
-            let ambient = frame.ambient.filter { $0.frame.displayId == display.id || $0.frame.displayId == nil }.sorted { $0.frame.at < $1.frame.at }
-            if let a = ambient.last(where: { $0.frame.at <= elapsed }) ?? ambient.first {
-                let area = a.frame.displayId == nil ? CGRect(x: -dx, y: -dy, width: plan.viewport.width, height: plan.viewport.height) : CGRect(x: 0, y: 0, width: display.width, height: display.height)
-                a.image.draw(in: area, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-                if let b = ambient.first(where: { $0.frame.at > elapsed }) {
-                    let blend = min(1, max(0, (elapsed - a.frame.at) / max(0.001, b.frame.at - a.frame.at)))
-                    b.image.draw(in: area, from: .zero, operation: .sourceOver, fraction: blend, respectFlipped: true, hints: nil)
-                }
-                context.setFillColor(NSColor.black.withAlphaComponent(0.18).cgColor); context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
-            }
-            context.translateBy(x: -dx, y: -dy)
-            for p in plan.placements where p.displayId == nil || p.displayId == display.id {
-                guard let image = frame.images[p.asset.opaqueId]?.image else { continue }; let value = p.evaluate(elapsed)
-                if value.opacity <= 0 { continue }
-                context.saveGState(); context.clip(to: CGRect(x: p.clip.x, y: p.clip.y, width: p.clip.width, height: p.clip.height))
-                context.setAlpha(opacity * value.opacity)
-                let rect = CGRect(x: value.x - p.width * (value.scale - 1) * p.centerX, y: value.y - p.height * (value.scale - 1) * p.centerY, width: p.width * value.scale, height: p.height * value.scale)
-                context.addPath(CGPath(roundedRect: rect, cornerWidth: p.cornerRadius, cornerHeight: p.cornerRadius, transform: nil)); context.clip()
-                context.translateBy(x: rect.minX, y: rect.maxY); context.scaleBy(x: 1, y: -1)
-                context.draw(image, in: CGRect(origin: .zero, size: rect.size)); context.restoreGState()
-            }
-            context.restoreGState()
-        }
     }
 }

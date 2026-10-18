@@ -4,6 +4,7 @@ using DynamicPhotoWall.Core;
 
 var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+if (args.Contains("--ambient-colors")) { AmbientColorVerifier.Run(args, options); return; }
 var generate = args.Contains("--generate");
 var path = args.LastOrDefault(a => a != "--generate" && a != "--generate-delta") ?? "macos/DynamicPhotoWallTests/Fixtures/WindowsParity.json";
 if (args.Contains("--generate-delta") || Path.GetFileName(path) == "WindowsDelta.json")

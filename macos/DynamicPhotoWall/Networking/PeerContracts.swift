@@ -83,6 +83,13 @@ nonisolated struct PNDisplay: Codable, Equatable, Identifiable, Sendable {
     var displayName: String { name.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? "ディスプレイ" }
     var id: String { key.layoutId }
     var unit: UUID { groupId ?? PNWire.id(key.layoutId) }
+    func validate() throws {
+        try PNWire.require((name?.utf16.count ?? 0) <= 256, "Invalid display name")
+        try PNWire.require(key.peerId != .pnZero && !key.displayId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && key.displayId.utf16.count <= 256 && groupId != .pnZero
+            && width > 0 && height > 0 && width <= 32768 && height <= 32768
+            && x >= Int(Int32.min) && x <= Int(Int32.max) && y >= Int(Int32.min) && y <= Int(Int32.max), "Invalid physical display")
+    }
 }
 nonisolated struct PNGroup: Codable, Equatable, Identifiable, Sendable { var id: UUID; var name: String }
 nonisolated struct PNSource: Codable, Equatable, Identifiable, Sendable {
@@ -121,8 +128,9 @@ nonisolated struct PNSnapshot: Codable, Equatable, Sendable {
         try PNWire.require(wallId != .pnZero && sessionId != .pnZero && leaderId != .pnZero && appliedRequests.count <= 1024
             && Set(appliedRequests).count == appliedRequests.count && !appliedRequests.contains(.pnZero) && mergedWalls.count <= 1024 && !mergedWalls.contains(wallId), "Invalid wall identity or history")
         try PNWire.require(Set(groups.map(\.id)).count == groups.count && Set(displays.map(\.key)).count == displays.count, "Duplicate wall members")
+        try PNWire.require(groups.allSatisfy { $0.id != .pnZero && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.utf16.count <= 128 }, "Invalid groups")
         for d in displays {
-            try PNWire.require((d.name?.utf16.count ?? 0) <= 256, "Invalid display name")
+            try d.validate()
             try PNWire.require(d.width > 0 && d.height > 0 && d.width <= 32768 && d.height <= 32768 && !d.key.displayId.isEmpty && d.key.displayId.utf16.count <= 256 && (d.groupId == nil || groups.contains { $0.id == d.groupId }), "Invalid display")
             try PNWire.require(d.x >= Int(Int32.min) && d.x <= Int(Int32.max) && d.y >= Int(Int32.min) && d.y <= Int(Int32.max), "Invalid physical coordinates")
         }
@@ -132,6 +140,7 @@ nonisolated struct PNSnapshot: Codable, Equatable, Sendable {
         }
         try PNWire.require(Set(sources.map { "\($0.providerId):\($0.sourceId)" }).count == sources.count
             && Dictionary(grouping: sources, by: \.providerId).values.allSatisfy { Set($0.map(\.generationId)).count == 1 }, "Conflicting source generations")
+        try PNWire.require(sources.allSatisfy { $0.providerId != .pnZero && $0.sourceId != .pnZero && $0.generationId != .pnZero }, "Invalid photo source selection")
         try playback.validate()
     }
     func prefers(_ next: PNSnapshot) -> Bool {
@@ -195,10 +204,13 @@ nonisolated struct PNScene: Codable, Identifiable, Sendable {
     var id: UUID; var groupId: UUID; var sessionId: UUID; var settingsRevision: Int64; var mode: String
     var viewport: PNSize; var displays: [PNDisplay]; var duration: Double; var fadeSeconds: Double; var background: String; var placements: [PNPlacement]; var ambient: [PNAmbient]
     func validate() throws {
+        try PNWire.require(id != .pnZero && groupId != .pnZero && sessionId != .pnZero && settingsRevision >= 0, "Invalid scene identity")
         try PNWire.require(duration.isFinite && duration > 0 && duration <= 3600 && fadeSeconds >= 0 && fadeSeconds <= duration
             && viewport.width > 0 && viewport.width <= 32768 && viewport.height > 0 && viewport.height <= 32768
             && !displays.isEmpty && displays.count <= 128 && !placements.isEmpty && placements.count <= 1024 && ambient.count <= 64
             && ["gallery", "galleryScroll", "verticalPan", "horizontalPan", "zoom"].contains(mode), "Invalid scene")
+        for display in displays { try display.validate() }
+        try PNWire.require(Set(displays.map(\.key)).count == displays.count && Set(placements.map(\.id)).count == placements.count, "Duplicate scene identity")
         for p in placements {
             try p.asset.validate()
             try PNWire.require([p.width, p.height, p.fromX, p.fromY, p.toX, p.toY, p.fromScale, p.toScale, p.centerX, p.centerY, p.startSeconds, p.motionSeconds, p.visibleFrom, p.visibleUntil, p.fadeSeconds, p.cornerRadius, p.clip.x, p.clip.y, p.clip.width, p.clip.height].allSatisfy(\.isFinite)

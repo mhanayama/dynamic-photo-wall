@@ -69,11 +69,11 @@ WindowsのGalleryは、写真列を詰める配置と、キャッシュ済みの
 
 ## 生成物の置き場所
 
-配布物は両OS共通の `release/` 配下へ置きます。Windowsは `release/windows/win-x64/`、Macは `release/macos/arm64/`。ログ・検証画像・archive・DerivedData・staging等は `artifacts/<OS>/` へ置き、プロジェクトルート直下へ一時ファイルやEXE・ショートカットを出しません。[共通規則](docs/GENERATED-FILES.md)と[開発エージェント向け指示](AGENTS.md)を参照してください。
+配布物は両OS共通の `release/` 配下へ置きます。Windowsは `release/windows/win-x64/`、Macは `release/macos/arm64/`。MacはZIP／DMGに加え、直接起動できる`DynamicPhotoWall.app`も残します。ログ・検証画像・archive・DerivedData・staging等は `artifacts/<OS>/` へ置き、プロジェクトルート直下へ一時ファイルやEXE・ショートカットを出しません。[共通規則](docs/GENERATED-FILES.md)と[開発エージェント向け指示](AGENTS.md)を参照してください。
 
 ## 共通の計画
 
-[Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)と[ネットワーク実装・検証記録](docs/NETWORK-CORE.md)を参照してください。通信・統合画面設定・写真転送・同期表示を追加しました。Windowsの自動検証は実施済みで、Macのビルドと両OS間の実機相互接続は手元のMacで確認する段階です。
+[Mac + Windows：3画面同期 Photo Wall 計画](docs/CROSS-PLATFORM-WALL-PLAN.md)と[ネットワーク実装・検証記録](docs/NETWORK-CORE.md)を参照してください。通信・統合画面設定・写真転送・同期表示を追加しました。Windowsに加え、Macのコンパイル・隔離テストとMac上のSwift／.NET間の相互TLS・multicast検出を確認しました。実際のMac↔Windows間のLAN・同期表示は実機確認が残ります。
 
 [ピア間ネットワーク機能](docs/NETWORK-PEER-DESIGN.md)は、進行役の自動交代と任意ピアからの全体設定に対応する設計です。全ピアの画面を一つの一覧で扱い、画面ごとにピアをまたぐグループへの所属または単独表示を選びます。既に接続されたグループ同士の合流も扱います。
 
@@ -85,4 +85,4 @@ WindowsのGalleryは、写真列を詰める配置と、キャッシュ済みの
 
 切断時はOS通知を送り、残ったピア同士は同期を続けます。進行役が停止した場合は残存ピアから後任を自動選出します。孤立したピアは直前の表示モードを1分間繰り返し、その後スタンドアロンへ移ってもバックグラウンドで通信リトライを継続します。再接続時もOS通知を送り、準備後に共通時刻で表示同期へ戻る設計です。
 
-ネットワーク基盤はWindows Coreから独立した`shared/DynamicPhotoWall.Networking`へ分離しました。Mac側は同じ通信契約と部品の責任分担をSwiftで実装し、共通fixtureで照合します。Macの検証手順は`bash macos/scripts/verify.sh --unit-only`です。新しいネットワーク機能は、Macのコンパイルと相互接続が確認できるまで完成・配布済みとは扱いません。
+ネットワーク基盤はWindows Coreから独立した`shared/DynamicPhotoWall.Networking`へ分離しました。Mac側は同じ通信契約と部品の責任分担をSwiftで実装し、共通fixtureで照合します。Macの検証手順は`bash macos/scripts/verify.sh --unit-only`、通信の相互検証は`bash macos/scripts/verify-network-interop.sh --with-discovery`です。[Mac検証記録](macos/docs/NETWORK-TEST-RESULTS-2026-10-18.md)を参照してください。新しいネットワーク機能は、両OSの実機相互接続が確認できるまで検証済み完成物として配布しません。

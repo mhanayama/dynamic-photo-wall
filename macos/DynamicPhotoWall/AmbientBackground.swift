@@ -60,8 +60,9 @@ actor AmbientProcessor {
     private let context = CIContext(options: [.useSoftwareRenderer: true])
     private var previous: Data?
     private var previousSize = CGSize.zero
+    private var previousEnhanced = true
 
-    func render(cards: [AmbientCard], viewport: CGSize) -> DecodedPhoto? {
+    func render(cards: [AmbientCard], viewport: CGSize, enhanceColors: Bool = true) -> DecodedPhoto? {
         guard !Task.isCancelled, viewport.width > 0, viewport.height > 0 else { return nil }
         let scale = 160 / max(viewport.width, viewport.height)
         let width = max(1, Int(ceil(viewport.width * scale))), height = max(1, Int(ceil(viewport.height * scale)))
@@ -98,10 +99,11 @@ actor AmbientProcessor {
             canvas.draw(blurred, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         guard !Task.isCancelled else { return nil }
-        if previousSize == CGSize(width: width, height: height), let previous, previous.count == result.count {
+        if enhanceColors { AmbientColors.enhance(&result) }
+        if previousEnhanced == enhanceColors, previousSize == CGSize(width: width, height: height), let previous, previous.count == result.count {
             for i in result.indices { result[i] = UInt8((Int(result[i]) + Int(previous[i])) / 2) }
         }
-        previous = Data(result); previousSize = CGSize(width: width, height: height)
+        previous = Data(result); previousSize = CGSize(width: width, height: height); previousEnhanced = enhanceColors
         return Self.image(result, width: width, height: height).map { DecodedPhoto(image: $0) }
     }
 

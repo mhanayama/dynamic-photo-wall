@@ -216,7 +216,8 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         switch packet.type {
         case "inventory":
             let inventory = try packet.decode(PNInventory.self)
-            try PNWire.require(inventory.displays.allSatisfy { ($0.name?.utf16.count ?? 0) <= 256 }, "Invalid display name")
+            try PNWire.require(inventory.displays.count <= 128 && Set(inventory.displays.map(\.key)).count == inventory.displays.count, "Invalid display inventory")
+            for display in inventory.displays { try display.validate() }
             try PNWire.require(inventory.candidate.id == peer && inventory.displays.allSatisfy { $0.key.peerId == peer } && inventory.sources.allSatisfy { $0.providerId == peer }, "Inventory identity differs")
             var endpoint = inventory.candidate; endpoint.host = link.remoteHost; targets[peer] = endpoint; candidates[peer] = endpoint
             displayInventories[peer] = Set(inventory.displays.map(\.key))
@@ -256,8 +257,10 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         case "catalog": for request in try await photos.accept(peer, packet.decode(PNCatalog.self)) { try await link.send(PNPacket("assetRequest", request)) }
         case "assetRequest": let request = try packet.decode(PNAssetRequest.self); background { [weak self] in try await self?.photos.send(request, to: link) }
         case "assetChunk":
-            try await photos.receive(peer, packet.decode(PNChunk.self))
-            for request in photos.missing(peer) { try await link.send(PNPacket("assetRequest", request)) }
+            if try await photos.receive(peer, packet.decode(PNChunk.self)) {
+                for request in photos.missing(peer) { try await link.send(PNPacket("assetRequest", request)) }
+            }
+            return // Transfers notify after a whole photo, rather than each chunk.
         case "scenePrepare":
             guard peer == snapshot.leaderId else { break }
             let scene = try packet.decode(PNScene.self); try scene.validate()
@@ -267,9 +270,9 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             if scene.displays.contains(where: { $0.key.peerId == local.peerId }) {
                 background { [weak self] in
                     guard let self else { return }
-                    let keys = scene.placements.filter { p in p.displayId == nil || scene.displays.contains { $0.key.peerId == local.peerId && $0.id == p.displayId } }.map(\.asset)
+                    let keys = scene.placements.filter { p in p.displayId == nil || scene.displays.contains { $0.key.peerId == self.local.peerId && $0.id == p.displayId } }.map(\.asset)
                     let began = clock.elapsed
-                    while !keys.allSatisfy({ photos.available[$0.opaqueId] != nil }) {
+                    while !keys.allSatisfy({ self.photos.available[$0.opaqueId] != nil }) {
                         try PNWire.require(clock.elapsed - began < 30, "Photo preparation timed out"); try await Task.sleep(for: .milliseconds(100))
                     }
                     guard scene.sessionId == snapshot.sessionId && scene.settingsRevision == snapshot.revision else { return }

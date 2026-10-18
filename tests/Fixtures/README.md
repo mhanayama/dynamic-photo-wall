@@ -16,3 +16,5 @@ C#の`NetworkCore.Tests`とSwiftの`NetworkModuleTests`が読み込む。Swift�
 .\.tools\dotnet\dotnet.exe run --project tests/NetworkCore.Tests -c Release -- --export-fixtures artifacts/windows/network-vectors
 Copy-Item artifacts/windows/network-vectors/NetworkWire.v1.json tests/Fixtures/NetworkWire.v1.json
 ```
+
+`AmbientColors.v1.json`は背景補正の共通12ケース。premultiplied RGBAで色相・無彩色・ハイライト・アルファを照合する。期待値はWindows本体の`AmbientPixels.cs`をGUI依存なしでリンクしたParityVerifierから生成し、Swiftの`AmbientColors`と同じfixtureを読む。通常確認は`dotnet run --project tests/ParityVerifier -- --ambient-colors tests/Fixtures/AmbientColors.v1.json`。再生成は`--generate artifacts/<OS>/.../AmbientColors.generated.json`を追加し、差分確認後にfixtureへコピーする。

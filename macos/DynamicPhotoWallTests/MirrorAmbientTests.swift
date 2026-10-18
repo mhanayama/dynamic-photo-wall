@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import Testing
 @testable import DynamicPhotoWall
 
@@ -19,9 +20,12 @@ import Testing
     }
     @Test func allMotionModesMirrorTheSameAssetOnHorizontalAndVerticalGroups() throws {
         for vertical in [false, true] {
-            let displays = (0..<4).map { i in WallDisplay(id: UInt32(i + 1), name: "Display \(i)",
-                x: vertical ? 0 : Double(i * 2000), y: vertical ? Double(i * 2000) : 0,
-                width: vertical ? 1200 : 2000, height: vertical ? 2000 : 1200, groupID: "g") }
+            let displays: [WallDisplay] = (0..<4).map { i in
+                let offset = Double(i * 2000)
+                return WallDisplay(id: UInt32(i + 1), name: "Display \(i)",
+                    x: vertical ? 0.0 : offset, y: vertical ? offset : 0.0,
+                    width: vertical ? 1200.0 : 2000.0, height: vertical ? 2000.0 : 1200.0, groupID: "g")
+            }
             let group = try #require(DisplayLayout.groups(displays).first)
             for mode in [WallMode.verticalPan, .horizontalPan, .zoom] {
                 var settings = WallSettings(); settings.galleryEnabled = false; settings.galleryScrollEnabled = false

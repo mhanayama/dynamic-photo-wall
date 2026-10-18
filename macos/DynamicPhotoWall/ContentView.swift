@@ -6,6 +6,9 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             AppHeaderView(isPlaying: model.isPlaying, stateLabel: model.playbackStateLabel)
+            if model.permissions != nil {
+                Button("アクセス権限を確認…", action: model.showPermissions)
+            }
 
             TabView {
                 DisplaySettingsView(model: model)
@@ -34,7 +37,7 @@ struct ContentView: View {
                 AppearanceSettingsView(settings: $model.settings)
                     .tabItem { Label("見た目", systemImage: "paintpalette") }
                 if let network = model.network {
-                    NetworkSettingsView(network: network).tabItem { Label("ネットワーク", systemImage: "network") }
+                    NetworkSettingsView(network: network, showPermissions: model.showPermissions).tabItem { Label("ネットワーク", systemImage: "network") }
                 }
             }
 
@@ -46,6 +49,11 @@ struct ContentView: View {
         .padding(24)
         .frame(minWidth: 900, idealWidth: 1040, minHeight: 680, idealHeight: 800)
         .onChange(of: model.settings) { _, _ in model.network?.optionsEdited(model.settings) }
+        .sheet(isPresented: Binding(get: { model.permissions?.presented == true }, set: { model.permissions?.presented = $0 })) {
+            if let permissions = model.permissions {
+                StartupPermissionsView(permissions: permissions, completed: model.resumeAfterPermissions)
+            }
+        }
     }
 }
 
@@ -260,36 +268,21 @@ private struct CompositionSettingsView: View {
     var body: some View {
         Form {
             Section("表示モード") {
-                HStack {
-                    Toggle("Gallery — 複数の写真を並べる", isOn: $settings.galleryEnabled)
-                    Spacer()
-                    Toggle("ディスプレイごとに表示", isOn: $settings.galleryPerDisplay)
-                        .accessibilityIdentifier("galleryPerDisplay")
-                }
-                HStack {
-                    Toggle("Scrolling Gallery — 新しい写真が横から流れてくる", isOn: $settings.galleryScrollEnabled)
-                    Spacer()
-                    Toggle("ディスプレイごとに表示", isOn: $settings.galleryScrollPerDisplay)
-                        .accessibilityIdentifier("galleryScrollPerDisplay")
-                }
-                HStack {
-                    Toggle("Vertical Pan — 縦写真を上下に見せる", isOn: $settings.verticalPanEnabled)
-                    Spacer()
-                    Toggle("ディスプレイごとに表示", isOn: $settings.verticalPanPerDisplay)
-                        .accessibilityIdentifier("verticalPanPerDisplay")
-                }
-                HStack {
-                    Toggle("Horizontal Pan — パノラマを左右に見せる", isOn: $settings.horizontalPanEnabled)
-                    Spacer()
-                    Toggle("ディスプレイごとに表示", isOn: $settings.horizontalPanPerDisplay)
-                        .accessibilityIdentifier("horizontalPanPerDisplay")
-                }
-                HStack {
-                    Toggle("Cinematic Zoom — ゆっくり拡大・縮小", isOn: $settings.zoomEnabled)
-                    Spacer()
-                    Toggle("ディスプレイごとに表示", isOn: $settings.zoomPerDisplay)
-                        .accessibilityIdentifier("zoomPerDisplay")
-                }
+                ModeSettingsRow(title: "Gallery", description: "複数の写真を並べる",
+                    enabled: $settings.galleryEnabled, perDisplay: $settings.galleryPerDisplay,
+                    displayMethodID: "galleryPerDisplay")
+                ModeSettingsRow(title: "Scrolling Gallery", description: "新しい写真が横から流れてくる",
+                    enabled: $settings.galleryScrollEnabled, perDisplay: $settings.galleryScrollPerDisplay,
+                    displayMethodID: "galleryScrollPerDisplay")
+                ModeSettingsRow(title: "Vertical Pan", description: "縦写真を上下に見せる",
+                    enabled: $settings.verticalPanEnabled, perDisplay: $settings.verticalPanPerDisplay,
+                    displayMethodID: "verticalPanPerDisplay")
+                ModeSettingsRow(title: "Horizontal Pan", description: "パノラマを左右に見せる",
+                    enabled: $settings.horizontalPanEnabled, perDisplay: $settings.horizontalPanPerDisplay,
+                    displayMethodID: "horizontalPanPerDisplay")
+                ModeSettingsRow(title: "Cinematic Zoom", description: "ゆっくり拡大・縮小",
+                    enabled: $settings.zoomEnabled, perDisplay: $settings.zoomPerDisplay,
+                    displayMethodID: "zoomPerDisplay")
             }
 
             Section("抽選ウェイト（0で抽選対象から除外）") {
@@ -310,6 +303,38 @@ private struct CompositionSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct ModeSettingsRow: View {
+    let title: String
+    let description: String
+    @Binding var enabled: Bool
+    @Binding var perDisplay: Bool
+    let displayMethodID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(title, isOn: $enabled)
+                .toggleStyle(.checkbox)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Picker("表示方法", selection: $perDisplay) {
+                    Text("グループ全体につなぐ").tag(false)
+                    Text("ディスプレイごとに表示").tag(true)
+                }
+                .pickerStyle(.menu)
+                .fixedSize(horizontal: true, vertical: false)
+                .disabled(!enabled)
+                .accessibilityLabel("\(title)の表示方法")
+                .accessibilityIdentifier(displayMethodID)
+            }
+            .padding(.leading, 20)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
     }
 }
 

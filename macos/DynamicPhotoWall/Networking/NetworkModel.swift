@@ -6,7 +6,7 @@ import UserNotifications
 @MainActor final class PNSystemNotifications: NSObject, PNNotifications, UNUserNotificationCenterDelegate {
     func disconnected(_ name: String) { deliver("Photo Wall の接続が切れました", "\(name) へ再接続しています。") }
     func reconnected(_ name: String) { deliver("Photo Wall に再接続しました", "\(name) との表示同期を準備しています。") }
-    func requestPermission() { UNUserNotificationCenter.current().delegate = self; Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) } }
+    func install() { UNUserNotificationCenter.current().delegate = self }
     private func deliver(_ title: String, _ body: String) {
         let content = UNMutableNotificationContent(); content.title = title; content.body = body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil), withCompletionHandler: nil)
@@ -28,11 +28,13 @@ import UserNotifications
     private(set) var connected: Set<UUID> = []
     private(set) var connectedDisplays: Set<PNDisplayKey> = []
     var showDisconnectedDisplays = false
+    private(set) var keychainNeedsAuthorization = false
     @ObservationIgnored private(set) var session: PNPeerSession?
     @ObservationIgnored private var output: PNPlayback?
     @ObservationIgnored private var identity: PNIdentity?
     @ObservationIgnored private let root: URL
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let secretStore: (String, Bool) -> any PNSecretStore
     @ObservationIgnored private let settings: () -> WallSettings
     @ObservationIgnored private let displayValues: () -> [WallDisplay]
     @ObservationIgnored private let folders: () -> [PhotoFolder]
@@ -44,22 +46,45 @@ import UserNotifications
     @ObservationIgnored private let playbackState: (Bool, Bool) -> Void
     @ObservationIgnored private let notification = PNSystemNotifications()
     @ObservationIgnored private var refreshing = false
-    private(set) var isDisplaying = false, isRunning = false, isPaused = false, previewVisible = false
+    @ObservationIgnored private let viewUpdates = PNViewUpdates()
+    private(set) var isDisplaying = false
+    private(set) var isRunning = false
+    private(set) var isPaused = false
+    private(set) var previewVisible = false
     init(defaults: UserDefaults, root: URL = RuntimePaths.root.appending(path: "network"), settings: @escaping () -> WallSettings,
          displays: @escaping () -> [WallDisplay], folders: @escaping () -> [PhotoFolder], albums: @escaping () -> [PhotoAlbum],
          assets: @escaping () -> [PhotoAsset], enter: @escaping () -> Void, sharedSettings: @escaping (PNOptions) -> Void,
-         leave: @escaping () -> Void = {}, playbackState: @escaping (Bool, Bool) -> Void = { _, _ in }) {
+         leave: @escaping () -> Void = {}, playbackState: @escaping (Bool, Bool) -> Void = { _, _ in },
+         secretStore: @escaping (String, Bool) -> any PNSecretStore = { PNKeychain(service: $0, allowInteraction: $1) }) {
         self.defaults = defaults; self.root = root; self.settings = settings; displayValues = displays; self.folders = folders
         self.albums = albums; self.assets = assets; self.enter = enter; self.sharedSettings = sharedSettings
         self.leave = leave; self.playbackState = playbackState
+        self.secretStore = secretStore
     }
     func restore() { if defaults.bool(forKey: "networkOnline") { Task { await setOnline(true) } } }
+    func prepareKeychain(allowInteraction: Bool) throws {
+        let service = "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))"
+        let store = secretStore(service, allowInteraction)
+        _ = try PNIdentity(secrets: store)
+        let trusted = try store.read("trusted-peers-v1") ?? PNWire.encode([String: String]())
+        try store.write("trusted-peers-v1", trusted)
+    }
     func setOnline(_ enabled: Bool) async {
+        await setOnline(enabled, allowKeychainInteraction: false)
+    }
+    func authorizeKeychain() async {
+        guard keychainNeedsAuthorization && !busy else { return }
+        if online { await setOnline(false) }
+        await setOnline(true, allowKeychainInteraction: true)
+    }
+    private func setOnline(_ enabled: Bool, allowKeychainInteraction: Bool) async {
         guard enabled != online && !busy else { return }; busy = true; defer { busy = false }
+        keychainNeedsAuthorization = false
         if !enabled { session?.stop(); session = nil; output = nil; identity = nil; online = false; isDisplaying = false; isRunning = false; isPaused = false; previewVisible = false; clearSessionViewState(); status = "オフライン"; defaults.set(false, forKey: "networkOnline"); leave(); return }
         do {
-            let secrets = PNKeychain(service: "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))")
-            let identity = try PNIdentity(secrets: secrets); self.identity = identity
+            let service = "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))"
+            let identity = try PNIdentity(secrets: secretStore(service, false),
+                initialSecrets: allowKeychainInteraction ? secretStore(service, true) : nil); self.identity = identity
             let hello = PNHello(peerId: identity.peerId, name: hostName)
             let localSettings = settings(); let values = displayValues()
             let groups = Set(values.compactMap(\.groupID)).sorted().map { PNGroup(id: PNWire.id("\(identity.peerId.pnHex):\($0)"), name: $0) }
@@ -76,14 +101,25 @@ import UserNotifications
             let session = try PNPeerSession(local: hello, displays: displays.filter { present.contains($0.key.displayId) }, transport: PNTLSTransport(local: hello, identity: identity), discovery: PNLanDiscovery(),
                 persistence: PNStateStore(file: root.appending(path: "wall.encrypted"), key: identity.cacheKey), provider: provider, cache: cache, planner: planner, output: output, clock: clock, notifications: notification, initial: initial)
             self.session = session; output.bind(planner: planner, photos: session.photos)
-            output.changed = { [weak self] in self?.refresh() }; session.changed = { [weak self] in self?.refresh() }
-            session.failed = { [weak self] error in self?.status = error.localizedDescription; WallLog.write("ネットワーク処理を再試行します。", error: error) }
-            try await session.start(); online = true; defaults.set(true, forKey: "networkOnline"); notification.requestPermission(); refresh()
-        } catch { session?.stop(); session = nil; output = nil; identity = nil; clearSessionViewState(); status = error.localizedDescription }
+            planner.readOriginal = { [weak photos = session.photos] key in try await photos?.readOriginal(key) }
+            output.changed = { [weak self] in self?.scheduleRefresh() }; session.changed = { [weak self] in self?.scheduleRefresh() }
+            session.failed = { [weak self] error in
+                if (error as? PNKeychainError)?.needsAuthorization == true { self?.keychainNeedsAuthorization = true }
+                if self?.keychainNeedsAuthorization != true { self?.status = error.localizedDescription }
+                WallLog.write("ネットワーク処理を再試行します。", error: error)
+            }
+            try await session.start(); online = true; defaults.set(true, forKey: "networkOnline"); notification.install(); refresh()
+        } catch {
+            session?.stop(); session = nil; output = nil; identity = nil; clearSessionViewState()
+            keychainNeedsAuthorization = (error as? PNKeychainError)?.needsAuthorization == true
+            status = error.localizedDescription
+        }
     }
     private func clearSessionViewState() {
+        viewUpdates.cancel()
         connected = []; connectedDisplays = []; candidates = []; sources = []; draft = nil; dirty = false
     }
+    private func scheduleRefresh() { viewUpdates.request { [weak self] in self?.refresh() } }
     private func refresh() {
         guard let session else { return }
         refreshing = true; defer { refreshing = false }
@@ -101,16 +137,48 @@ import UserNotifications
             for index in value.displays.indices {
                 if let current = session.snapshot.displays.first(where: { $0.key == value.displays[index].key }) { value.displays[index].name = current.name }
             }
-            draft = value
+            if draft != value { draft = value }
         }
+        if keychainNeedsAuthorization { status = "Keychainへのアクセス許可が必要です。ネットワーク設定から許可してください。"; return }
         status = connected.isEmpty ? "接続待機中" : "\(connected.count + 1)ピア接続 · \(session.photos.available.count)枚準備済み · \(session.playbackState.rawValue)"
         if session.photos.deferredCount > 0 { status += " · 容量上限で\(session.photos.deferredCount)枚待機" }
     }
     func peerName(_ peerId: UUID) -> String { session?.peerName(peerId) ?? "未接続の端末" }
     func isDisplayConnected(_ key: PNDisplayKey) -> Bool { connectedDisplays.contains(key) }
+    nonisolated static func visibleDisplays(_ displays: [PNDisplay], connected: Set<PNDisplayKey>, showDisconnected: Bool) -> [PNDisplay] {
+        displays.filter { showDisconnected || connected.contains($0.key) }
+    }
+    func visibleDisplays(in snapshot: PNSnapshot) -> [PNDisplay] {
+        Self.visibleDisplays(snapshot.displays, connected: connectedDisplays, showDisconnected: showDisconnectedDisplays)
+    }
     func markDirty() { if !refreshing && online { dirty = true } }
     func optionsEdited(_ settings: WallSettings) { if let draft, PNOptions(settings) != draft.playback { markDirty() } }
     func reload() { dirty = false; draft = nil; refresh() }
+    func displayBinding<T>(_ display: PNDisplay, wallId: UUID, _ path: WritableKeyPath<PNDisplay, T>) -> Binding<T> {
+        // SwiftUI can still read an old control after refresh removes its row.
+        // Resolve the current value by identity; never retain an array index.
+        Binding(get: { [weak self] in
+            guard let draft = self?.draft, draft.wallId == wallId,
+                  let current = draft.displays.first(where: { $0.key == display.key }) else { return display[keyPath: path] }
+            return current[keyPath: path]
+        }, set: { [weak self] value in
+            guard let self, var draft = self.draft, draft.wallId == wallId,
+                  let index = draft.displays.firstIndex(where: { $0.key == display.key }) else { return }
+            draft.displays[index][keyPath: path] = value
+            self.draft = draft; self.markDirty()
+        })
+    }
+    func addGroup(wallId: UUID) {
+        guard var draft, draft.wallId == wallId else { return }
+        draft.groups.append(PNGroup(id: UUID(), name: "グループ\(draft.groups.count + 1)"))
+        self.draft = draft; markDirty()
+    }
+    func removeGroup(_ id: UUID, wallId: UUID) {
+        guard var draft, draft.wallId == wallId, draft.groups.contains(where: { $0.id == id }) else { return }
+        draft.groups.removeAll { $0.id == id }
+        for index in draft.displays.indices where draft.displays[index].groupId == id { draft.displays[index].groupId = nil }
+        self.draft = draft; markDirty()
+    }
     func selectSource(_ source: PNSource, enabled: Bool) {
         guard var value = draft else { return }
         value.sources.removeAll { $0.providerId == source.providerId && $0.sourceId == source.sourceId }
@@ -146,12 +214,23 @@ import UserNotifications
 
 struct NetworkSettingsView: View {
     @Bindable var network: PNNetworkModel
+    var showPermissions: (() -> Void)?
     var body: some View {
         Form {
             Section("ピア接続") {
                 Text("このMac: \(network.hostName)").textSelection(.enabled)
-                Toggle("オンラインモード", isOn: Binding(get: { network.online }, set: { enabled in Task { await network.setOnline(enabled) } })).disabled(network.busy)
+                Toggle("オンラインモード", isOn: Binding(get: { network.online }, set: { enabled in Task { await network.setOnline(enabled) } }))
+                    .disabled(network.busy).accessibilityIdentifier("network-online")
                 Text(network.status).foregroundStyle(.secondary)
+                if network.keychainNeedsAuthorization {
+                    Text("通信と写真キャッシュの暗号鍵を保護するためにKeychainを使います。下のボタンを押すとmacOSの確認が表示される場合があります。")
+                        .foregroundStyle(.secondary)
+                    Button("アクセス権限を確認して再試行") {
+                        if let showPermissions { showPermissions() }
+                        else { Task { await network.authorizeKeychain() } }
+                    }
+                        .disabled(network.busy)
+                }
                 ForEach(network.candidates) { peer in HStack { Label(peer.hello.name, systemImage: "desktopcomputer"); Spacer(); Button("接続") { network.connect(peer) } } }
             }
             Section("共有する写真ソース") {
@@ -176,27 +255,25 @@ struct NetworkDisplaySettingsView: View {
                 if layout { Button(network.previewVisible ? "テストパターンを停止" : "テストパターンを表示", action: network.togglePreview) }
                 if layout { NetworkLayoutPreview(network: network).frame(height: 240) }
                 if let snapshot = network.draft {
-                    ForEach(snapshot.displays.indices.filter { network.showDisconnectedDisplays || network.isDisplayConnected(snapshot.displays[$0].key) }, id: \.self) { index in
+                    ForEach(network.visibleDisplays(in: snapshot)) { display in
                         HStack {
-                            Toggle("\(network.peerName(snapshot.displays[index].key.peerId)) / \(snapshot.displays[index].displayName)", isOn: binding(index, \.selected))
-                            Text(network.isDisplayConnected(snapshot.displays[index].key) ? "接続中" : "未接続").font(.caption).foregroundStyle(.secondary)
-                            Picker("所属", selection: binding(index, \.groupId)) {
+                            Toggle("\(network.peerName(display.key.peerId)) / \(display.displayName)", isOn: network.displayBinding(display, wallId: snapshot.wallId, \.selected))
+                            Text(network.isDisplayConnected(display.key) ? "接続中" : "未接続").font(.caption).foregroundStyle(.secondary)
+                            Picker("所属", selection: network.displayBinding(display, wallId: snapshot.wallId, \.groupId)) {
                                 Text("単独表示").tag(nil as UUID?)
                                 ForEach(snapshot.groups) { Text($0.name).tag(Optional($0.id)) }
                             }.frame(width: 180)
                             if layout {
-                                TextField("X", value: binding(index, \.x), format: .number).frame(width: 70)
-                                TextField("Y", value: binding(index, \.y), format: .number).frame(width: 70)
+                                TextField("X", value: network.displayBinding(display, wallId: snapshot.wallId, \.x), format: .number).frame(width: 70)
+                                TextField("Y", value: network.displayBinding(display, wallId: snapshot.wallId, \.y), format: .number).frame(width: 70)
                             }
                         }
                     }
                     if layout {
-                        Button("グループを追加") { network.draft?.groups.append(PNGroup(id: UUID(), name: "グループ\(snapshot.groups.count + 1)")); network.markDirty() }
+                        Button("グループを追加") { network.addGroup(wallId: snapshot.wallId) }
                         ForEach(snapshot.groups) { group in HStack {
                             Text(group.name); Button("削除", role: .destructive) {
-                                network.draft?.groups.removeAll { $0.id == group.id }
-                                for index in snapshot.displays.indices where snapshot.displays[index].groupId == group.id { network.draft?.displays[index].groupId = nil }
-                                network.markDirty()
+                                network.removeGroup(group.id, wallId: snapshot.wallId)
                             }
                         } }
                     }
@@ -206,17 +283,15 @@ struct NetworkDisplaySettingsView: View {
             }
         }.formStyle(.grouped)
     }
-    private func binding<T>(_ index: Int, _ path: WritableKeyPath<PNDisplay, T>) -> Binding<T> {
-        Binding(get: { network.draft!.displays[index][keyPath: path] }, set: { network.draft?.displays[index][keyPath: path] = $0; network.markDirty() })
-    }
 }
 
 private struct NetworkLayoutPreview: View {
     @Bindable var network: PNNetworkModel
-    @State private var start: (id: String, x: Int, y: Int, left: Int, top: Int, scale: Double)?
+    @State private var start: (wallId: UUID, id: String, x: Int, y: Int, left: Int, top: Int, scale: Double)?
     var body: some View {
         GeometryReader { proxy in
-            let displays = network.draft?.displays.filter { $0.selected && (network.showDisconnectedDisplays || network.isDisplayConnected($0.key)) } ?? []
+            let snapshot = network.draft
+            let displays = snapshot.map { network.visibleDisplays(in: $0).filter(\.selected) } ?? []
             let left = start?.left ?? displays.map(\.x).min() ?? 0, top = start?.top ?? displays.map(\.y).min() ?? 0
             let width = max(1, (displays.map { $0.x + $0.width }.max() ?? 1) - left)
             let height = max(1, (displays.map { $0.y + $0.height }.max() ?? 1) - top)
@@ -230,8 +305,9 @@ private struct NetworkLayoutPreview: View {
                         .opacity(network.isDisplayConnected(display.key) ? 1 : 0.5)
                         .border(.secondary).offset(x: 12 + Double(display.x - left) * scale, y: 12 + Double(display.y - top) * scale)
                         .gesture(DragGesture(coordinateSpace: .named("networkDisplayLayout")).onChanged { value in
-                            if start == nil { start = (display.id, display.x, display.y, left, top, scale) }
-                            guard let origin = start, let index = network.draft?.displays.firstIndex(where: { $0.id == origin.id }) else { return }
+                            if start == nil, let wallId = snapshot?.wallId { start = (wallId, display.id, display.x, display.y, left, top, scale) }
+                            guard let origin = start, network.draft?.wallId == origin.wallId,
+                                  let index = network.draft?.displays.firstIndex(where: { $0.id == origin.id }) else { return }
                             let moving = CGRect(x: Double(origin.x) + value.translation.width / origin.scale,
                                 y: Double(origin.y) + value.translation.height / origin.scale, width: Double(display.width), height: Double(display.height))
                             let others = displays.filter { $0.id != origin.id }.map { CGRect(x: Double($0.x), y: Double($0.y), width: Double($0.width), height: Double($0.height)) }

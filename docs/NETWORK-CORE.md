@@ -1,6 +1,6 @@
 # ピア間ネットワークの実装と検証
 
-更新: 2026-10-18。[基本設計](NETWORK-PEER-DESIGN.md)に沿って、通信から設定UI・同期表示まで接続した。Windowsのビルドと自動検証は実施済み。Swiftのネイティブ実装と部品テストも追加したが、このWindows環境にはXcodeがないため、**Macのビルド・Mac↔Windowsの実機相互接続は未検証**。完成・配布の判定には後述のMac検証を残す。
+更新: 2026-10-18。[基本設計](NETWORK-PEER-DESIGN.md)に沿って、通信から設定UI・同期表示まで接続した。Windowsのビルドと自動検証に加え、Macでコンパイル修正・隔離テストとSwift／.NETの通信検証を実施した。**Mac上の相互TLS・multicast検出と、実際のMac↔Windows間のLAN・画面表示は別の検証**。[Macの結果](../macos/docs/NETWORK-TEST-RESULTS-2026-10-18.md)と後述の実機確認項目を参照。
 
 ## モジュールと責任境界
 
@@ -24,11 +24,15 @@ Windows固有の接続点は[Networking/](../windows/src/DynamicPhotoWall/Networ
 
 Windowsの計画先読みは`SharedSceneBuilder`で画像・背景・表示ツリーだけを準備し、ウィンドウを生成しない。`PlaybackSurfaceLayout`がローカル出力の再利用を判断し、`WindowsPlaybackOutput`は既存の出力を保持して計画を交換する。遠隔ピアが消えて共通キャンバスの原点・幅が変わっても、ローカルの画面が同じなら再生成しない。旧・新のツリーは各計画に属する切り出し座標を持つ。`PhotoRenderer`は旧ツリーと表示ビューを残して新表示を重ね、フェード完了後に旧表示を解放する。孤立時の繰り返しも同じ切り替えとし、Galleryの最終写真は新表示が覆うまで保持する。
 
+Macの`PNPlayback`はデコード済みの計画と物理出力を分離する。出力は`PNDisplayKey`で保持し、準備ではウィンドウを作らない。新表示を重ねて不透明になった後に前表示を解放し、連続切替では実際に見えている重なりを維持する。旧表示は旧計画の座標で切り出す。孤立時も同じ重ね替えを使い、Galleryの終端写真を準備待ちの間に消さない。単体移行・再同期・グループ変更だけでは出力を閉じず、停止・明示的な表示対象解除・物理画面の消失で閉じる。最初の共有表示も、未描画の出力は透明なままとし、全出力の実際の描画完了を待って旧ローカル表示を退ける。
+
 写真保存は`IPhotoCache`を介して転送状態から分離する。UIはロック不要な`PhotoTransferService.Progress`だけを枚数表示に使う。キャッシュI/O中に`Available`や`Catalog`をUIから列挙しない。`CoalescedAction`が通知を一つにまとめ、Windowsの`DispatcherUpdateQueue`が100msごと・Background優先度で画面へ反映する。写真データの受信ごとにUI処理を積まず、写真1枚の完了時に進捗と次の取得要求を更新する。配置プレビュー・接続候補・設定のバインドは内容が変わった時だけ更新する。
 
 同期開始と共有設定の適用はワーカー上で行い、開始元のUI同期コンテキストを定期処理へ引き継がない。同じソース設定の再適用ではディスク索引を再走査せず、有効なキャッシュの再通知では原データを復号し直さない。原データの認証・ハッシュ検証は実際の読込み時に行い、破損・消失を検出したら未取得へ戻して再取得する。Windows写真提供側も、起動後に原データのハッシュがキャッシュと一致すれば既存の顔metadataを再利用する。
 
 Mac側は[Networking/](../macos/DynamicPhotoWall/Networking)に、Keychain／Network.framework／PhotoKit／Vision／AppKitのアダプターを置く。`NetworkModel`が組立てとUI、`PeerSettingsAdapter`が既存の設定モデルとの変換を担当する。データ契約へフォルダー権限・PhotoKit識別子・AppModelを持ち込まない。
+
+MacのキャッシュI/Oは専用actor、写真の読込み・解析はバックグラウンド処理を使う。`PNViewUpdates`は画面への通知を100msごとに集約し、セッション終了時に保留中の更新を破棄する。受信チャンクごとの画面更新と次要求の探索を避け、写真の暗号化保存完了時に進める。同一ソースの設定再適用では索引を再走査せず、取得済み写真の再通知でも原データを復号し直さない。実際の転送・表示・背景生成で破損や消失を検出した写真は取得済み一覧から外し、再取得の対象へ戻す。
 
 ## 接続・設定・進行役
 
@@ -71,7 +75,9 @@ AAD:         UTF-8 "DPWCAC01:{opaqueId}:{blockNumber}:{plaintextLength}"
 opaqueId:    lowercase SHA-256("{provider:N}:{source:N}:{generation:N}:{imageId}")
 ```
 
-保存はAES-256-GCM。WindowsはDPAPI、MacはKeychainで端末の鍵とIDを保護する。保存鍵は他ピアへ送らない。途中の`.tmp`も暗号文。完了時に原データのSHA-256、ヘッダー、チャンク認証と順序を確認してから公開する。改ざんや不完全なデータを再生へ渡さない。画像・顔・元の名前はログに出さない。
+保存はAES-256-GCM。WindowsはDPAPI、MacはKeychainで端末の鍵とIDを保護する。MacのTLS identityは保護済みデータから`SecIdentityCreate`でメモリ上に組み立て、追加の永久鍵や証明書をlogin keychainへ登録しない。信頼情報の書込みに失敗した場合も、メモリ上だけで登録済み扱いにしない。保存鍵は他ピアへ送らない。途中の`.tmp`も暗号文。完了時に原データのSHA-256、ヘッダー、チャンク認証と順序を確認してから公開する。改ざんや不完全なデータを再生へ渡さない。画像・顔・元の名前はログに出さない。
+
+Macは起動時とバックグラウンド処理のKeychainアクセスでOSの確認を出さない。許可が必要ならオンライン化を保留し、起動時または設定上部の「アクセス権限の確認」の一括取得から対話を許可する。ネットワーク設定の権限不足も同じ画面へ案内する。初期化後の信頼情報保存は再び非対話に戻す。[Macの権限取得フロー](../macos/docs/PERMISSIONS.md)も参照。現在のアドホック署名候補はfile-based login Keychainを使うため、非対話制御には非推奨の`SecKeychainGet/SetUserInteractionAllowed`を同期・排他・元値復帰付きで使う。署名・provisioningを整えたData Protection Keychainへの移行は別途必要。鍵の読取り失敗時に別identityを生成したり平文へ退避したりしない。
 
 ## 同期表示・切断
 
@@ -85,7 +91,7 @@ opaqueId:    lowercase SHA-256("{provider:N}:{source:N}:{generation:N}:{imageId}
 
 全5モードの背景生成は、透明な余白を写真色で埋めてから端色をクランプしてぼかす。ローカル背景とネットワーク背景で同じ処理を使い、暗幕は約18%へ統一する。装飾グラデーションを除去し、画面端の人工的な黒帯を防ぐ。
 
-Windowsの`AmbientPixels.EnhanceColors`は背景の色差を最大1.6倍、輝度を最大1.12倍へ補う。RGB範囲の余裕で補正量を抑え、無彩色・色相・アルファを保つ。ローカルはぼかし後・時間補間前、同期表示は`SharedSceneBuilder`による受信PNGのデコード時に一度だけ処理する。提供元や進行役がMacでもWindowsで補正が効き、送受信の二重補正を避ける。Swift側の同じ色彩補正は未実装で、引き継ぎへ記載する。
+Windowsの`AmbientPixels.EnhanceColors`は背景の色差を最大1.6倍、輝度を最大1.12倍へ補う。RGB範囲の余裕で補正量を抑え、無彩色・色相・アルファを保つ。ローカルはぼかし後・時間補間前、同期表示は`SharedSceneBuilder`による受信PNGのデコード時に一度だけ処理する。提供元や進行役がMacでもWindowsで補正が効き、送受信の二重補正を避ける。Swiftの`AmbientColors`も同じ補正を実装し、ローカルは`AmbientProcessor`のぼかし後・時間補間前、同期表示は受信PNGデコード後に一度だけ適用する。Macの進行役が作る転送PNGは未補正で、送受信で二重補正しない。両OSの本体コードを共通fixture12ケースで照合する。
 
 各表示部が画像をデコードしてReadyを返した後、2秒先の共通時刻でCommitする。描画は`sharedNow - startAt - pausedDuration`から位置を評価し、メッセージ到着を開始の起点にしない。遅れたフレームも同じ時刻の位置へ追従する。時計はOS時刻が一致する前提を維持し、4時刻の往復計測で小さな補正を滑らかに反映する。物理的な画面の提示差・フレーム同期精度は実機で測定する。
 
@@ -102,7 +108,7 @@ heartbeatは1秒、無応答6秒で切断、登録済み接続の再試行は5�
 - 低画素写真・背景修正ではWindows部品5ケースが成功。共通の長辺判定8ケース、3モード×横長／縦長グループの同一写真の画面別計画、全5モードの背景の端色を合成データで確認した。結果は`artifacts/windows/mirror-ambient/test-results.json`。GUI撮影は行っていない。Swiftの同じfixtureと部品テストは追加済みで実行未確認。
 - 表示の連続性・背景色彩の修正ではWindows部品8ケースが成功。5モード間25通り、旧表示ツリーとビューの保持、遠隔ピア離脱によるキャンバスの縮小と復帰、スパン／画面別表示、Galleryの最終表示保持・孤立時の繰り返し、色差・明るさの補正と無彩色・アルファ保持を確認した。結果は`artifacts/windows/scene-transitions/test-results.json`。テストは合成画像・オブジェクトの状態のみを調べ、ウィンドウの表示・GUI撮影・描画キャプチャを行っていない。実機での切断中の知覚確認は未実施。
 - 既存の共通fixtureは704 assertions、OS差分fixtureは472 assertions成功。
-- Windows Releaseコンパイル成功。Swift側はテストコードを追加した段階で、ここでは実行していない。
+- Windows Releaseコンパイル成功。これはWindows側での記録。Swift側は[Mac検証記録](../macos/docs/NETWORK-TEST-RESULTS-2026-10-18.md)へ分ける。
 
 結果は`artifacts/windows/network-core/`、`artifacts/windows/smoke-data/`へ保存する。試験は合成写真・専用設定・一時秘密鍵を使用し、個人写真や通常の壁を変更しない。
 
@@ -126,6 +132,15 @@ bash macos/scripts/verify.sh --unit-only
 
 新規の`NetworkModuleTests`は共通fixture、C#暗号文のSwift復号、原寸保持、改ざん拒否、14日期限、切断状態、予約Commitを対象にする。既存のPhotoKit・グループ・表示・権限・設定テストも維持する。出力は`artifacts/macos/verification/`。
 
+`NetworkTransportTests`は隔離したKeychain項目、メモリ上のidentity再生成、信頼情報の書込み失敗、ネイティブ相互TLSを検証する。アプリと同じSwiftコードと.NETモジュールの通信を別プロセスで確認する場合:
+
+```sh
+bash macos/scripts/verify-network-interop.sh
+bash macos/scripts/verify-network-interop.sh --with-discovery
+```
+
+TLSはloopbackだけで実行する。後者は47391番と異なる一時ポートで実際のmulticast相互検出も行う。鍵・ID・信頼情報はメモリ上のみで、通常のKeychain・設定・写真・壁を使わない。ログとバイナリは`artifacts/macos/network-interop/`。実際のWindows OS・別マシンのファイアウォールや3画面の同期精度を確認した結果には含めない。
+
 その後は合成写真フォルダー等を使い、次を確認する。**実行前にMac側のコンパイルエラー・警告を解消し、成功ログを残す。**
 
 1. 両OSでオンラインを有効にし、相互に候補が出る。片側の「接続」で確認画面なしに接続し、証明書と鍵が各OSの保護領域で再利用される。
@@ -134,4 +149,4 @@ bash macos/scripts/verify.sh --unit-only
 4. 進行役を終了し、残存側の同期継続・自動交代を確認する。孤立側は60秒後に単体動作となり、再接続で予約時刻の同期へ戻る。通知の重複、pause／停止の解除がないことも確認する。
 5. 写真ソースの再適用と解除、容量上限、スリープ復帰、再起動、長い取込み中の設定変更、ネットワークの再断を確認する。
 
-Macの結果と両OS間の提示時刻差・長時間運転の結果が揃うまで、ネットワーク機能を検証済み完成物として配布しない。今回の作業はソース実装とWindows検証であり、既存の公開済みMacリリースの更新・公開は含めない。
+Macの自動検証と両OS間の提示時刻差・長時間運転は区別する。実機間の結果が揃うまで、ネットワーク機能を検証済み完成物として配布しない。既存の公開済みMacリリースの更新・公開は今回に含めない。

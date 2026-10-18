@@ -4,4 +4,5 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../windows/src/DynamicPhotoWall.Core/DynamicPhotoWall.Core.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../windows/src/DynamicPhotoWall/Rendering/AmbientPixels.cs" Link="AmbientPixels.cs" /></ItemGroup>
 </Project>
