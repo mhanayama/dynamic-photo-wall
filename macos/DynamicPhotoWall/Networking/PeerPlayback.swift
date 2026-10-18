@@ -6,6 +6,7 @@ import SwiftUI
     private let cache: PNPhotoCache
     var readOriginal: ((PNAssetKey) async throws -> Data?)?
     private var planners: [UUID: WallScenePlanner] = [:]
+    private var configurations: [UUID: (session: UUID, revision: Int64)] = [:]
     init(cache: PNPhotoCache) { self.cache = cache }
     func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? {
         let displays = wall.displays.filter { $0.selected && $0.unit == group }; guard !displays.isEmpty else { return nil }
@@ -19,6 +20,9 @@ import SwiftUI
         let assets = usable.map { PhotoAsset(url: URL(string: "peer-cache://image/\($0.key.opaqueId)")!, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight, fileSize: Int64($0.byteLength), faces: $0.faceMetadata.faces.map { FaceRegion(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }) }
         let byURL = Dictionary(uniqueKeysWithValues: zip(assets.map(\.url), usable))
         let planner = planners[group] ?? WallScenePlanner(); planners[group] = planner
+        if configurations[group]?.session != wall.sessionId || configurations[group]?.revision != wall.revision {
+            planner.resetModeHistory(); configurations[group] = (wall.sessionId, wall.revision)
+        }
         guard let surfaces = planner.nextGroup(assets: assets, settings: settings, group: nativeGroup, connected: Set(nativeDisplays.map(\.id))), let first = surfaces.first else { return nil }
         var placements: [PNPlacement] = []; var duration = 0.0
         for surface in surfaces {
@@ -63,7 +67,7 @@ import SwiftUI
                 displays: settings.avoidFaceDisplayBoundaries ? $0.scene.displayRegions : []) }
             let segments = GalleryTimeline.build(inputs, duration: duration, settings: settings, replacement: { active in
                 planner.replacement(assets: assets, settings: settings, excluding: Set(active.map(\.url)))
-            })
+            }, candidates: assets)
             for s in segments {
                 let surface = surfaces[s.surface]
                 let display = surface.displayID.flatMap { id in displays.indices.contains(Int(id) - 1) ? displays[Int(id) - 1] : nil }

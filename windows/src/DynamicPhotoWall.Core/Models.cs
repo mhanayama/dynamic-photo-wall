@@ -72,8 +72,8 @@ public sealed class WallSettings
     public double ZoomSeconds { get; set; } = 30;
     public double MaxZoom { get; set; } = 1.25;
     public double FadeSeconds { get; set; } = 1.2;
-    public double GalleryMinSeconds { get; set; } = 10;
-    public double GalleryMaxSeconds { get; set; } = 30;
+    public double GalleryMinSeconds { get; set; } = 5;
+    public double GalleryMaxSeconds { get; set; } = 10;
     public string Background { get; set; } = "#101116";
     public double Gap { get; set; } = 8;
     public double CornerRadius { get; set; } = 8;
@@ -100,9 +100,9 @@ public sealed class WallSettings
         ZoomSeconds = Clamp(ZoomSeconds, 10, 600, 30);
         MaxZoom = Clamp(MaxZoom, 1, 1.5, 1.25);
         FadeSeconds = Clamp(FadeSeconds, .2, 10, 1.2);
-        if (GalleryMinSeconds == 30 && GalleryMaxSeconds == 60) { GalleryMinSeconds = 10; GalleryMaxSeconds = 30; }
-        GalleryMinSeconds = Clamp(GalleryMinSeconds, 5, 600, 10);
-        GalleryMaxSeconds = Clamp(GalleryMaxSeconds, GalleryMinSeconds, 1200, 30);
+        if ((GalleryMinSeconds, GalleryMaxSeconds) is (30, 60) or (10, 30)) { GalleryMinSeconds = 5; GalleryMaxSeconds = 10; }
+        GalleryMinSeconds = Clamp(GalleryMinSeconds, 5, 600, 5);
+        GalleryMaxSeconds = Clamp(GalleryMaxSeconds, GalleryMinSeconds, 1200, 10);
         Gap = Clamp(Gap, 0, 200, 8);
         CornerRadius = Clamp(CornerRadius, 0, 100, 8);
         CacheMegabytes = Math.Clamp(CacheMegabytes, 64, 1024);

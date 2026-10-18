@@ -23,7 +23,7 @@ nonisolated enum ForegroundGeometry {
                 let frame = frames[index]
                 var result: [ForegroundPlacement] = []
                 if let previous = slot.previousAsset { result.append(.init(asset: previous, frame: slot.previousFrame ?? frame, cornerRadius: s.cornerRadius)) }
-                let fade = slot.previousAsset == nil ? 1 : WallAnimation.ease((p.elapsed - slot.changedAt) / s.fadeSeconds)
+                let fade = slot.previousAsset == nil && !slot.appearing ? 1 : WallAnimation.ease((p.elapsed - slot.changedAt) / s.fadeSeconds)
                 result.append(.init(asset: slot.asset, frame: frame, opacity: fade, cornerRadius: s.cornerRadius))
                 return result
             }

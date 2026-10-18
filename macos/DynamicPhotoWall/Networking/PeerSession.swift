@@ -50,6 +50,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     private struct Pending { var plan: PNScene; var waiting: Set<UUID>; var created: Double }
     private let planner: any PNScenePlanning; private let output: any PNPlaybackOutput; private let clock: any PNClock
     private var pending: [UUID: Pending] = [:]
+    private var retryAt: [UUID: Double] = [:]
     private var current: [UUID: (plan: PNScene, started: Double, paused: Double)] = [:]
     private var pauseAt: Double?, pausedSeconds = 0.0
     private(set) var paused = false, stopped = false
@@ -68,7 +69,9 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             let participants = Set(displays.map { $0.key.peerId }).intersection(live)
             if participants.isEmpty || pending[group] != nil { continue }
             if let active = current[group], active.plan.settingsRevision == wall.revision && clock.now - active.started - (pausedSeconds - active.paused) < active.plan.duration - 4 { continue }
-            guard let plan = try await planner.prepare(wall: wall, group: group, photos: photos) else { continue }
+            if let retry = retryAt[group], clock.elapsed < retry { continue }
+            guard let plan = try await planner.prepare(wall: wall, group: group, photos: photos) else { retryAt[group] = clock.elapsed + 5; continue }
+            retryAt.removeValue(forKey: group)
             try plan.validate(); pending[group] = Pending(plan: plan, waiting: participants, created: clock.elapsed)
             try await broadcast?(PNPacket("scenePrepare", plan))
             if participants.contains(local) { try await output.prepare(plan); pending[group]?.waiting.remove(local) }
@@ -103,8 +106,8 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         }
         output.control(command)
     }
-    func invalidate() { current.removeAll(); pending.removeAll(); pausedSeconds = 0 }
-    func leadershipChanged() { pending.removeAll() }
+    func invalidate() { current.removeAll(); pending.removeAll(); retryAt.removeAll(); pausedSeconds = 0 }
+    func leadershipChanged() { pending.removeAll(); retryAt.removeAll() }
 }
 
 // Session composes state authority, transport, transfer and playback ports. It
@@ -121,6 +124,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     private(set) var candidates: [UUID: PNCandidate] = [:]
     private var discovered: [UUID: Double] = [:], targets: [UUID: PNCandidate] = [:]
     private var links: [UUID: LinkState] = [:], connecting: Set<UUID> = []
+    private var disconnectedPeers: Set<UUID> = []
     private var displayInventories: [UUID: Set<PNDisplayKey>] = [:]
     private var readTasks: [UUID: Task<Void, Never>] = [:], jobs: [UUID: Task<Void, Never>] = [:]
     private var remoteSources: [PNSource] = [], knownPlans: [UUID: PNScene] = [:]
@@ -144,6 +148,12 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         return links[peerId]?.link.remote.name ?? targets[peerId]?.hello.name ?? candidates[peerId]?.hello.name ?? "未接続の端末"
     }
     var sources: [PNSource] { provider.sources + remoteSources }
+    func isSourceConnected(_ source: PNSource) -> Bool {
+        guard !stopped else { return false }
+        if source.providerId == local.peerId { return provider.sources.contains { $0.sourceId == source.sourceId } }
+        return links[source.providerId] != nil && displayInventories[source.providerId] != nil
+            && remoteSources.contains { $0.providerId == source.providerId && $0.sourceId == source.sourceId }
+    }
     var playbackState: PNRecoveryState { recovery.state }
     var playbackPaused: Bool { scenes.paused }
     var playbackStopped: Bool { scenes.stopped }
@@ -179,6 +189,8 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         } }
     }
     func connect(_ candidate: PNCandidate, userInitiated: Bool = true) async throws {
+        if userInitiated { disconnectedPeers.remove(candidate.id) }
+        guard !disconnectedPeers.contains(candidate.id) else { return }
         targets[candidate.id] = candidate
         guard !connecting.contains(candidate.id), links[candidate.id] == nil else { return }
         if userInitiated { explicitJoins[candidate.id] = snapshot }
@@ -186,8 +198,15 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         let link = try await transport.connect(candidate)
         background { [weak self] in await self?.attach(link) }
     }
+    func disconnect(_ peer: UUID) async {
+        guard peer != local.peerId else { return }
+        disconnectedPeers.insert(peer); explicitJoins.removeValue(forKey: peer)
+        await remove(peer)
+        changed?()
+    }
     private func attach(_ link: any PNPeerLink) async {
         let id = link.remote.peerId
+        guard !disconnectedPeers.contains(id), !stopped else { link.close(); return }
         if let old = links[id] {
             let outbound = local.peerId.pnHex < id.pnHex
             if old.link.outbound == outbound || link.outbound != outbound { link.close(); return }
@@ -207,7 +226,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
                 guard let current = links[id], current.link === link else { break }
                 links[id]?.seen = clock.elapsed; try await handle(link, packet)
             }
-        } catch { if !stopped { failed?(error) } }
+        } catch { if !stopped && !disconnectedPeers.contains(id) { failed?(error) } }
         link.close()
         if let current = links[id], current.link === link { await remove(id) }
     }
@@ -220,6 +239,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             for display in inventory.displays { try display.validate() }
             try PNWire.require(inventory.candidate.id == peer && inventory.displays.allSatisfy { $0.key.peerId == peer } && inventory.sources.allSatisfy { $0.providerId == peer }, "Inventory identity differs")
             var endpoint = inventory.candidate; endpoint.host = link.remoteHost; targets[peer] = endpoint; candidates[peer] = endpoint
+            if discovered[peer] == nil { discovered[peer] = clock.elapsed }
             displayInventories[peer] = Set(inventory.displays.map(\.key))
             remoteSources.removeAll { $0.providerId == peer }; remoteSources += inventory.sources
             if snapshot.leaderId == local.peerId {
@@ -347,13 +367,13 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         try await broadcast(PNPacket("layoutPreview", plan)); output.preview(plan)
     }
     private func broadcast(_ packet: PNPacket) async throws {
-        for item in Array(links.values) { do { try await item.link.send(packet) } catch { if !stopped { failed?(error) } } }
+        for item in Array(links.values) { do { try await item.link.send(packet) } catch { if !stopped && !disconnectedPeers.contains(item.link.remote.peerId) { failed?(error) } } }
     }
     private func remove(_ peer: UUID) async {
         guard let item = links.removeValue(forKey: peer) else { return }; item.link.close(); photos.lost(peer)
         displayInventories.removeValue(forKey: peer)
         do { try await scenes.lost(peer) } catch { failed?(error) }
-        if notices.insert(peer).inserted && !stopped { notifications.disconnected(item.link.remote.name) }
+        if !disconnectedPeers.contains(peer) && !stopped && notices.insert(peer).inserted { notifications.disconnected(item.link.remote.name) }
         recovery.lost(at: clock.elapsed, remaining: !links.isEmpty)
         if snapshot.leaderId == peer && (Array(links.keys) + [local.peerId]).min(by: { $0.pnHex < $1.pnHex }) == local.peerId {
             var next = snapshot; next.leaderId = local.peerId; next.sessionId = UUID(); next.term += 1

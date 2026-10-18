@@ -9,6 +9,7 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
 {
     private readonly Dictionary<Guid, CompositionEngine> engines = [];
     private readonly Dictionary<Guid, PhotoSelector> selectors = [];
+    private readonly Dictionary<Guid, (Guid Session, long Revision)> configurations = [];
     private readonly Random random = new();
     public Task<Net.SharedScenePlan?> PrepareAsync(Net.WallSnapshot wall, Guid groupId,
         IReadOnlyList<Net.SharedPhoto> source, CancellationToken cancellation)
@@ -26,6 +27,9 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             p.FaceMetadata.Faces.Select(f => new DynamicPhotoWall.Core.FaceRegion(f.X, f.Y, f.Width, f.Height)).ToArray())).ToArray();
         if (!engines.TryGetValue(groupId, out var engine))
         { var selector = new PhotoSelector(); selectors[groupId] = selector; engines[groupId] = engine = new(selector); }
+        var configuration = (wall.SessionId, wall.Revision);
+        if (!configurations.TryGetValue(groupId, out var previous) || previous != configuration)
+        { engine.ResetModeHistory(); configurations[groupId] = configuration; }
         var picking = selectors[groupId];
         var views = displays.Select(d => new DynamicPhotoWall.Core.Viewport(d.Width, d.Height)).ToArray();
         var regions = displays.Select(d => new DynamicPhotoWall.Core.FrameRect(d.X - left, d.Y - top, d.Width, d.Height)).ToArray();
@@ -93,7 +97,7 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
                 gallerySurfaces.Add(new(selected.Photos, v, !perDisplay && settings.AvoidFaceDisplayBoundaries ? regions : []));
             }
             var segments = GalleryTimeline.Build(gallerySurfaces, duration, settings,
-                active => picking.Pick(photos, settings, active.Select(p => p.Path).ToHashSet()), random);
+                active => picking.Pick(photos, settings, active.Select(p => p.Path).ToHashSet()), random, photos);
             foreach (var segment in segments)
             {
                 var i = segment.SurfaceIndex;

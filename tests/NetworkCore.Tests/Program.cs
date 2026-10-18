@@ -295,6 +295,7 @@ assertions += NetworkIntegration.Assertions;
 Test("three-peer configuration, transfer, failover and background rejoin", () => PeerMeshIntegration.Run(Path.Combine(runRoot, "mesh")).GetAwaiter().GetResult());
 Test("two connected walls merge into one four-peer inventory", () => PeerMeshIntegration.MergeExistingWalls(Path.Combine(runRoot, "merge")).GetAwaiter().GetResult());
 Test("saved display inventories require a current authenticated connection", () => PeerMeshIntegration.SavedDisplaysAreNotConnections(Path.Combine(runRoot, "display-presence")).GetAwaiter().GetResult());
+Test("photo source availability and manual disconnect survive mesh retries", () => PeerMeshIntegration.SourcePresenceAndManualDisconnect(Path.Combine(runRoot, "source-presence")).GetAwaiter().GetResult());
 assertions += PeerMeshIntegration.Assertions;
 Test("shared native wire and encrypted cache vectors", () => WireVectors.Verify(Path.Combine(runRoot, "wire-vector")));
 Test("UI notification bursts are coalesced and late updates are cancelled", ResponsivenessTests.Notifications);

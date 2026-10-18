@@ -49,7 +49,7 @@ import Testing
         let born = plan.filter { $0.fadeIn > 0 }.sorted { $0.at < $1.at }
         #expect(born.count >= 3); #expect(Set(born.map(\.at)).count == born.count)
         var previous = 0.0
-        for item in born { #expect(item.at - previous >= 10 && item.at - previous <= 30.001); previous = item.at + settings.fadeSeconds }
+        for item in born { #expect(item.at - previous >= 5 && item.at - previous <= 10.001); previous = item.at + settings.fadeSeconds }
         #expect(plan.allSatisfy { $0.to.height == 1064 && $0.from.height == 1064 })
     }
     @Test func nativeGroupControllersShareOneReplacementClockWithoutWindows() throws {
@@ -70,7 +70,7 @@ import Testing
             let current = Set(try #require(session.current).assets.map(\.url))
             if current != previous {
                 #expect(current.subtracting(previous).count == 1)
-                if let last = changes.last { #expect(at - last >= 10 + settings.fadeSeconds - 0.05) }
+                if let last = changes.last { #expect(at - last >= 5 + settings.fadeSeconds - 0.05) }
                 changes.append(at); previous = current
             }
         }

@@ -52,7 +52,11 @@ public static class FaceMotionSafety
                 start = SafeStart(start);
                 if (Math.Abs(end - start) <= 20) start = SafeStart(original.FromY <= original.ToY ? 0 : -overflow);
                 var distance = Math.Abs(end - start); if (distance <= 20) continue;
-                var x = target.X + target.Width / 2 - cx * width;
+                var left = target.X + margin - face.X * width;
+                var right = target.X + target.Width - margin - (face.X + face.Width) * width;
+                // Center the photograph on each output; move only as far as
+                // necessary to keep the face rectangle inside that output.
+                var x = Math.Clamp((viewport.Width - width) / 2, left, Math.Max(left, right));
                 plans.Add(original with { Width = width, Height = height, FromX = x, ToX = x, FromY = start, ToY = end, FrameTop = 0,
                     Seconds = Math.Max(.1, distance / settings.PanPixelsPerSecond) });
             }

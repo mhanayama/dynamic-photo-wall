@@ -3,6 +3,22 @@ import CoreGraphics
 
 nonisolated enum FixedGalleryLayout {
     struct Item: Sendable { var index: Int; var frame: CGRect }
+    struct Change { var assets: [PhotoAsset]; var items: [Item]; var incomingIndex: Int; var isAddition: Bool }
+    static func update(_ assets: [PhotoAsset], incoming: PhotoAsset, viewport: CGSize, gap: CGFloat,
+                       displays: [CGRect], replacement: Int, maximum: Int) -> Change? {
+        guard !assets.contains(where: { $0.url == incoming.url }) else { return nil }
+        if assets.count < maximum {
+            for index in 0...assets.count {
+                var proposed = assets; proposed.insert(incoming, at: index)
+                let items = arrange(proposed, viewport: viewport, gap: gap, displays: displays)
+                if items.count == proposed.count { return Change(assets: proposed, items: items, incomingIndex: index, isAddition: true) }
+            }
+        }
+        guard assets.indices.contains(replacement) else { return nil }
+        var proposed = assets; proposed[replacement] = incoming
+        let items = arrange(proposed, viewport: viewport, gap: gap, displays: displays, pinned: replacement)
+        return items.contains { $0.index == replacement } ? Change(assets: proposed, items: items, incomingIndex: replacement, isAddition: false) : nil
+    }
     private struct Range { var min: CGFloat; var max: CGFloat }
     static func arrange(_ assets: [PhotoAsset], viewport v: CGSize, gap requestedGap: CGFloat,
                         displays: [CGRect] = [], pinned: Int? = nil) -> [Item] {
@@ -11,7 +27,7 @@ nonisolated enum FixedGalleryLayout {
         let gap = min(requestedGap, min(length, cross) / 4), size = max(1, cross - 2 * gap)
         var active = Array(assets.indices)
         func pack() -> [Item] {
-            var items: [Item] = [], used: [Range] = []; var cursor = gap
+            var items: [Item] = [], shifts = [Range(min: -.infinity, max: .infinity)]; var cursor = gap
             for i in active {
                 let asset = assets[i], extent = horizontal ? size * asset.aspectRatio : size / asset.aspectRatio
                 guard extent <= length - 2 * gap else { continue }
@@ -31,10 +47,19 @@ nonisolated enum FixedGalleryLayout {
                 guard let range = ranges.filter({ max(cursor, $0.min) <= $0.max }).min(by: { max(cursor, $0.min) < max(cursor, $1.min) }) else { continue }
                 let at = max(cursor, range.min)
                 items.append(Item(index: i, frame: horizontal ? CGRect(x: at, y: gap, width: extent, height: size) : CGRect(x: gap, y: at, width: size, height: extent)))
-                used.append(Range(min: range.min - at, max: range.max - at)); cursor = at + extent + gap
+                let intersections = shifts.flatMap { shift in ranges.map { range in
+                    Range(min: max(shift.min, range.min - at), max: min(shift.max, range.max - at))
+                } }.filter { $0.min <= $0.max }.sorted { $0.min < $1.min }
+                shifts = []
+                for range in intersections {
+                    if let last = shifts.last, range.min <= last.max { shifts[shifts.count - 1].max = max(last.max, range.max) }
+                    else { shifts.append(range) }
+                }
+                cursor = at + extent + gap
             }
             if !items.isEmpty {
-                let shift = min(used.map(\.max).min()!, max(used.map(\.min).max()!, (length - cursor) / 2))
+                let ideal = (length - cursor) / 2
+                let shift = shifts.map { min($0.max, max($0.min, ideal)) }.min { abs($0 - ideal) < abs($1 - ideal) }!
                 for i in items.indices { items[i].frame = items[i].frame.offsetBy(dx: horizontal ? shift : 0, dy: horizontal ? 0 : shift) }
             }
             return items

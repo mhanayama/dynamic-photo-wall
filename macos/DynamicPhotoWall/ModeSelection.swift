@@ -11,7 +11,8 @@ nonisolated enum ModeSelection {
         let g = gallery.isEmpty ? 0 : max(0, galleryWeight), m = motion.isEmpty ? 0 : max(0, motionWeight)
         guard g + m > 0 else { return nil }
         var pool = Double.random(in: 0..<Double(g + m), using: &generator) < Double(g) ? gallery : motion
-        if repeats >= 2, pool.count > 1 { pool.removeAll { $0 == previous } }
-        return pool[Int.random(in: 0..<pool.count, using: &generator)]
+        if !isGallery(pool[0]), repeats >= 2, pool.count > 1 { pool.removeAll { $0 == previous } }
+        let result = pool[Int.random(in: 0..<pool.count, using: &generator)]
+        return isGallery(result) && result == previous ? nil : result
     }
 }

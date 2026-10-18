@@ -61,15 +61,17 @@ struct PlaybackRegressionTests {
         #expect(names == ["0.jpg", "1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg", "6.jpg", "0.jpg"])
     }
 
-    @Test func plannerAllowsRepeatsWhenEachCategoryHasOneModeAndKeepsSingleModeRunning() throws {
+    @Test func plannerSkipsRepeatedGalleriesAndKeepsSingleMotionModeRunning() throws {
         var settings = WallSettings()
         settings.galleryScrollEnabled = false
         let planner = WallScenePlanner(seed: 42)
         var history: [WallMode] = []
         for _ in 0..<1000 {
-            history.append(try #require(planner.next(assets: photos, settings: settings, viewport: viewport)).mode)
+            if let scene = planner.next(assets: photos, settings: settings, viewport: viewport) { history.append(scene.mode) }
+            else { #expect(planner.lastDrawSkipped) }
         }
         #expect(Set(history) == [.gallery, .zoom])
+        #expect((1..<history.count).allSatisfy { history[$0] != .gallery || history[$0 - 1] != .gallery })
         #expect((2..<history.count).contains { history[$0] == history[$0 - 1] && history[$0] == history[$0 - 2] })
         let single = WallScenePlanner(seed: 42)
         for _ in 0..<10 { #expect(single.next(assets: photos, settings: zoomOnly, viewport: viewport)?.mode == .zoom) }

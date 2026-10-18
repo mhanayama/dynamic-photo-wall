@@ -352,8 +352,8 @@ private struct MotionSettingsView: View {
                 DoubleField(title: "最大ズーム倍率（1.0〜1.5）", value: $settings.maxZoom)
                 Text("動きが分かるズームの目安：30秒・1.25倍").font(.caption).foregroundStyle(.secondary)
                 DoubleField(title: "クロスフェード（秒、0.2〜10）", value: $settings.fadeSeconds)
-                DoubleField(title: "Gallery全体の交換間隔 — 最短（秒）", value: $settings.galleryMinSeconds)
-                DoubleField(title: "Gallery全体の交換間隔 — 最長（秒）", value: $settings.galleryMaxSeconds)
+                DoubleField(title: "Gallery全体の交換間隔 — 最短（秒、初期値5）", value: $settings.galleryMinSeconds)
+                DoubleField(title: "Gallery全体の交換間隔 — 最長（秒、初期値10）", value: $settings.galleryMaxSeconds)
             }
         }
         .formStyle(.grouped)

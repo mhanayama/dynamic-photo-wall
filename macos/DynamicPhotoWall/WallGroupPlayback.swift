@@ -106,6 +106,7 @@ final class WallGroupPlayback {
     struct Batch: Identifiable {
         let id = UUID()
         let surfaces: [Surface]
+        let galleryRotation: GalleryRotation
         var assets: [PhotoAsset] { surfaces.flatMap { $0.playback.currentScene?.assets ?? [] } }
     }
     let group: WallDisplayGroup
@@ -127,6 +128,7 @@ final class WallGroupPlayback {
     private var ready = false
     private var nextGalleryAt: TimeInterval = 0
     private var galleryWasBusy = false
+    private var nextModeDrawAt: TimeInterval = 0
     private let legacy: Bool
 
     var primary: WallPlaybackController { current?.surfaces.first?.playback ?? fallback }
@@ -143,7 +145,7 @@ final class WallGroupPlayback {
         clock.reset(at: now)
         if legacy {
             fallback.start(assets: assets, settings: settings, viewport: group.viewport, seed: seed, now: now)
-            current = Batch(surfaces: [Surface(displayID: nil, playback: fallback)])
+            current = Batch(surfaces: [Surface(displayID: nil, playback: fallback)], galleryRotation: GalleryRotation())
         } else {
             current = buildBatch(now: now)
             waiting = current == nil
@@ -151,17 +153,22 @@ final class WallGroupPlayback {
     }
 
     private func buildBatch(now: TimeInterval) -> Batch? {
+        guard clock.elapsed(at: now) >= nextModeDrawAt else { return nil }
         let excluded = Set((current?.assets ?? []).map(\.url) + (outgoing?.assets ?? []).map(\.url))
         let available = assets.filter { !(images?.failed($0) ?? false) }.map { images?.assetWithFaces($0) ?? $0 }
-        guard let plans = planner.nextGroup(assets: available, settings: settings, group: group, connected: connected, excluding: excluded) else { return nil }
+        guard let plans = planner.nextGroup(assets: available, settings: settings, group: group, connected: connected, excluding: excluded) else {
+            if planner.lastDrawSkipped { nextModeDrawAt = clock.elapsed(at: now) + 5 }
+            return nil
+        }
+        let rotation = GalleryRotation()
         let surfaces = plans.map { plan in
             let playback = WallPlaybackController(imageStore: images)
             playback.start(assets: available, settings: settings, viewport: plan.viewport, now: now,
-                           scene: plan.scene, externallyManaged: true, sharedPlanner: planner)
+                           scene: plan.scene, externallyManaged: true, sharedPlanner: planner, galleryRotation: rotation)
             playback.setPaused(true, now: now)
             return Surface(displayID: plan.displayID, playback: playback)
         }
-        return Batch(surfaces: surfaces)
+        return Batch(surfaces: surfaces, galleryRotation: rotation)
     }
 
     func update(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
@@ -189,9 +196,12 @@ final class WallGroupPlayback {
         if !paused, current.surfaces.first?.playback.currentScene?.mode == .gallery {
             let busy = current.surfaces.contains { $0.playback.galleryBusy }
             if galleryWasBusy, !busy { nextGalleryAt = elapsed + planner.galleryInterval(settings: settings); galleryWasBusy = false }
-            if !busy, !galleryWasBusy, elapsed >= nextGalleryAt,
-               let surface = current.surfaces.filter({ !$0.playback.slots.isEmpty }).randomElement() {
-                galleryWasBusy = surface.playback.shuffleGallery(now: now, excluding: Set(current.assets.map(\.url)))
+            if !busy, !galleryWasBusy, elapsed >= nextGalleryAt {
+                let eligible = current.galleryRotation.eligible(current.assets)
+                let choices = current.surfaces.flatMap { surface in surface.playback.slots.filter { eligible.contains($0.asset.url) }.map { (surface, $0.asset.url) } }
+                if let (surface, target) = choices.randomElement() {
+                    galleryWasBusy = surface.playback.shuffleGallery(now: now, excluding: Set(current.assets.map(\.url)), targetURL: target)
+                }
                 if !galleryWasBusy { nextGalleryAt = elapsed + planner.galleryInterval(settings: settings) }
             }
         }
@@ -225,6 +235,7 @@ final class WallGroupPlayback {
         if legacy { primary.next(now: now); return }
         if waiting { images?.clearFailures() }
         guard let next = prepared ?? buildBatch(now: now) else {
+            if current != nil && (planner.lastDrawSkipped || clock.elapsed(at: now) < nextModeDrawAt) { return }
             waiting = true
             for s in current?.surfaces ?? [] { s.playback.setPaused(true, now: now); s.stopAmbient() }
             return

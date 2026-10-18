@@ -3,6 +3,23 @@ namespace DynamicPhotoWall.Core;
 public static class FixedGalleryLayout
 {
     public sealed record Item(int Index, FrameRect Frame);
+    public sealed record Change(IReadOnlyList<PhotoInfo> Photos, IReadOnlyList<Item> Items, int IncomingIndex, bool IsAddition);
+    public static Change? Update(IReadOnlyList<PhotoInfo> photos, PhotoInfo incoming, Viewport viewport, double gap,
+        IReadOnlyList<FrameRect> displays, int replacement, int maximum)
+    {
+        if (photos.Any(p => string.Equals(p.Path, incoming.Path, StringComparison.OrdinalIgnoreCase))) return null;
+        if (photos.Count < maximum)
+            for (var index = 0; index <= photos.Count; index++)
+            {
+                var proposed = photos.ToList(); proposed.Insert(index, incoming);
+                var items = Arrange(proposed, viewport, gap, displays);
+                if (items.Count == proposed.Count) return new(proposed, items, index, true);
+            }
+        if (replacement < 0 || replacement >= photos.Count) return null;
+        var replaced = photos.ToArray(); replaced[replacement] = incoming;
+        var arranged = Arrange(replaced, viewport, gap, displays, replacement);
+        return arranged.Any(i => i.Index == replacement) ? new(replaced, arranged, replacement, false) : null;
+    }
     private sealed record Allowed(double Min, double Max);
     public static IReadOnlyList<Item> Arrange(IReadOnlyList<PhotoInfo> photos, Viewport viewport, double gap,
         IReadOnlyList<FrameRect>? displays = null, int? pinned = null)
@@ -14,7 +31,7 @@ public static class FixedGalleryLayout
         var active = Enumerable.Range(0, photos.Count).ToList();
         List<Item> Pack()
         {
-            var items = new List<Item>(); var usedRanges = new List<Allowed>(); var cursor = gap;
+            var items = new List<Item>(); var shifts = new List<Allowed> { new(double.NegativeInfinity, double.PositiveInfinity) }; var cursor = gap;
             foreach (var index in active)
             {
                 var photo = photos[index]; var extent = horizontal ? size * photo.Aspect : size / photo.Aspect;
@@ -37,11 +54,21 @@ public static class FixedGalleryLayout
                 if (allowed == null) continue;
                 var at = Math.Max(cursor, allowed.Min);
                 items.Add(new(index, horizontal ? new(at, gap, extent, size) : new(gap, at, size, extent)));
-                usedRanges.Add(new(allowed.Min - at, allowed.Max - at)); cursor = at + extent + gap;
+                // Keep every safe display interval, so centering may move a
+                // row to another output instead of pinning it to the first one.
+                var intersections = shifts.SelectMany(shift => ranges.Select(range =>
+                    new Allowed(Math.Max(shift.Min, range.Min - at), Math.Min(shift.Max, range.Max - at))))
+                    .Where(r => r.Min <= r.Max).OrderBy(r => r.Min).ToArray();
+                shifts = [];
+                foreach (var range in intersections)
+                    if (shifts.Count > 0 && range.Min <= shifts[^1].Max) shifts[^1] = shifts[^1] with { Max = Math.Max(shifts[^1].Max, range.Max) };
+                    else shifts.Add(range);
+                cursor = at + extent + gap;
             }
             if (items.Count > 0)
             {
-                var shift = Math.Clamp((length - cursor) / 2, usedRanges.Max(r => r.Min), usedRanges.Min(r => r.Max));
+                var ideal = (length - cursor) / 2;
+                var shift = shifts.Select(r => Math.Clamp(ideal, r.Min, r.Max)).MinBy(value => Math.Abs(value - ideal));
                 for (var i = 0; i < items.Count; i++) items[i] = items[i] with { Frame = horizontal
                     ? items[i].Frame with { X = items[i].Frame.X + shift } : items[i].Frame with { Y = items[i].Frame.Y + shift } };
             }

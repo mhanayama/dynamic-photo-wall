@@ -6,6 +6,7 @@ import Foundation
 @MainActor
 final class PhotoSelector {
     private var recentURLs: [URL] = []
+    private var selectedURLs: Set<URL> = []
     private var sequentialAfter: URL?
     private var generator: SeededRandomNumberGenerator
 
@@ -25,9 +26,11 @@ final class PhotoSelector {
             return nil
         }
 
-        var candidates = available.filter { !recentURLs.contains($0.url) }
+        var unseen = available.filter { !selectedURLs.contains($0.url) }
+        if unseen.isEmpty { selectedURLs.subtract(available.map(\.url)); unseen = available }
+        var candidates = unseen.filter { !recentURLs.contains($0.url) }
         if candidates.isEmpty {
-            candidates = available.min { recentIndex(of: $0.url) < recentIndex(of: $1.url) }.map { [$0] } ?? []
+            candidates = unseen.min { recentIndex(of: $0.url) < recentIndex(of: $1.url) }.map { [$0] } ?? []
         }
         guard !candidates.isEmpty else {
             return nil
@@ -50,12 +53,15 @@ final class PhotoSelector {
     func sample(from assets: [PhotoAsset], settings: WallSettings, excluding: Set<URL>, count: Int) -> [PhotoAsset] {
         guard settings.randomOrder, count > 0 else { return [] }
         let available = assets.filter { !excluding.contains($0.url) }
-        var fresh = available.filter { !recentURLs.contains($0.url) }
-        if fresh.isEmpty { fresh = available.min { recentIndex(of: $0.url) < recentIndex(of: $1.url) }.map { [$0] } ?? [] }
+        let unseen = available.filter { !selectedURLs.contains($0.url) }
+        let pool = unseen.isEmpty ? available : unseen
+        var fresh = pool.filter { !recentURLs.contains($0.url) }
+        if fresh.isEmpty { fresh = pool.min { recentIndex(of: $0.url) < recentIndex(of: $1.url) }.map { [$0] } ?? [] }
         return Array(fresh.shuffled(using: &generator).prefix(count))
     }
 
     func remember(_ result: PhotoAsset, settings: WallSettings) {
+        selectedURLs.insert(result.url)
         sequentialAfter = result.url
         recentURLs.removeAll { $0 == result.url }
         recentURLs.append(result.url)
@@ -64,6 +70,7 @@ final class PhotoSelector {
 
     func reset() {
         recentURLs.removeAll(keepingCapacity: true)
+        selectedURLs.removeAll(keepingCapacity: true)
         sequentialAfter = nil
     }
 

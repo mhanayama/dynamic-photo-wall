@@ -23,6 +23,15 @@ import UserNotifications
     private(set) var status = "オフライン"
     private(set) var candidates: [PNCandidate] = []
     private(set) var sources: [PNSource] = []
+    private(set) var availableSources: Set<String> = []
+    var showDisconnectedSources = false
+    var visibleSources: [PNSource] {
+        Self.visibleSources(sources, available: availableSources, showDisconnected: showDisconnectedSources)
+    }
+    nonisolated static func visibleSources(_ sources: [PNSource], available: Set<String>, showDisconnected: Bool) -> [PNSource] {
+        sources.filter { showDisconnected || available.contains($0.id) }
+    }
+    func isSourceConnected(_ source: PNSource) -> Bool { availableSources.contains(source.id) }
     var draft: PNSnapshot?
     private(set) var dirty = false
     private(set) var connected: Set<UUID> = []
@@ -124,7 +133,7 @@ import UserNotifications
     }
     private func clearSessionViewState() {
         viewUpdates.cancel()
-        connected = []; connectedDisplays = []; candidates = []; sources = []; draft = nil; dirty = false
+        connected = []; connectedDisplays = []; candidates = []; sources = []; availableSources = []; draft = nil; dirty = false
     }
     private func scheduleRefresh() { viewUpdates.request { [weak self] in self?.refresh() } }
     private func refresh() {
@@ -135,8 +144,13 @@ import UserNotifications
         isDisplaying = output?.isDisplaying == true; isRunning = output?.isRunning == true
         isPaused = connected.isEmpty ? output?.isPaused == true : session.playbackPaused; previewVisible = output?.previewVisible == true
         if isDisplaying { playbackState(connected.isEmpty ? output?.isStopped == true : session.playbackStopped, isPaused) }
+        let knownSources = sources
         sources = session.sources
-        for selection in session.snapshot.sources where !sources.contains(where: { $0.providerId == selection.providerId && $0.sourceId == selection.sourceId }) {
+        availableSources = Set(sources.filter { session.isSourceConnected($0) }.map(\.id))
+        for selection in (dirty ? draft ?? session.snapshot : session.snapshot).sources where !sources.contains(where: { $0.providerId == selection.providerId && $0.sourceId == selection.sourceId }) {
+            if let known = knownSources.first(where: { $0.providerId == selection.providerId && $0.sourceId == selection.sourceId }) {
+                sources.append(known); continue
+            }
             sources.append(PNSource(providerId: selection.providerId, sourceId: selection.sourceId, name: "未接続の写真ソース"))
         }
         if !dirty && draft != session.snapshot { draft = session.snapshot; sharedSettings(session.snapshot.playback) }
@@ -206,6 +220,7 @@ import UserNotifications
         } catch { status = error.localizedDescription }
     }
     func connect(_ peer: PNCandidate) { Task { do { try await session?.connect(peer) } catch { status = error.localizedDescription } } }
+    func disconnect(_ peer: UUID) { Task { await session?.disconnect(peer); refresh() } }
     func togglePreview() {
         guard let draft else { return }
         Task { do { try await session?.preview(PNPreviewRequest(enabled: !previewVisible, displays: draft.displays, groups: draft.groups)) } catch { status = error.localizedDescription } }
@@ -233,10 +248,16 @@ struct NetworkSettingsView: View {
                     Button("新しい通信設定を作成") { network.createLocalProfile() }.disabled(network.busy)
                 }
                 ForEach(network.candidates) { peer in HStack { Label(peer.hello.name, systemImage: "desktopcomputer"); Spacer(); Button("接続") { network.connect(peer) } } }
+                ForEach(network.connected.sorted { $0.pnHex < $1.pnHex }, id: \.self) { peer in
+                    HStack { Label(network.peerName(peer), systemImage: "desktopcomputer"); Spacer(); Button("接続解除") { network.disconnect(peer) } }
+                }
+                Text("解除すると、オンラインモードを終了するまで相手からの再接続も止めます。再開するにはこのMacの接続候補から接続してください。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("共有する写真ソース") {
-                ForEach(network.sources) { source in
-                    Toggle("\(source.name)（\(network.peerName(source.providerId))）", isOn: Binding(get: { network.draft?.sources.contains { $0.providerId == source.providerId && $0.sourceId == source.sourceId } == true }, set: { network.selectSource(source, enabled: $0) }))
+                Toggle("未接続の写真ソースも表示", isOn: $network.showDisconnectedSources)
+                ForEach(network.visibleSources) { source in
+                    Toggle("\(source.name)（\(network.peerName(source.providerId))）\(network.isSourceConnected(source) ? "" : " · 未接続")", isOn: Binding(get: { network.draft?.sources.contains { $0.providerId == source.providerId && $0.sourceId == source.sourceId } == true }, set: { network.selectSource(source, enabled: $0) }))
                 }
                 Button("選択した写真キャッシュを更新") { network.regenerate() }
                 Text("設定の適用後に原寸の写真と顔データを暗号化して転送します。有効期限は14日です。").foregroundStyle(.secondary)

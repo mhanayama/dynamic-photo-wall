@@ -17,7 +17,8 @@ public static class ModeSelection
         var m = motion.Length > 0 ? Math.Max(0, motionWeight) : 0;
         if (g + m == 0) return null;
         var pool = random.NextDouble() * (g + m) < g ? gallery : motion;
-        if (repeats >= 2 && pool.Length > 1) pool = pool.Where(mode => mode != previous).ToArray();
-        return pool[random.Next(pool.Length)];
+        if (!IsGallery(pool[0]) && repeats >= 2 && pool.Length > 1) pool = pool.Where(mode => mode != previous).ToArray();
+        var result = pool[random.Next(pool.Length)];
+        return IsGallery(result) && result == previous ? null : result;
     }
 }

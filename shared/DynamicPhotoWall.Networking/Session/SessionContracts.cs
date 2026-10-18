@@ -40,8 +40,8 @@ public sealed record PlaybackOptions
     public double ZoomSeconds { get; init; } = 30;
     public double MaxZoom { get; init; } = 1.25;
     public double FadeSeconds { get; init; } = 1.2;
-    public double GalleryMinSeconds { get; init; } = 10;
-    public double GalleryMaxSeconds { get; init; } = 30;
+    public double GalleryMinSeconds { get; init; } = 5;
+    public double GalleryMaxSeconds { get; init; } = 10;
     public double Gap { get; init; } = 8;
     public double CornerRadius { get; init; } = 8;
     public string Background { get; init; } = "#101116";

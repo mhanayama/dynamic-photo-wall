@@ -61,6 +61,11 @@ internal static class PeerMeshIntegration
             clocks[0].Time += 61; await sessions[0].PumpAsync();
             Check(sessions[0].PlaybackState == PeerPlaybackState.Standalone, "isolated peer becomes standalone after one minute");
             Check(sessions[1].Snapshot.Displays.Length == 3, "disconnect retains the integrated display layout");
+            Check(sessions[1].Sources.Any(s => s.ProviderId == ids[0])
+                && sessions[1].Sources.Where(s => s.ProviderId == ids[0]).All(s => !sessions[1].IsSourceConnected(s)),
+                "lost provider retains source names but is hidden by the availability filter");
+            Check(sessions[1].Snapshot.Sources.Any(s => s.ProviderId == ids[0]) && sessions[1].Photos.Available.Count == 1,
+                "source availability does not delete the saved selection or cached original");
             mesh.Block(ids[0], false);
             await Rounds(12);
             await Until(() => sessions.All(s => s.ConnectedPeers.Count == 2));
@@ -166,6 +171,93 @@ internal static class PeerMeshIntegration
         await Until(() => sessionA.IsDisplayConnected(remote.Key) && sessionB.IsDisplayConnected(local.Key));
         Check(!sessionA.IsDisplayConnected(stale.Key) && sessionA.Snapshot.Displays.Length == 4, "reconnection restores confirmed monitors and retains hidden saved entries");
     }
+    public static async Task SourcePresenceAndManualDisconnect(string root)
+    {
+        var mesh = new Mesh(); var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+        var clocks = ids.Select(_ => new NetworkIntegration.FixtureClock()).ToArray();
+        var discoveries = ids.Select(_ => new Discovery()).ToArray();
+        var providers = ids.Select(id => new MutableProvider { Sources = [new(id, Guid.NewGuid(), "photos")] }).ToArray();
+        var sessions = new List<PeerSession>(); var caches = new List<EncryptedPhotoCache>();
+        var notices = ids.Select(_ => new Notices()).ToArray();
+        var hellos = ids.Select((id, i) => new PeerHello(1, id, $"presence{i}", "windows")).ToArray();
+        try
+        {
+            for (var i = 0; i < ids.Length; i++)
+            {
+                var cache = new EncryptedPhotoCache(Path.Combine(root, i.ToString()), RandomNumberGenerator.GetBytes(32)); caches.Add(cache);
+                var session = new PeerSession(hellos[i], [], new Transport(mesh, hellos[i]), discoveries[i],
+                    new NetworkIntegration.MemoryPersistence(), providers[i], cache, new NetworkIntegration.FixturePlanner(),
+                    new NetworkIntegration.FixtureOutput(), clocks[i], notices[i], NetworkIntegration.Initial(ids[i]));
+                sessions.Add(session); await session.StartAsync(false);
+            }
+            Check(sessions[0].IsSourceConnected(providers[0].Sources[0]), "local source is available without any remote peers");
+            discoveries[0].Offer(Candidate(1));
+            Check(!sessions[0].IsSourceConnected(providers[1].Sources[0]), "discovery alone does not confirm a photo source");
+            clocks[0].Time = 9; await sessions[0].PumpAsync();
+            Check(sessions[0].Candidates.Count == 0, "unconnected LAN candidates expire");
+            await sessions[1].ConnectAsync(Candidate(0)); await sessions[2].ConnectAsync(Candidate(0));
+            await Rounds(12);
+            await Until(() => sessions.All(s => s.ConnectedPeers.Count == 2 && s.Sources.Count == 3));
+            Check(sessions.All(s => s.Sources.All(s.IsSourceConnected)), "current inventories confirm every connected provider");
+
+            var removedSource = providers[1].Sources[0];
+            providers[1].Sources = [new(ids[1], Guid.NewGuid(), "replacement")]; sessions[1].RefreshLocalPhotos();
+            await Until(() => sessions[0].Sources.Contains(providers[1].Sources[0]) && !sessions[0].IsSourceConnected(removedSource));
+            Check(!sessions[1].IsSourceConnected(removedSource), "a removed local folder is unavailable while the peer remains online");
+            var wall = sessions[0].Snapshot;
+            var selected = new SourceSelection(ids[1], providers[1].Sources[0].SourceId, Guid.NewGuid());
+            var result = await sessions[0].ProposeAsync(new(Guid.NewGuid(), wall.Revision, wall.Groups, wall.Displays, [selected], wall.Playback));
+            Check(result.Accepted, "source selection is saved before manual disconnect");
+            var stalled = mesh.Links.First(l => l.Local == ids[0] && l.Remote.PeerId == ids[1] && !l.Closed);
+            stalled.HoldSends();
+            var pendingPump = sessions[0].PumpAsync();
+            await stalled.SendStarted!.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await sessions[0].DisconnectAsync(ids[1]).WaitAsync(TimeSpan.FromSeconds(2));
+            await pendingPump.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(stalled.Closed, "manual disconnect closes a stalled socket before waiting for serialized handlers");
+            await Until(() => !sessions[0].ConnectedPeers.Contains(ids[1]) && !sessions[1].ConnectedPeers.Contains(ids[0]));
+            Check(sessions[0].ConnectedPeers.Contains(ids[2]), "disconnecting one peer preserves other connections");
+            Check(!sessions[0].IsSourceConnected(providers[1].Sources[0]) && sessions[0].IsSourceConnected(providers[2].Sources[0]),
+                "source visibility changes only for the disconnected provider");
+            Check(sessions[0].Snapshot.Sources.Contains(selected), "disconnect preserves selected sources");
+            Check(notices[0].DisconnectedCount == 0, "intentional disconnect does not announce automatic reconnection");
+            var unexpectedlyReconnected = false;
+            sessions[0].Changed += () => { if (sessions[0].ConnectedPeers.Contains(ids[1])) unexpectedlyReconnected = true; };
+            await sessions[1].ConnectAsync(Candidate(0));
+            discoveries[0].Offer(Candidate(1));
+            await Rounds(16);
+            await Until(() => !sessions[1].ConnectedPeers.Contains(ids[0]));
+            Check(!unexpectedlyReconnected && !sessions[0].ConnectedPeers.Contains(ids[1]),
+                "discovery, inbound retries and other peers' heartbeats cannot undo a manual disconnect");
+            Check(sessions[0].Candidates.All(c => c.Hello.PeerId != ids[1]), "expired inventory candidates do not linger after disconnect");
+            await sessions[0].ConnectAsync(Candidate(1));
+            await Until(() => sessions[0].ConnectedPeers.Contains(ids[1]) && sessions[0].IsSourceConnected(providers[1].Sources[0]));
+            Check(sessions[0].Snapshot.Sources.Contains(selected), "manual reconnect restores availability and keeps selection");
+        }
+        finally { foreach (var session in sessions) await session.DisposeAsync(); foreach (var cache in caches) cache.Dispose(); }
+        PeerCandidate Candidate(int i) => new(hellos[i], "127.0.0.1", 1);
+        async Task Rounds(int count)
+        {
+            for (var n = 0; n < count; n++)
+            {
+                for (var i = 0; i < sessions.Count; i++)
+                {
+                    clocks[i].Time += 1;
+                    // Like the application's pump loop, tolerate a socket closing
+                    // between a retry attaching and its receive loop unwinding.
+                    try { await sessions[i].PumpAsync(); }
+                    catch (IOException e) when (e.Message == "Link closed") { }
+                }
+                await Task.Delay(30);
+            }
+        }
+    }
+    private sealed class MutableProvider : IPhotoProvider
+    {
+        public IReadOnlyList<SharedSource> Sources { get; set; } = [];
+        public async IAsyncEnumerable<(SharedPhoto Photo, byte[] Original)> ReadAsync(SourceSelection selection,
+            [EnumeratorCancellation] CancellationToken cancellation) { await Task.CompletedTask; yield break; }
+    }
     private sealed class Notices : IConnectionNotifications
     {
         public int DisconnectedCount, ReconnectedCount;
@@ -212,15 +304,22 @@ internal static class PeerMeshIntegration
     }
     private sealed class Link(Guid local, PeerHello remote, bool outbound, Channel<PeerPacket> read, Channel<PeerPacket> write) : IPeerLink
     {
+        public bool Closed { get; private set; }
+        public TaskCompletionSource? SendStarted { get; private set; }
+        private TaskCompletionSource? sendReleased;
+        public void HoldSends() { SendStarted = new(TaskCreationOptions.RunContinuationsAsynchronously); sendReleased = new(TaskCreationOptions.RunContinuationsAsynchronously); }
         public Guid Local => local;
         public PeerHello Remote => remote;
         public bool Outbound => outbound;
         public string RemoteHost => "127.0.0.1";
-        public ValueTask SendAsync(PeerPacket packet, CancellationToken token)
-        { if (!write.Writer.TryWrite(packet)) throw new IOException("Link closed"); return ValueTask.CompletedTask; }
+        public async ValueTask SendAsync(PeerPacket packet, CancellationToken token)
+        {
+            if (sendReleased != null) { SendStarted!.TrySetResult(); await sendReleased.Task.WaitAsync(token); }
+            if (Closed || !write.Writer.TryWrite(packet)) throw new IOException("Link closed");
+        }
         public async IAsyncEnumerable<PeerPacket> ReceiveAsync([EnumeratorCancellation] CancellationToken token)
         { await foreach (var packet in read.Reader.ReadAllAsync(token)) yield return packet; }
-        public void Close() { read.Writer.TryComplete(); write.Writer.TryComplete(); }
+        public void Close() { Closed = true; read.Writer.TryComplete(); write.Writer.TryComplete(); sendReleased?.TrySetResult(); }
         public ValueTask DisposeAsync() { Close(); return ValueTask.CompletedTask; }
     }
 }

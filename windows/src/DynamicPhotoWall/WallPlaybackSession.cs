@@ -165,7 +165,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
                         var updates = scene.Mode == CompositionMode.Gallery ? new[] { UpdateGalleryGroupAsync(activeRenderer, scene, local.Token) }
                             : scene.Surfaces.SelectMany(surface => scene.Mode == CompositionMode.GalleryScroll
                                 ? new[] { ScrollGalleryAsync(activeRenderer, surface, local.Token) } : []).ToArray();
-                        var preload = PrepareAsync(local.Token); // Only one future composition held.
+                        var preload = PrepareNextAsync(local.Token); // Only one future composition held.
                         try
                         {
                             await scheduler.DelayAsync(scene.Seconds, local.Token);
@@ -199,8 +199,9 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
         var regions = monitors.Select(m => (m.Id, Region: layout.Regions[m.Id])).ToArray();
         var viewports = regions.Select(r => new Viewport(r.Region.Width, r.Region.Height)).ToArray();
         var outputRegions = regions.Select(r => r.Region).ToArray();
-        var plan = composition.Next(photos, layout.Viewport, Settings, excluded, viewports, outputRegions)
-            ?? composition.Next(photos, layout.Viewport, Settings, displayViewports: viewports, displayRegions: outputRegions);
+        var plan = composition.Next(photos, layout.Viewport, Settings, excluded, viewports, outputRegions);
+        if (plan == null && !composition.LastDrawSkipped)
+            plan = composition.Next(photos, layout.Viewport, Settings, displayViewports: viewports, displayRegions: outputRegions);
         if (plan == null) return null;
         if (plan.MirrorPerDisplay)
         {
@@ -230,6 +231,18 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
             foreach (var photo in part.Plan.Photos) excluded.Add(photo.Path);
         }
         return new(plan.Mode, parts);
+    }
+    private async Task<PreparedGroup?> PrepareNextAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            var next = await PrepareAsync(token);
+            if (next != null) return next;
+            // Keep the current gallery and its update loop running after a
+            // rejected draw. A single enabled gallery does not fade into itself.
+            await scheduler.DelayAsync(5, token);
+        }
+        return null;
     }
     private async Task<Prepared?> PreparePartAsync(CompositionPlan plan, Viewport viewport, CancellationToken token)
     {
@@ -279,6 +292,7 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
     }
     private async Task UpdateGalleryGroupAsync(PhotoRenderer activeRenderer, SceneVisual groupScene, CancellationToken token)
     {
+        var rotation = new GalleryRotation();
         while (!token.IsCancellationRequested)
         {
             // One clock for all surfaces. Start counting the next interval only
@@ -286,16 +300,18 @@ internal sealed class WallPlaybackSession : IAsyncDisposable
             await scheduler.DelayAsync(Settings.GalleryMinSeconds + random.NextDouble() * (Settings.GalleryMaxSeconds - Settings.GalleryMinSeconds), token);
             var slots = groupScene.Surfaces.SelectMany(s => Enumerable.Range(0, s.Slots.Count).Select(i => (Scene: s, Index: i))).ToArray();
             if (slots.Length == 0) continue;
-            var selected = slots[random.Next(slots.Length)]; var scene = selected.Scene;
+            var selected = slots[rotation.Choose(slots.Select(slot => slot.Scene.Photos[slot.Index]).ToArray(), random)]; var scene = selected.Scene;
             var excluded = activeRenderer.Current?.DisplayedPhotos.Select(p => p.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var candidates = library.Photos.Where(p => !failed.Contains(p.Path)).Select(faces.WithCachedFaces).ToArray();
-            var photo = selector.Pick(candidates, Settings, excluded);
+            var additions = scene.Photos.Count < Settings.GalleryMax ? candidates.Where(p => (excluded == null || !excluded.Contains(p.Path))
+                && FixedGalleryLayout.Update(scene.Photos, p, scene.Viewport, Settings.Gap, scene.DisplayRegions, -1, Settings.GalleryMax)?.IsAddition == true).ToArray() : [];
+            var photo = selector.Pick(additions.Length > 0 ? additions : candidates, Settings, excluded);
             if (photo == null) continue;
             var width = (int)(scene.Viewport.Width >= scene.Viewport.Height ? scene.Viewport.Height * photo.Aspect : scene.Viewport.Width);
             var bitmap = await cache.LoadAsync(photo, width, token);
             if (bitmap == null) { failed.Add(photo.Path); continue; }
             if (scene.DisplayRegions.Count > 0) photo = await faces.AnalyzeAsync(photo, bitmap, token);
-            await activeRenderer.ReplaceSlotAsync(scene, selected.Index, photo, bitmap, token);
+            if (await activeRenderer.ReplaceSlotAsync(scene, selected.Index, photo, bitmap, token)) rotation.Inserted(photo);
         }
     }
     public void LibraryChanged()

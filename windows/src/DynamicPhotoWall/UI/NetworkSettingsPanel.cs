@@ -40,6 +40,10 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         Background = new SolidColorBrush(Color.FromRgb(28, 32, 42)), Foreground = Brushes.White,
         BorderBrush = new SolidColorBrush(Color.FromRgb(70, 80, 102)), Padding = new Thickness(8) };
     private readonly StackPanel sources = new();
+    private readonly ListBox connectedPeers = new() { MaxHeight = 120,
+        Background = new SolidColorBrush(Color.FromRgb(28, 32, 42)), Foreground = Brushes.White,
+        BorderBrush = new SolidColorBrush(Color.FromRgb(70, 80, 102)), Padding = new Thickness(8) };
+    private readonly CheckBox showDisconnectedSources = new() { Content = "未接続の写真ソースも表示" };
     private readonly TextBlock draftStatus = new();
     private readonly NetworkLayoutPreview preview;
     private readonly ObservableCollection<DisplayRow> rows = [];
@@ -60,7 +64,6 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
     private Net.WallSnapshot? baseline;
     private List<Net.SharedGroup> groups = [];
     private bool dirty, refreshing, disposed;
-    private string sourceSignature = "";
     public FrameworkElement GroupView { get; }
     public FrameworkElement SelectionView { get; }
     public event Action<Net.PlaybackOptions>? SharedOptionsChanged;
@@ -76,13 +79,23 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         Children.Add(new TextBlock { Text = "ピア接続", FontSize = 24 });
         Children.Add(new TextBlock { Text = $"このPC: {Environment.MachineName}", TextWrapping = TextWrapping.Wrap });
         Children.Add(online); Children.Add(status);
+        Children.Add(new TextBlock { Text = "接続済みのピア" }); Children.Add(connectedPeers);
+        AddButton(this, "選択したピアの接続を解除", async () =>
+        {
+            if (connectedPeers.SelectedItem is ListBoxItem { Tag: Guid peer } && controller.Network.Session is { } session)
+                await session.DisconnectAsync(peer);
+        });
+        Children.Add(new TextBlock { Text = "解除すると、オンラインモードを終了するまで相手からの再接続も止めます。再開するにはこのPCの接続候補から接続してください。", TextWrapping = TextWrapping.Wrap });
         Children.Add(new TextBlock { Text = "接続候補" }); Children.Add(candidates);
         AddButton(this, "接続", async () =>
         {
             if (candidates.SelectedItem is Net.PeerCandidate peer && controller.Network.Session is { } session)
                 await session.ConnectAsync(peer);
         });
-        Children.Add(new TextBlock { Text = "写真ソース", FontSize = 18 }); Children.Add(sources);
+        Children.Add(new TextBlock { Text = "写真ソース", FontSize = 18 });
+        Children.Add(showDisconnectedSources); Children.Add(sources);
+        showDisconnectedSources.Checked += (_, _) => Refresh();
+        showDisconnectedSources.Unchecked += (_, _) => Refresh();
         AddButton(this, "選択した写真キャッシュを更新", async () =>
         {
             foreach (var item in sourceChecks.Values.Where(v => v.Check.IsChecked == true)) refreshProviders.Add(item.Source.ProviderId);
@@ -195,9 +208,22 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
             var selected = (candidates.SelectedItem as Net.PeerCandidate)?.Hello.PeerId;
             if (session == null)
             {
-                candidates.ItemsSource = null; rows.Clear(); sources.Children.Clear(); sourceChecks.Clear();
-                baseline = null; groups.Clear(); UpdateChoices(); refreshProviders.Clear(); dirty = false; sourceSignature = "";
+                candidates.ItemsSource = null; connectedPeers.Items.Clear(); rows.Clear(); sources.Children.Clear(); sourceChecks.Clear();
+                baseline = null; groups.Clear(); UpdateChoices(); refreshProviders.Clear(); dirty = false;
                 RefreshDisplayVisibility(); return;
+            }
+            var connected = session.ConnectedPeers.Order().ToArray();
+            if (!connectedPeers.Items.OfType<ListBoxItem>().Select(item => (Guid)item.Tag).SequenceEqual(connected))
+            {
+                var selectedPeer = (connectedPeers.SelectedItem as ListBoxItem)?.Tag;
+                connectedPeers.Items.Clear();
+                foreach (var peer in connected)
+                {
+                    var item = new ListBoxItem { Content = PeerName(peer), Tag = peer };
+                    connectedPeers.Items.Add(item);
+                    if (Equals(selectedPeer, peer)) connectedPeers.SelectedItem = item;
+                }
+                if (connectedPeers.SelectedItem == null && connectedPeers.Items.Count > 0) connectedPeers.SelectedIndex = 0;
             }
             var discovered = session.Candidates.Where(c => !session.ConnectedPeers.Contains(c.Hello.PeerId)).ToArray();
             if (!candidates.Items.OfType<Net.PeerCandidate>().SequenceEqual(discovered))
@@ -209,7 +235,6 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
             {
                 var optionsChanged = baseline == null || baseline.Playback != session.Snapshot.Playback;
                 baseline = session.Snapshot; groups = baseline.Groups.ToList();
-                sourceSignature = "";
                 UpdateChoices();
                 rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, PeerName, IsDisplayConnected, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
                 if (optionsChanged) SharedOptionsChanged?.Invoke(baseline.Playback);
@@ -221,26 +246,33 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 row.RefreshName();
             }
             RefreshDisplayVisibility();
-            foreach (var item in sourceChecks.Values)
-            {
-                var label = $"{item.Source.Name}（{PeerName(item.Source.ProviderId)}）";
-                if (!Equals(item.Check.Content, label)) item.Check.Content = label;
-            }
             draftStatus.Text = dirty && baseline?.Revision != session.Snapshot.Revision ? "他のピアで設定が更新されました。未保存の編集を保持しています。" : "画面はピアをまたいでグループまたは単独表示へ割り当てられます。";
-            var advertised = session.Sources.Concat(session.Snapshot.Sources.Where(s => !session.Sources.Any(a => a.ProviderId == s.ProviderId && a.SourceId == s.SourceId))
-                .Select(s => new Net.SharedSource(s.ProviderId, s.SourceId, "未接続の写真ソース"))).ToArray();
-            var signature = string.Join("|", advertised.Select(s => $"{s.ProviderId}:{s.SourceId}:{s.Name}"));
-            if (!dirty && (sourceSignature != signature || !sourceChecks.Keys.ToHashSet().SetEquals(advertised.Select(s => (s.ProviderId, s.SourceId)))))
+            // Keep hidden selections and existing controls while editing. Availability
+            // must still update when a peer disappears or publishes a new inventory.
+            var selections = (dirty ? baseline : session.Snapshot)?.Sources ?? [];
+            var advertised = session.Sources.Concat(selections.Select(s => new Net.SharedSource(s.ProviderId, s.SourceId, "未接続の写真ソース")))
+                .Concat(dirty ? sourceChecks.Values.Select(item => item.Source) : [])
+                .DistinctBy(s => (s.ProviderId, s.SourceId)).ToArray();
+            var keys = advertised.Select(s => (s.ProviderId, s.SourceId)).ToHashSet();
+            foreach (var key in sourceChecks.Keys.Where(key => !keys.Contains(key)).ToArray())
             {
-                sourceSignature = signature; sourceChecks.Clear(); sources.Children.Clear();
-                foreach (var source in advertised)
+                sources.Children.Remove(sourceChecks[key].Check); sourceChecks.Remove(key);
+            }
+            foreach (var source in advertised)
+            {
+                var key = (source.ProviderId, source.SourceId);
+                if (!sourceChecks.TryGetValue(key, out var item))
                 {
-                    var check = new CheckBox { Content = $"{source.Name}（{PeerName(source.ProviderId)}）",
-                        IsChecked = session.Snapshot.Sources.Any(s => s.ProviderId == source.ProviderId && s.SourceId == source.SourceId) };
-                    check.Checked += (_, _) => { dirty = true; refreshProviders.Add(source.ProviderId); };
-                    check.Unchecked += (_, _) => { dirty = true; refreshProviders.Add(source.ProviderId); };
-                    sourceChecks[(source.ProviderId, source.SourceId)] = (source, check); sources.Children.Add(check);
+                    var check = new CheckBox { IsChecked = selections.Any(s => s.ProviderId == source.ProviderId && s.SourceId == source.SourceId) };
+                    check.Checked += (_, _) => { if (!refreshing) { dirty = true; refreshProviders.Add(source.ProviderId); } };
+                    check.Unchecked += (_, _) => { if (!refreshing) { dirty = true; refreshProviders.Add(source.ProviderId); } };
+                    item = (source, check); sources.Children.Add(check);
                 }
+                sourceChecks[key] = (source, item.Check);
+                if (!dirty) item.Check.IsChecked = selections.Any(s => s.ProviderId == source.ProviderId && s.SourceId == source.SourceId);
+                var available = session.IsSourceConnected(source);
+                item.Check.Content = $"{source.Name}（{PeerName(source.ProviderId)}）{(available ? "" : " · 未接続")}";
+                item.Check.Visibility = showDisconnectedSources.IsChecked == true || available ? Visibility.Visible : Visibility.Collapsed;
             }
         }
         finally { refreshing = false; }
@@ -261,7 +293,7 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         var result = await session.ProposeAsync(new(Guid.NewGuid(), old.Revision, groups.ToArray(), rows.Select(r => r.Value).ToArray(),
             selected, Networking.Windows.WindowsPlaybackOptions.Export(localSettings)));
         if (!result.Accepted) { status.Text = result.Error; return false; }
-        dirty = false; refreshProviders.Clear(); baseline = null; sourceSignature = ""; Refresh(); return true;
+        dirty = false; refreshProviders.Clear(); baseline = null; Refresh(); return true;
     }
     public void Dispose() { disposed = true; controller.Network.Changed -= Refresh; }
 }

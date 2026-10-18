@@ -127,8 +127,8 @@
                 <TextBlock Text="最大ズーム倍率（1.0〜1.5）"/><TextBox Text="{Binding MaxZoom, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="動きが分かるズームの目安：30秒・1.25倍" TextWrapping="Wrap"/>
                 <TextBlock Text="クロスフェード（秒、0.2〜10）"/><TextBox Text="{Binding FadeSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Gallery全体の交換間隔 — 最短（秒）"/><TextBox Text="{Binding GalleryMinSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Gallery全体の交換間隔 — 最長（秒）"/><TextBox Text="{Binding GalleryMaxSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Gallery全体の交換間隔 — 最短（秒、初期値5）"/><TextBox Text="{Binding GalleryMinSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Gallery全体の交換間隔 — 最長（秒、初期値10）"/><TextBox Text="{Binding GalleryMaxSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="見た目"><ScrollViewer><StackPanel>
                 <TextBlock Text="写真の見せ方" FontSize="20"/>

@@ -39,8 +39,8 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     var zoomSeconds = 30.0
     var maxZoom = 1.25
     var fadeSeconds = 1.2
-    var galleryMinSeconds = 10.0
-    var galleryMaxSeconds = 30.0
+    var galleryMinSeconds = 5.0
+    var galleryMaxSeconds = 10.0
     var backgroundHex = "#101116"
     var gap = 8.0
     var cornerRadius = 8.0
@@ -144,9 +144,9 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
         zoomSeconds = (zoomSeconds.isFinite ? zoomSeconds : 30.0).clamped(to: 10...600)
         maxZoom = (maxZoom.isFinite ? maxZoom : 1.25).clamped(to: 1...1.5)
         fadeSeconds = (fadeSeconds.isFinite ? fadeSeconds : 1.2).clamped(to: 0.2...10)
-        if galleryMinSeconds == 30, galleryMaxSeconds == 60 { galleryMinSeconds = 10; galleryMaxSeconds = 30 }
-        galleryMinSeconds = (galleryMinSeconds.isFinite ? galleryMinSeconds : 10.0).clamped(to: 5...600)
-        galleryMaxSeconds = (galleryMaxSeconds.isFinite ? galleryMaxSeconds : 30.0).clamped(to: galleryMinSeconds...1_200)
+        if (galleryMinSeconds == 30 && galleryMaxSeconds == 60) || (galleryMinSeconds == 10 && galleryMaxSeconds == 30) { galleryMinSeconds = 5; galleryMaxSeconds = 10 }
+        galleryMinSeconds = (galleryMinSeconds.isFinite ? galleryMinSeconds : 5.0).clamped(to: 5...600)
+        galleryMaxSeconds = (galleryMaxSeconds.isFinite ? galleryMaxSeconds : 10.0).clamped(to: galleryMinSeconds...1_200)
         gap = (gap.isFinite ? gap : 8.0).clamped(to: 0...200)
         cornerRadius = (cornerRadius.isFinite ? cornerRadius : 8.0).clamped(to: 0...100)
         cacheMegabytes = cacheMegabytes.clamped(to: 64...1_024)

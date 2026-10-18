@@ -27,9 +27,12 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
     private readonly ICompositionPolicy policy = policy ?? new MetadataCompositionPolicy();
     private CompositionMode? previous;
     private int repeats;
+    public bool LastDrawSkipped { get; private set; }
+    public void ResetModeHistory() { previous = null; repeats = 0; LastDrawSkipped = false; }
     public CompositionPlan? Next(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, ISet<string>? excluded = null,
         IReadOnlyList<Viewport>? displayViewports = null, IReadOnlyList<FrameRect>? displayRegions = null)
     {
+        LastDrawSkipped = false;
         var modes = new List<(CompositionMode Mode, PhotoInfo[] Photos)>();
         var weights = ModeSelection.Weights(s.GalleryWeight, s.PanWeight, s.ZoomWeight);
         bool SuitableAt(PhotoInfo p, Viewport v, CompositionMode m) => policy.Suitable(p, v, m, s)
@@ -60,13 +63,15 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
         Add(CompositionMode.HorizontalPan, s.HorizontalPanEnabled, weights.Motion);
         Add(CompositionMode.Zoom, s.ZoomEnabled, weights.Motion);
         var selectedMode = ModeSelection.Pick(modes.Select(m => m.Mode).ToArray(), weights.Gallery, weights.Motion, previous, repeats, random);
-        if (selectedMode == null) return null;
+        if (selectedMode == null) { LastDrawSkipped = modes.Count > 0; return null; }
         var chosen = modes.First(m => m.Mode == selectedMode);
+        var target = s.IsPerDisplay(chosen.Mode) && displayViewports?.Count > 0 ? displayViewports[0] : viewport;
+        var plan = SelectPhotos(chosen.Mode, chosen.Photos, target, s, excluded,
+            !s.IsPerDisplay(chosen.Mode) && s.AvoidFaceDisplayBoundaries ? displayRegions : null);
+        if (plan == null) return null;
         repeats = previous == chosen.Mode ? repeats + 1 : 1;
         previous = chosen.Mode;
-        var target = s.IsPerDisplay(chosen.Mode) && displayViewports?.Count > 0 ? displayViewports[0] : viewport;
-        var plan = SelectPhotos(chosen.Mode, chosen.Photos, target, s, excluded);
-        return plan != null && Mirror(plan.Photos[0], plan.Mode) ? plan with { MirrorPerDisplay = true } : plan;
+        return Mirror(plan.Photos[0], plan.Mode) ? plan with { MirrorPerDisplay = true } : plan;
     }
     public CompositionPlan? ForMode(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, CompositionMode mode, ISet<string>? excluded = null)
     {
@@ -75,7 +80,8 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
             && (excluded == null || !excluded.Contains(p.Path))).ToArray();
         return suitable.Length > 0 ? SelectPhotos(mode, suitable, viewport, s, excluded) : null;
     }
-    private CompositionPlan? SelectPhotos(CompositionMode mode, PhotoInfo[] photos, Viewport viewport, WallSettings s, ISet<string>? excluded)
+    private CompositionPlan? SelectPhotos(CompositionMode mode, PhotoInfo[] photos, Viewport viewport, WallSettings s, ISet<string>? excluded,
+        IReadOnlyList<FrameRect>? displays = null)
     {
         var selected = new List<PhotoInfo>();
         var used = new HashSet<string>(excluded ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
@@ -85,14 +91,21 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
         var preferred = photos.Where(p => viewport.Width >= viewport.Height ? p.Aspect < 1 : p.Aspect >= 1).ToArray();
         for (var i = 0; i < count; i++)
         {
-            var photo = selector.Pick(mode is CompositionMode.Gallery or CompositionMode.GalleryScroll && preferred.Any(p => !used.Contains(p.Path)) ? preferred : photos, s, used);
+            var fitting = mode == CompositionMode.Gallery
+                ? photos.Where(p => !used.Contains(p.Path) && FixedGalleryLayout.Update(selected, p, viewport, s.Gap, displays ?? [], -1, s.GalleryMax)?.IsAddition == true).ToArray()
+                : photos;
+            var preferredFits = fitting.Where(p => preferred.Contains(p)).ToArray();
+            var photo = selector.Pick(mode is CompositionMode.Gallery or CompositionMode.GalleryScroll && preferredFits.Any(p => !used.Contains(p.Path)) ? preferredFits : fitting, s, used);
             if (photo == null) break;
-            selected.Add(photo); used.Add(photo.Path);
+            if (mode == CompositionMode.Gallery)
+                selected = FixedGalleryLayout.Update(selected, photo, viewport, s.Gap, displays ?? [], -1, s.GalleryMax)!.Photos.ToList();
+            else selected.Add(photo);
+            used.Add(photo.Path);
             stripWidth += Math.Max(1, viewport.Height - 2 * s.Gap) * photo.Aspect + s.Gap;
             if (mode == CompositionMode.GalleryScroll && selected.Count >= 2 && stripWidth >= viewport.Width + viewport.Height * 1.5) break;
         }
         if (mode == CompositionMode.Gallery)
-            selected = FixedGalleryLayout.Arrange(selected, viewport, s.Gap).Select(i => selected[i.Index]).ToList();
+            selected = FixedGalleryLayout.Arrange(selected, viewport, s.Gap, displays).Select(i => selected[i.Index]).ToList();
         return selected.Count > 0 ? new(mode, selected) : null;
     }
     public static IReadOnlyList<FrameRect> GalleryLayout(IReadOnlyList<PhotoInfo> photos, Viewport v, double gap)

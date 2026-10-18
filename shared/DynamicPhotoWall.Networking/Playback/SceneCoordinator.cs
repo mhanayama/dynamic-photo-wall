@@ -10,6 +10,7 @@ public sealed class SceneCoordinator(IScenePlanner planner, IPlaybackOutput outp
         public double Created { get; } = created;
     }
     private readonly Dictionary<Guid, Pending> pending = [];
+    private readonly Dictionary<Guid, double> retryAt = [];
     private readonly Dictionary<Guid, (SharedScenePlan Plan, double Started, double PausedBaseline)> current = [];
     private double? pauseAt;
     private double totalPaused;
@@ -35,8 +36,10 @@ public sealed class SceneCoordinator(IScenePlanner planner, IPlaybackOutput outp
             if (participants.Length == 0 || pending.ContainsKey(group.Key)) continue;
             if (current.TryGetValue(group.Key, out var active) && active.Plan.SettingsRevision == state.Revision
                 && clock.Now - active.Started - (totalPaused - active.PausedBaseline) < active.Plan.Duration - 4) continue;
+            if (retryAt.TryGetValue(group.Key, out var retry) && clock.Elapsed < retry) continue;
             var plan = await planner.PrepareAsync(state, group.Key, photos, token);
-            if (plan == null) continue;
+            if (plan == null) { retryAt[group.Key] = clock.Elapsed + 5; continue; }
+            retryAt.Remove(group.Key);
             plan.Validate();
             pending[group.Key] = new(plan, participants, clock.Elapsed);
             if (Broadcast != null) await Broadcast(PeerPacket.Create("scenePrepare", plan));
@@ -86,14 +89,14 @@ public sealed class SceneCoordinator(IScenePlanner planner, IPlaybackOutput outp
             case "resume": if (pauseAt != null) totalPaused += Math.Max(0, control.EffectiveAt - pauseAt.Value);
                 Paused = false; pauseAt = null; break;
             case "stop": Stopped = true; break;
-            case "start": Stopped = false; Paused = false; pauseAt = null; current.Clear(); pending.Clear(); totalPaused = 0; break;
-            case "next": current.Clear(); pending.Clear(); totalPaused = 0; break;
+            case "start": Stopped = false; Paused = false; pauseAt = null; Invalidate(); break;
+            case "next": Invalidate(); break;
             default: throw new InvalidDataException("Unknown playback operation.");
         }
         output.Control(control.Operation, control.EffectiveAt);
     }
-    public void Invalidate() { pending.Clear(); current.Clear(); totalPaused = 0; }
-    public void LeadershipChanged() => pending.Clear();
+    public void Invalidate() { pending.Clear(); current.Clear(); retryAt.Clear(); totalPaused = 0; }
+    public void LeadershipChanged() { pending.Clear(); retryAt.Clear(); }
     public void Observe(SharedScenePlan plan, SceneCommit commit)
         => current[plan.GroupId] = (plan, commit.StartAt, totalPaused);
 }

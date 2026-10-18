@@ -78,7 +78,7 @@ internal static class GalleryFaceTests
     public static async Task GroupTimelineChangesOnePhotoAfterEachQuietInterval()
     {
         var migrated = new WallSettings { GalleryMinSeconds = 30, GalleryMaxSeconds = 60 }; migrated.Normalize();
-        Check(migrated.GalleryMinSeconds == 10 && migrated.GalleryMaxSeconds == 30, "the former default interval migrates to the group clock's ten-to-thirty seconds");
+        Check(migrated.GalleryMinSeconds == 5 && migrated.GalleryMaxSeconds == 10, "the former default interval migrates to five-to-ten seconds");
         var settings = new WallSettings { GalleryScrollEnabled = false, VerticalPanEnabled = false, HorizontalPanEnabled = false, ZoomEnabled = false, GlassBackground = false };
         var all = Enumerable.Range(0, 30).Select(i => Photo(i.ToString("D2"), 800, 1600)).ToArray();
         var inputs = new[] { new GalleryTimeline.Surface(all.Take(2).ToArray(), new(1920, 1080), []), new GalleryTimeline.Surface(all.Skip(2).Take(2).ToArray(), new(1920, 1080), []) };
@@ -89,7 +89,7 @@ internal static class GalleryFaceTests
         foreach (var t in born)
         {
             var quiet = t.At - previous;
-            Check(quiet >= 10 - .001 && quiet <= 30 + .001, "each replacement starts ten to thirty seconds after the prior fade completes");
+            Check(quiet >= 5 - .001 && quiet <= 10 + .001, "each change starts five to ten seconds after the prior fade completes");
             previous = t.At + settings.FadeSeconds;
         }
         Check(timeline.All(t => t.To.Height == 1064 && t.From.Height == 1064), "timeline moves do not resize gallery height");
@@ -116,7 +116,7 @@ internal static class GalleryFaceTests
     }
     public static async Task LocalReplacementKeepsHeightWithoutShowingAWindow()
     {
-        var settings = new WallSettings { GlassBackground = false, FadeSeconds = .08, AvoidFaceDisplayBoundaries = false };
+        var settings = new WallSettings { GlassBackground = false, FadeSeconds = .08, AvoidFaceDisplayBoundaries = false, GalleryMax = 20 };
         var renderer = new PhotoRenderer(new(6000, 1080), settings, new TransitionController(), new AnimationScheduler());
         var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, new byte[] { 0, 0, 255, 255 }, 4); bitmap.Freeze();
         try
@@ -135,6 +135,13 @@ internal static class GalleryFaceTests
             Check(scene.Slots.Count < before && scene.Slots.Count == scene.Photos.Count && scene.Slots.Count == scene.Bitmaps.Count,
                 "reflow evicts neighbours and commits matching slot, photo and bitmap lists");
             Check(scene.Photos.Any(p => p.Path == "wide") && scene.Slots.All(slot => slot.Height == 1064), "the replacement remains present at full height");
+            var retained = scene.Photos.Select(p => p.Path).ToArray();
+            Check(await renderer.ReplaceSlotAsync(scene, 0, Photo("added", 60, 1800), bitmap, CancellationToken.None), "a ready incoming card is added into free padding");
+            Check(scene.Photos.Count == retained.Length + 1 && retained.All(path => scene.Photos.Any(p => p.Path == path)),
+                "the renderer keeps every previous photo when there is space to add one");
+            Check(scene.Photos.Count == scene.Slots.Count && scene.Photos.Count == scene.Bitmaps.Count,
+                "addition keeps the rendered slots, metadata and bitmaps aligned");
+            Check(!await renderer.ReplaceSlotAsync(scene, 0, scene.Photos[0], bitmap, CancellationToken.None), "an active photo cannot trigger another update of itself");
         }
         finally { renderer.Clear(); renderer.Close(); }
     }

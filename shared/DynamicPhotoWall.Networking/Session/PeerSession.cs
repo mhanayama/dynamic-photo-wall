@@ -27,6 +27,7 @@ public sealed partial class PeerSession : IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, PeerCandidate> candidates = new(), targets = new();
     private readonly ConcurrentDictionary<Guid, double> discoveredAt = new();
     private readonly ConcurrentDictionary<Guid, Task> connecting = new();
+    private readonly ConcurrentDictionary<Guid, byte> disconnectedPeers = new();
     private readonly ConcurrentDictionary<Guid, Task> backgroundJobs = new();
     private readonly Dictionary<Guid, TaskCompletionSource<StateResult>> proposals = [];
     private readonly SemaphoreSlim operations = new(1, 1);
@@ -47,6 +48,11 @@ public sealed partial class PeerSession : IAsyncDisposable
     public WallSnapshot Snapshot => state.Current;
     public IReadOnlyList<PeerCandidate> Candidates => candidates.Values.OrderBy(c => c.Hello.Name).ToArray();
     public IReadOnlyList<SharedSource> Sources => provider.Sources.Concat(remoteSources).DistinctBy(s => (s.ProviderId, s.SourceId)).ToArray();
+    public bool IsSourceConnected(SharedSource source)
+        => started && !lifetime.IsCancellationRequested && (source.ProviderId == local.PeerId
+            ? provider.Sources.Any(s => s.SourceId == source.SourceId)
+            : links.ContainsKey(source.ProviderId) && displayInventories.ContainsKey(source.ProviderId)
+                && remoteSources.Any(s => s.ProviderId == source.ProviderId && s.SourceId == source.SourceId));
     public IReadOnlyList<Guid> ConnectedPeers => links.Keys.ToArray();
     public bool IsDisplayConnected(PeerDisplayKey key)
         => started && !lifetime.IsCancellationRequested && (key.PeerId == local.PeerId
@@ -105,13 +111,31 @@ public sealed partial class PeerSession : IAsyncDisposable
     public Task ConnectAsync(PeerCandidate candidate)
     {
         PeerProtocol.Require(started && candidate.Hello.PeerId != local.PeerId, "Online mode is disabled or candidate is self.");
+        disconnectedPeers.TryRemove(candidate.Hello.PeerId, out _);
         targets[candidate.Hello.PeerId] = candidate;
         explicitJoins[candidate.Hello.PeerId] = Snapshot;
         return ConnectTarget(candidate);
     }
+    // Keep saved layout, selections and cached photos. Only an explicit Connect
+    // in this session may undo the user's disconnect, including inbound retries.
+    public async Task DisconnectAsync(Guid peer)
+    {
+        PeerProtocol.Require(peer != local.PeerId, "Cannot disconnect self.");
+        disconnectedPeers[peer] = 0;
+        explicitJoins.TryRemove(peer, out _);
+        // Close before taking the handler gate: a stalled send may own it.
+        if (links.TryGetValue(peer, out var current)) await current.Link.DisposeAsync();
+        await operations.WaitAsync(lifetime.Token);
+        try
+        {
+            if (disconnectedPeers.ContainsKey(peer)) await RemovePeer(peer);
+            Changed?.Invoke();
+        }
+        finally { operations.Release(); }
+    }
     private Task ConnectTarget(PeerCandidate candidate)
     {
-        if (links.ContainsKey(candidate.Hello.PeerId)) return Task.CompletedTask;
+        if (disconnectedPeers.ContainsKey(candidate.Hello.PeerId) || links.ContainsKey(candidate.Hello.PeerId)) return Task.CompletedTask;
         return connecting.GetOrAdd(candidate.Hello.PeerId, peerKey => Task.Run(async () =>
         {
             try { var link = await transport.ConnectAsync(candidate, lifetime.Token); Background(() => Attach(link)); }
@@ -124,6 +148,7 @@ public sealed partial class PeerSession : IAsyncDisposable
         await operations.WaitAsync(lifetime.Token);
         try
         {
+            if (disconnectedPeers.ContainsKey(peer)) { await link.DisposeAsync(); return; }
             if (links.TryGetValue(peer, out var old))
             {
                 var preferOutbound = string.CompareOrdinal(local.PeerId.ToString("N"), peer.ToString("N")) < 0;
@@ -155,7 +180,7 @@ public sealed partial class PeerSession : IAsyncDisposable
             }
         }
         catch (Exception e)
-            { if (!lifetime.IsCancellationRequested) Error?.Invoke(e); }
+            { if (!lifetime.IsCancellationRequested && !disconnectedPeers.ContainsKey(peer)) Error?.Invoke(e); }
         finally
         {
             await link.DisposeAsync();
@@ -180,6 +205,7 @@ public sealed partial class PeerSession : IAsyncDisposable
                 var endpoint = inventory.Candidate with { Host = link.RemoteHost };
                 displayInventories[peer] = inventory.Displays.Select(d => d.Key).ToArray();
                 targets[peer] = endpoint; candidates[peer] = endpoint;
+                discoveredAt.TryAdd(peer, clock.Elapsed);
                 remoteSources = remoteSources.Where(s => s.ProviderId != peer).Concat(inventory.Sources).ToArray();
                 if (Snapshot.LeaderId == local.PeerId)
                 {
@@ -399,7 +425,7 @@ public sealed partial class PeerSession : IAsyncDisposable
         {
             try { await item.Link.SendAsync(packet, lifetime.Token); }
             catch (Exception e) when (e is IOException or OperationCanceledException or System.Net.Sockets.SocketException)
-                { if (!lifetime.IsCancellationRequested) Error?.Invoke(e); }
+                { if (!lifetime.IsCancellationRequested && !disconnectedPeers.ContainsKey(item.Link.Remote.PeerId)) Error?.Invoke(e); }
         }
     }
     private async Task RemovePeer(Guid peer)
@@ -407,7 +433,7 @@ public sealed partial class PeerSession : IAsyncDisposable
         if (!links.TryRemove(peer, out var item)) return;
         displayInventories.TryRemove(peer, out _);
         await item.Link.DisposeAsync(); photos.PeerLost(peer); await scenes.PeerLost(peer);
-        if (notices.Add(peer)) notifications.Disconnected(item.Link.Remote.Name);
+        if (!disconnectedPeers.ContainsKey(peer) && notices.Add(peer)) notifications.Disconnected(item.Link.Remote.Name);
         recovery.ConnectionLost(clock.Elapsed, links.Count > 0);
         if (Snapshot.LeaderId == peer && Leadership.Select(peer, LivePeers()) == local.PeerId)
         { state.TakeLeadership(); scenes.LeadershipChanged(); await PublishState(); }

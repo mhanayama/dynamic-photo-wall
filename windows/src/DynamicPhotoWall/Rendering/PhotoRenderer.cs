@@ -293,17 +293,23 @@ public sealed partial class PhotoRenderer : Window
         }
         if (old != null) { DisposeBackground(old); RemovePresentation(old); transitions.RemoveTree(old.Canvas); layers.Children.Remove(old.Canvas); }
     }
-    public async Task ReplaceSlotAsync(SceneVisual scene, int index, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
+    public async Task<bool> ReplaceSlotAsync(SceneVisual scene, int index, PhotoInfo photo, BitmapSource bitmap, CancellationToken token)
     {
-        if (Current == null || !Current.Surfaces.Contains(scene)) return;
+        if (Current == null || !Current.Surfaces.Contains(scene)) return false;
         var viewport = scene.Viewport;
-        var photos = scene.Photos.ToArray(); photos[index] = photo;
         // Protect the resting layout. Faces may cross seams while the existing
         // slots smoothly move and resize toward their new positions.
-        var items = FixedGalleryLayout.Arrange(photos, viewport, settings.Gap, scene.DisplayRegions, index);
-        if (items.All(i => i.Index != index)) return;
+        var change = FixedGalleryLayout.Update(scene.Photos, photo, viewport, settings.Gap, scene.DisplayRegions, index, settings.GalleryMax);
+        if (change == null) return false;
+        var photos = change.Photos; var items = change.Items; index = change.IncomingIndex;
+        if (change.IsAddition)
+        {
+            var added = CreateSlot(photo, bitmap); SetRect(added, items.First(i => i.Index == index).Frame);
+            scene.Slots.Insert(index, added); scene.Photos.Insert(index, photo); scene.Bitmaps.Insert(index, bitmap);
+            scene.Foreground.Children.Add(added);
+        }
         var slot = scene.Slots[index];
-        var old = slot.Child;
+        var old = change.IsAddition ? null : slot.Child;
         var next = CreatePhoto(photo, bitmap); next.Opacity = 0;
         var replacementFrame = items.First(i => i.Index == index).Frame;
         next.Width = replacementFrame.Width; next.Height = replacementFrame.Height;
@@ -337,6 +343,7 @@ public sealed partial class PhotoRenderer : Window
             scene.Slots.Clear(); scene.Photos.Clear(); scene.Bitmaps.Clear();
             foreach (var item in items) { scene.Slots.Add(slots[item.Index]); scene.Photos.Add(photos[item.Index]); scene.Bitmaps.Add(images[item.Index]); }
         }
+        return true;
     }
     private Border CreateSlot(PhotoInfo photo, BitmapSource bitmap)
     {

@@ -114,7 +114,8 @@ internal static class Program
     {
         await Test("motion face rectangles fit physical outputs or skip unsafe pans", GalleryFaceTests.MotionFacesFitPhysicalOutputs);
         await Test("gallery repacking retains near-full height or width", GalleryFaceTests.GalleryKeepsItsShortAxisDuringRepacking);
-        await Test("one group gallery timeline changes a photo every ten to thirty seconds", GalleryFaceTests.GroupTimelineChangesOnePhotoAfterEachQuietInterval);
+        await Test("one group gallery timeline changes a photo every five to ten seconds", GalleryFaceTests.GroupTimelineChangesOnePhotoAfterEachQuietInterval);
+        await Test("centered pans, gallery additions and fair photo rotation", GalleryBehaviorTests.Run);
         await Test("local gallery replacement reflows at fixed height without a visible window", GalleryFaceTests.LocalReplacementKeepsHeightWithoutShowingAWindow);
     }
     private static async Task AmbientTransitions()
@@ -331,8 +332,14 @@ internal static class Program
             var engine = new CompositionEngine(new PhotoSelector(new Random(9)), new Random(3));
             var photos = new[] { Photo("portrait", 3000, 5000), Photo("wide", 8000, 1200), Photo("landscape", 4000, 2400) };
             var totals = new int[5]; var s = new WallSettings();
-            for (var i = 0; i < 20000; i++) totals[(int)engine.Next(photos, new(3840, 1100), s)!.Mode]++;
-            var gallery = (totals[0] + totals[4]) / 20000d; var pan = (totals[1] + totals[2]) / 20000d; var zoom = totals[3] / 20000d;
+            var skipped = 0;
+            for (var i = 0; i < 20000; i++)
+            {
+                var plan = engine.Next(photos, new(3840, 1100), s);
+                if (plan == null) { Check(engine.LastDrawSkipped, "eligible mode draw skipped"); skipped++; }
+                else totals[(int)plan.Mode]++;
+            }
+            var gallery = (totals[0] + totals[4] + skipped) / 20000d; var pan = (totals[1] + totals[2]) / 20000d; var zoom = totals[3] / 20000d;
             Console.WriteLine($"Observed weights: gallery={gallery:P1}, pan={pan:P1}, zoom={zoom:P1}");
             Check(gallery > .78 && gallery < .82 && pan + zoom > .18 && pan + zoom < .22, "category distribution");
             s.GalleryWeight = 0; s.MotionWeight = 20; s.VerticalPanEnabled = s.HorizontalPanEnabled = false;

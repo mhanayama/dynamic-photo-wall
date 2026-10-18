@@ -19,14 +19,16 @@ import Testing
         for grouped in [false, true] {
             for scroll in [false, true] {
                 var settings = WallSettings(); settings.galleryScrollEnabled = scroll
-                let planner = WallScenePlanner(seed: 1234); var count = 0
+                let planner = WallScenePlanner(seed: 1234); var count = 0; var skipped = 0; var previous: WallMode?
                 for _ in 0..<20000 {
-                    let mode: WallMode
-                    if grouped { mode = try #require(planner.chooseGroupMode(settings: settings)) }
-                    else { mode = try #require(planner.next(assets: assets, settings: settings, viewport: CGSize(width: 1920, height: 1080))).mode }
+                    let result = grouped ? planner.chooseGroupMode(settings: settings)
+                        : planner.next(assets: assets, settings: settings, viewport: CGSize(width: 1920, height: 1080))?.mode
+                    guard let mode = result else { #expect(planner.lastDrawSkipped); skipped += 1; continue }
+                    #expect(!ModeSelection.isGallery(mode) || mode != previous)
+                    previous = mode
                     if ModeSelection.isGallery(mode) { count += 1 }
                 }
-                #expect(abs(Double(count) / 20000 - 0.8) < 0.02)
+                #expect(abs(Double(count + skipped) / 20000 - 0.8) < 0.02)
             }
         }
     }

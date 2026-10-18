@@ -39,7 +39,9 @@ nonisolated enum FaceMotionSafety {
                 p.fromY = safeStart(p.fromY)
                 if abs(p.toY - p.fromY) <= 20 { p.fromY = safeStart(original.fromY <= original.toY ? 0 : -overflow) }
                 guard abs(p.toY - p.fromY) > 20 else { continue }
-                p.fromX = d.midX - cx * p.width; p.toX = p.fromX; p.frameTop = 0
+                let left = d.minX + margin - face.minX * p.width
+                let right = d.maxX - margin - face.maxX * p.width
+                p.fromX = min(right, max(left, (v.width - p.width) / 2)); p.toX = p.fromX; p.frameTop = 0
                 p.seconds = max(0.1, abs(p.toY - p.fromY) / s.panPixelsPerSecond)
             } else {
                 let overflow = p.width - v.width; guard overflow > 20 else { continue }

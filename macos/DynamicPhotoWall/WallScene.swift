@@ -31,7 +31,9 @@ final class WallScenePlanner {
     private var generator: SeededRandomNumberGenerator
     private var previous: WallMode?
     private var repeats = 0
+    private(set) var lastDrawSkipped = false
     private var nextID = 0
+    func resetModeHistory() { previous = nil; repeats = 0; lastDrawSkipped = false }
 
     init(seed: UInt64 = .random(in: .min ... .max)) {
         selector = PhotoSelector(seed: seed)
@@ -40,6 +42,7 @@ final class WallScenePlanner {
 
     func next(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
               excluding: Set<URL> = [], forcedMode: WallMode? = nil, displayRegions: [CGRect] = []) -> WallScene? {
+        lastDrawSkipped = false
         func availableChoices(excluding: Set<URL>) -> [Choice] {
             eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: excluding)
                 .filter { forcedMode == nil || $0.mode == forcedMode }
@@ -61,7 +64,7 @@ final class WallScenePlanner {
         let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
         guard let mode = ModeSelection.pick(choices.map(\.mode), galleryWeight: weights.gallery, motionWeight: weights.motion,
             previous: forcedMode == nil ? previous : nil, repeats: forcedMode == nil ? repeats : 0, using: &generator),
-              let chosen = choices.first(where: { $0.mode == mode }) else { return nil }
+              let chosen = choices.first(where: { $0.mode == mode }) else { lastDrawSkipped = true; return nil }
         var selected: [PhotoAsset] = []
         var used: Set<URL> = []
         let count: Int
@@ -74,16 +77,25 @@ final class WallScenePlanner {
         let portraits = chosen.assets.filter { viewport.width >= viewport.height ? $0.aspectRatio < 1 : $0.aspectRatio >= 1 }
         var stripWidth = settings.gap
         for _ in 0..<count {
+            let fitting = chosen.mode == .gallery ? chosen.assets.filter { p in
+                !used.contains(p.url) && FixedGalleryLayout.update(selected, incoming: p, viewport: viewport, gap: settings.gap,
+                    displays: settings.avoidFaceDisplayBoundaries ? displayRegions : [], replacement: -1, maximum: settings.galleryMax)?.isAddition == true
+            } : chosen.assets
+            let preferredFits = fitting.filter { p in portraits.contains { $0.url == p.url } }
             let pool = (chosen.mode == .gallery || chosen.mode == .horizontalGallery)
-                && portraits.contains(where: { !used.contains($0.url) }) ? portraits : chosen.assets
+                && preferredFits.contains(where: { !used.contains($0.url) }) ? preferredFits : fitting
             guard let photo = selector.pick(from: pool, settings: settings, excluding: used) else { break }
-            selected.append(photo)
+            if chosen.mode == .gallery {
+                selected = FixedGalleryLayout.update(selected, incoming: photo, viewport: viewport, gap: settings.gap,
+                    displays: settings.avoidFaceDisplayBoundaries ? displayRegions : [], replacement: -1, maximum: settings.galleryMax)!.assets
+            } else { selected.append(photo) }
             used.insert(photo.url)
             stripWidth += max(1, viewport.height - 2 * settings.gap) * photo.aspectRatio + settings.gap
             if chosen.mode == .horizontalGallery, selected.count >= 2,
                stripWidth >= viewport.width + viewport.height * 1.5 { break }
         }
-        if chosen.mode == .gallery { selected = FixedGalleryLayout.arrange(selected, viewport: viewport, gap: settings.gap).map { selected[$0.index] } }
+        if chosen.mode == .gallery { selected = FixedGalleryLayout.arrange(selected, viewport: viewport, gap: settings.gap,
+            displays: settings.avoidFaceDisplayBoundaries ? displayRegions : []).map { selected[$0.index] } }
         guard !selected.isEmpty else { return nil }
         if forcedMode == nil {
             repeats = chosen.mode == previous ? repeats + 1 : 1
@@ -97,6 +109,7 @@ final class WallScenePlanner {
     }
 
     func chooseGroupMode(settings: WallSettings) -> WallMode? {
+        lastDrawSkipped = false
         let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
         let definitions: [(WallMode, Bool, Double)] = [
             (.gallery, settings.galleryEnabled, Double(weights.gallery)),
@@ -107,7 +120,7 @@ final class WallScenePlanner {
         ]
         let choices = definitions.filter { $0.1 && $0.2 > 0 }
         guard let mode = ModeSelection.pick(choices.map { $0.0 }, galleryWeight: weights.gallery, motionWeight: weights.motion,
-            previous: previous, repeats: repeats, using: &generator) else { return nil }
+            previous: previous, repeats: repeats, using: &generator) else { lastDrawSkipped = !choices.isEmpty; return nil }
         repeats = mode == previous ? repeats + 1 : 1; previous = mode
         return mode
     }
