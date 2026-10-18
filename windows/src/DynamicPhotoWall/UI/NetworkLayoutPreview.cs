@@ -7,12 +7,13 @@ namespace DynamicPhotoWall.UI;
 public sealed class NetworkLayoutPreview : Canvas
 {
     private readonly Func<IReadOnlyList<Net.PeerDisplay>> read;
+    private readonly Func<Guid, string> peerName;
     private readonly Action<Net.PeerDisplayKey, int, int> move;
     private (Net.PeerDisplay Display, Point Point)? dragging;
     private double scale = 1, left, top;
-    public NetworkLayoutPreview(Func<IReadOnlyList<Net.PeerDisplay>> read, Action<Net.PeerDisplayKey, int, int> move)
+    public NetworkLayoutPreview(Func<IReadOnlyList<Net.PeerDisplay>> read, Func<Guid, string> peerName, Action<Net.PeerDisplayKey, int, int> move)
     {
-        this.read = read; this.move = move;
+        this.read = read; this.peerName = peerName; this.move = move;
         Height = 270; ClipToBounds = true; Background = new SolidColorBrush(Color.FromRgb(20, 22, 28));
         SizeChanged += (_, _) => Refresh();
         MouseMove += (_, e) =>
@@ -38,7 +39,7 @@ public sealed class NetworkLayoutPreview : Canvas
         }
         foreach (var display in displays)
         {
-            var name = $"{display.Key.PeerId.ToString("N")[..8]} / {display.Key.DisplayId}\n{display.Width}×{display.Height}";
+            var name = $"{peerName(display.Key.PeerId)} / {display.Key.DisplayId}\n{display.Width}×{display.Height}";
             var card = new Border { Width = Math.Max(20, display.Width * scale), Height = Math.Max(20, display.Height * scale),
                 BorderThickness = new Thickness(2), BorderBrush = display.GroupId == null ? Brushes.SlateGray : Brushes.CornflowerBlue,
                 Background = new SolidColorBrush(Color.FromArgb(220, 38, 57, 82)), Cursor = System.Windows.Input.Cursors.SizeAll,

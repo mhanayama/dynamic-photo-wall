@@ -10,10 +10,11 @@ namespace DynamicPhotoWall.UI;
 public sealed class NetworkSettingsPanel : StackPanel, IDisposable
 {
     private sealed record GroupChoice(Guid? Id, string Name);
-    private sealed class DisplayRow(Net.PeerDisplay value, Action changed) : INotifyPropertyChanged
+    private sealed class DisplayRow(Net.PeerDisplay value, Func<Guid, string> peerName, Action changed) : INotifyPropertyChanged
     {
         public Net.PeerDisplay Value = value;
-        public string Name => $"{Value.Key.PeerId.ToString("N")[..8]} / {Value.Key.DisplayId}";
+        public string Name => $"{peerName(Value.Key.PeerId)} / {Value.Key.DisplayId}";
+        public void RefreshName() => PropertyChanged?.Invoke(this, new(nameof(Name)));
         public bool Selected { get => Value.Selected; set { Value = Value with { Selected = value }; Notify(nameof(Selected)); } }
         public Guid? GroupId { get => Value.GroupId; set { Value = Value with { GroupId = value }; Notify(nameof(GroupId)); } }
         public int X { get => Value.X; set { Value = Value with { X = value }; Notify(nameof(X)); } }
@@ -49,9 +50,11 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
     public NetworkSettingsPanel(WallController controller, SettingsManager manager)
     {
         this.controller = controller; this.manager = manager;
-        preview = new(() => rows.Select(r => r.Value).ToArray(), (key, x, y) =>
+        preview = new(() => rows.Select(r => r.Value).ToArray(), PeerName, (key, x, y) =>
         { var row = rows.First(r => r.Value.Key == key); row.X = x; row.Y = y; });
-        Children.Add(new TextBlock { Text = "ピア接続", FontSize = 24 }); Children.Add(online); Children.Add(status);
+        Children.Add(new TextBlock { Text = "ピア接続", FontSize = 24 });
+        Children.Add(new TextBlock { Text = $"このPC: {Environment.MachineName}", TextWrapping = TextWrapping.Wrap });
+        Children.Add(online); Children.Add(status);
         Children.Add(new TextBlock { Text = "接続候補" }); Children.Add(candidates);
         AddButton(this, "接続", async () =>
         {
@@ -142,6 +145,7 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
         foreach (var old in groupChoices.Where(g => g.Id != null && !groups.Any(wanted => wanted.Id == g.Id)).ToArray()) groupChoices.Remove(old);
         foreach (var group in groups.Where(g => !groupChoices.Any(old => old.Id == g.Id))) groupChoices.Add(new(group.Id, group.Name));
     }
+    private string PeerName(Guid peerId) => controller.Network.Session?.PeerName(peerId) ?? "未接続の端末";
     private void Refresh()
     {
         if (disposed) return;
@@ -159,10 +163,13 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 baseline = session.Snapshot; groups = baseline.Groups.ToList();
                 sourceSignature = "";
                 UpdateChoices();
-                rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
-                preview.Refresh();
+                rows.Clear(); foreach (var display in baseline.Displays) rows.Add(new(display, PeerName, () => { if (!refreshing) dirty = true; preview.Refresh(); }));
                 SharedOptionsChanged?.Invoke(baseline.Playback);
             }
+            foreach (var row in rows) row.RefreshName();
+            preview.Refresh();
+            foreach (var item in sourceChecks.Values)
+                item.Check.Content = $"{item.Source.Name}（{PeerName(item.Source.ProviderId)}）";
             draftStatus.Text = dirty && baseline?.Revision != session.Snapshot.Revision ? "他のピアで設定が更新されました。未保存の編集を保持しています。" : "画面はピアをまたいでグループまたは単独表示へ割り当てられます。";
             var advertised = session.Sources.Concat(session.Snapshot.Sources.Where(s => !session.Sources.Any(a => a.ProviderId == s.ProviderId && a.SourceId == s.SourceId))
                 .Select(s => new Net.SharedSource(s.ProviderId, s.SourceId, "未接続の写真ソース"))).ToArray();
@@ -172,7 +179,7 @@ public sealed class NetworkSettingsPanel : StackPanel, IDisposable
                 sourceSignature = signature; sourceChecks.Clear(); sources.Children.Clear();
                 foreach (var source in advertised)
                 {
-                    var check = new CheckBox { Content = $"{source.Name} ({source.ProviderId.ToString("N")[..8]})",
+                    var check = new CheckBox { Content = $"{source.Name}（{PeerName(source.ProviderId)}）",
                         IsChecked = session.Snapshot.Sources.Any(s => s.ProviderId == source.ProviderId && s.SourceId == source.SourceId) };
                     check.Checked += (_, _) => { dirty = true; refreshProviders.Add(source.ProviderId); };
                     check.Unchecked += (_, _) => { dirty = true; refreshProviders.Add(source.ProviderId); };

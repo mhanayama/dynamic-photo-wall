@@ -134,6 +134,10 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     var changed: (() -> Void)?
     var failed: ((Error) -> Void)?
     var connectedPeers: Set<UUID> { Set(links.keys) }
+    func peerName(_ peerId: UUID) -> String {
+        if peerId == local.peerId { return local.name }
+        return links[peerId]?.link.remote.name ?? targets[peerId]?.hello.name ?? candidates[peerId]?.hello.name ?? "未接続の端末"
+    }
     var sources: [PNSource] { provider.sources + remoteSources }
     var playbackState: PNRecoveryState { recovery.state }
     var playbackPaused: Bool { scenes.paused }

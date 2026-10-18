@@ -17,6 +17,7 @@ import UserNotifications
 // Native composition root. Views edit a revisioned draft; networking services
 // receive immutable values and never read SwiftUI or AppModel directly.
 @MainActor @Observable final class PNNetworkModel {
+    let hostName = ProcessInfo.processInfo.hostName
     private(set) var online = false
     private(set) var busy = false
     private(set) var status = "オフライン"
@@ -57,7 +58,7 @@ import UserNotifications
         do {
             let secrets = PNKeychain(service: "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))")
             let identity = try PNIdentity(secrets: secrets); self.identity = identity
-            let hello = PNHello(peerId: identity.peerId, name: Host.current().localizedName ?? "Mac")
+            let hello = PNHello(peerId: identity.peerId, name: hostName)
             let localSettings = settings(); let values = displayValues()
             let groups = Set(values.compactMap(\.groupID)).sorted().map { PNGroup(id: PNWire.id("\(identity.peerId.pnHex):\($0)"), name: $0) }
             let displays = values.map { d in PNDisplay(key: PNDisplayKey(peerId: identity.peerId, displayId: String(d.id)), selected: d.enabled,
@@ -92,6 +93,7 @@ import UserNotifications
         status = connected.isEmpty ? "接続待機中" : "\(connected.count + 1)ピア接続 · \(session.photos.available.count)枚準備済み · \(session.playbackState.rawValue)"
         if session.photos.deferredCount > 0 { status += " · 容量上限で\(session.photos.deferredCount)枚待機" }
     }
+    func peerName(_ peerId: UUID) -> String { session?.peerName(peerId) ?? "未接続の端末" }
     func markDirty() { if !refreshing && online { dirty = true } }
     func optionsEdited(_ settings: WallSettings) { if let draft, PNOptions(settings) != draft.playback { markDirty() } }
     func reload() { dirty = false; draft = nil; refresh() }
@@ -133,13 +135,14 @@ struct NetworkSettingsView: View {
     var body: some View {
         Form {
             Section("ピア接続") {
+                Text("このMac: \(network.hostName)").textSelection(.enabled)
                 Toggle("オンラインモード", isOn: Binding(get: { network.online }, set: { enabled in Task { await network.setOnline(enabled) } })).disabled(network.busy)
                 Text(network.status).foregroundStyle(.secondary)
                 ForEach(network.candidates) { peer in HStack { Label(peer.hello.name, systemImage: "desktopcomputer"); Spacer(); Button("接続") { network.connect(peer) } } }
             }
             Section("共有する写真ソース") {
                 ForEach(network.sources) { source in
-                    Toggle(source.name + " (" + String(source.providerId.pnHex.prefix(8)) + ")", isOn: Binding(get: { network.draft?.sources.contains { $0.providerId == source.providerId && $0.sourceId == source.sourceId } == true }, set: { network.selectSource(source, enabled: $0) }))
+                    Toggle("\(source.name)（\(network.peerName(source.providerId))）", isOn: Binding(get: { network.draft?.sources.contains { $0.providerId == source.providerId && $0.sourceId == source.sourceId } == true }, set: { network.selectSource(source, enabled: $0) }))
                 }
                 Button("選択した写真キャッシュを更新") { network.regenerate() }
                 Text("設定の適用後に原寸の写真と顔データを暗号化して転送します。有効期限は14日です。").foregroundStyle(.secondary)
@@ -159,7 +162,7 @@ struct NetworkDisplaySettingsView: View {
                 if let snapshot = network.draft {
                     ForEach(snapshot.displays.indices, id: \.self) { index in
                         HStack {
-                            Toggle("\(snapshot.displays[index].key.peerId.pnHex.prefix(8)) / \(snapshot.displays[index].key.displayId)", isOn: binding(index, \.selected))
+                            Toggle("\(network.peerName(snapshot.displays[index].key.peerId)) / \(snapshot.displays[index].key.displayId)", isOn: binding(index, \.selected))
                             Picker("所属", selection: binding(index, \.groupId)) {
                                 Text("単独表示").tag(nil as UUID?)
                                 ForEach(snapshot.groups) { Text($0.name).tag(Optional($0.id)) }
@@ -204,7 +207,7 @@ private struct NetworkLayoutPreview: View {
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.15)
                 ForEach(displays) { display in
-                    Text("\(display.key.peerId.pnHex.prefix(8)) / \(display.key.displayId)").font(.caption)
+                    Text("\(network.peerName(display.key.peerId)) / \(display.key.displayId)").font(.caption)
                         .frame(width: max(20, Double(display.width) * scale), height: max(20, Double(display.height) * scale))
                         .background(display.groupId == nil ? Color.gray.opacity(0.5) : Color.blue.opacity(0.5))
                         .border(.secondary).offset(x: 12 + Double(display.x - left) * scale, y: 12 + Double(display.y - top) * scale)

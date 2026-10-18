@@ -47,6 +47,13 @@ public sealed partial class PeerSession : IAsyncDisposable
     public IReadOnlyList<PeerCandidate> Candidates => candidates.Values.OrderBy(c => c.Hello.Name).ToArray();
     public IReadOnlyList<SharedSource> Sources => provider.Sources.Concat(remoteSources).DistinctBy(s => (s.ProviderId, s.SourceId)).ToArray();
     public IReadOnlyList<Guid> ConnectedPeers => links.Keys.ToArray();
+    public string PeerName(Guid peerId)
+    {
+        if (peerId == local.PeerId) return local.Name;
+        if (links.TryGetValue(peerId, out var connected)) return connected.Link.Remote.Name;
+        if (targets.TryGetValue(peerId, out var known)) return known.Hello.Name;
+        return candidates.TryGetValue(peerId, out var candidate) ? candidate.Hello.Name : "未接続の端末";
+    }
     public PhotoTransferService Photos => photos;
     public PeerPlaybackState PlaybackState => recovery.State;
     public bool PlaybackPaused => scenes.Paused;
