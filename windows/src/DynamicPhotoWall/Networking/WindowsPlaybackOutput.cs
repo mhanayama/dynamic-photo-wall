@@ -14,15 +14,21 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
     private sealed class Group(PhotoRenderer renderer, SharedVisual visual)
     {
         public PhotoRenderer Renderer { get; } = renderer;
-        public SharedVisual Visual { get; } = visual;
-        public List<(DesktopWindowHost Host, TaskbarVisibility Taskbar)> Outputs { get; } = [];
+        public SharedVisual Visual { get; set; } = visual;
+        public List<(MonitorDescriptor Monitor, DesktopWindowHost Host, TaskbarVisibility Taskbar)> Outputs { get; } = [];
         public double Started, PausedSeconds;
         public SharedVisual? Previous;
         public double PreviousStarted, PreviousPaused;
+        public void Replace(SharedVisual next, double started)
+        {
+            Previous = Visual; PreviousStarted = Started; PreviousPaused = PausedSeconds;
+            Visual = next; Started = started; PausedSeconds = 0;
+        }
     }
     private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
     private readonly WindowsLayoutPreview preview = new(localPeer);
-    private readonly Dictionary<Guid, Group> prepared = [], current = [];
+    private readonly Dictionary<Guid, SharedVisual> prepared = [];
+    private readonly Dictionary<Guid, Group> current = [];
     private readonly Dictionary<Guid, Net.SceneCommit> commits = [];
     private readonly List<Net.PlaybackControl> controls = [];
     private Net.PeerPlaybackState recovery = Net.PeerPlaybackState.Offline;
@@ -72,11 +78,9 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         await dispatcher.InvokeAsync(() =>
         {
             cancellation.ThrowIfCancellationRequested();
-            var renderer = new PhotoRenderer(new(plan.Viewport.Width, plan.Viewport.Height), settings(), new TransitionController(), new AnimationScheduler());
-            var visual = renderer.BuildShared(plan, bitmaps, own);
-            prepared[plan.Id] = new(renderer, visual);
-            foreach (var old in prepared.Where(p => p.Value.Visual.Plan.GroupId == plan.GroupId && p.Key != plan.Id).Select(p => p.Key).ToArray())
-                { prepared[old].Renderer.Clear(); prepared[old].Renderer.Close(); prepared.Remove(old); }
+            prepared[plan.Id] = SharedSceneBuilder.Build(plan, bitmaps, own);
+            foreach (var old in prepared.Where(p => p.Value.Plan.GroupId == plan.GroupId && p.Key != plan.Id).Select(p => p.Key).ToArray())
+                prepared.Remove(old);
         });
     }
     public void Commit(Net.SceneCommit commit) => dispatcher.BeginInvoke(() =>
@@ -121,7 +125,7 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         if (stopped || entering) return;
         foreach (var commit in commits.Values.Where(c => pausedAt == null && c.StartAt <= now).ToArray())
         {
-            if (!prepared.Remove(commit.PlanId, out var group)) { commits.Remove(commit.GroupId); continue; }
+            if (!prepared.Remove(commit.PlanId, out var visual)) { commits.Remove(commit.GroupId); continue; }
             if (!attached)
             {
                 entering = true;
@@ -130,20 +134,35 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 finally { entering = false; }
                 if (!attached || stopped) continue;
             }
-            current.Remove(commit.GroupId, out var old);
-            group.Started = commit.StartAt; current[commit.GroupId] = group; commits.Remove(commit.GroupId);
-            var plan = group.Visual.Plan;
+            current.TryGetValue(commit.GroupId, out var old);
+            var plan = visual.Plan;
             var selected = plan.Displays.Where(d => d.Key.PeerId == localPeer && d.Selected).ToArray();
-            if (old != null)
+            var monitors = MonitorManager.Enumerate();
+            var reuse = old != null && PlaybackSurfaceLayout.CanReuse(old.Visual.Plan, plan, localPeer)
+                && old.Outputs.All(o => o.Host.IsAlive && monitors.Any(m => m.Id == o.Monitor.Id && m.X == o.Monitor.X
+                    && m.Y == o.Monitor.Y && m.Width == o.Monitor.Width && m.Height == o.Monitor.Height))
+                && old.Outputs.Count == selected.Count(d => monitors.Any(m => m.Id == d.Key.DisplayId));
+            var group = reuse ? old! : new Group(new PhotoRenderer(new(plan.Viewport.Width, plan.Viewport.Height), settings(),
+                new TransitionController(), new AnimationScheduler()), visual);
+            if (reuse) group.Replace(visual, commit.StartAt);
+            else
             {
-                group.Previous = group.Renderer.BuildShared(old.Visual.Plan, old.Visual.Images, selected.Select(d => d.Key.LayoutId).ToArray());
-                group.PreviousStarted = old.Started; group.PreviousPaused = old.PausedSeconds;
+                group.Started = commit.StartAt;
+                if (old != null)
+                {
+                    group.Previous = SharedSceneBuilder.Build(old.Visual.Plan, old.Visual.Images, selected.Select(d => d.Key.LayoutId).ToArray());
+                    group.PreviousStarted = old.Started; group.PreviousPaused = old.PausedSeconds;
+                }
             }
+            current[commit.GroupId] = group; commits.Remove(commit.GroupId);
+            // Initialize images, ambient frames and opacity before exposing a tree.
+            if (group.Previous != null) group.Renderer.PresentShared(group.Previous, Math.Max(0, now - group.PreviousStarted - group.PreviousPaused));
+            group.Renderer.PresentShared(visual, Math.Max(0, now - group.Started));
             group.Renderer.ShowShared(group.Visual, group.Previous);
             var left = plan.Displays.Min(d => d.X); var top = plan.Displays.Min(d => d.Y);
-            foreach (var display in selected)
+            foreach (var display in selected.Where(_ => !reuse))
             {
-                var monitor = MonitorManager.Enumerate().FirstOrDefault(m => m.Id == display.Key.DisplayId);
+                var monitor = monitors.FirstOrDefault(m => m.Id == display.Key.DisplayId);
                 if (monitor == null) continue;
                 var region = new DynamicPhotoWall.Core.FrameRect(display.X - left, display.Y - top, display.Width, display.Height);
                 var host = new DesktopWindowHost(); var taskbar = new TaskbarVisibility();
@@ -152,15 +171,27 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 else window = new Window { Content = group.Renderer.CreateDisplayRegion(region, display.Key.LayoutId), Background = group.Renderer.Background, Focusable = false, IsHitTestVisible = false };
                 host.Attach(window, monitor);
                 taskbar.Update(monitor, settings().Displays.FirstOrDefault(d => d.Id == monitor.Id)?.HideTaskbar ?? settings().HideTaskbar);
-                group.Outputs.Add((host, taskbar));
+                group.Outputs.Add((monitor, host, taskbar));
             }
-            if (old != null) Close(old);
+            if (old != null && !reuse) Close(old);
+            foreach (var output in group.Outputs)
+                output.Taskbar.Update(output.Monitor, settings().Displays.FirstOrDefault(d => d.Id == output.Monitor.Id)?.HideTaskbar ?? settings().HideTaskbar);
             Changed?.Invoke();
         }
         foreach (var group in current.Values.ToArray())
         {
             var elapsed = (pausedAt ?? now) - group.Started - group.PausedSeconds;
-            if (repeatAt != null && elapsed > group.Visual.Plan.Duration) elapsed %= group.Visual.Plan.Duration;
+            if (repeatAt != null && pausedAt == null && elapsed >= group.Visual.Plan.Duration)
+            {
+                // Repeating after isolation is another scene transition, not a
+                // modulo jump to a transparent first frame on an empty backing.
+                var repeated = SharedSceneBuilder.Build(group.Visual.Plan, group.Visual.Images,
+                    group.Visual.Plan.Displays.Where(d => d.Key.PeerId == localPeer && d.Selected).Select(d => d.Key.LayoutId).ToArray());
+                group.Replace(repeated, now); elapsed = 0;
+                group.Renderer.PresentShared(group.Previous!, Math.Max(0, now - group.PreviousStarted - group.PreviousPaused));
+                group.Renderer.PresentShared(repeated, 0);
+                group.Renderer.ShowShared(repeated, group.Previous);
+            }
             if (group.Previous != null)
             {
                 group.Renderer.PresentShared(group.Previous, Math.Max(0, (pausedAt ?? now) - group.PreviousStarted - group.PreviousPaused));
@@ -208,7 +239,7 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
     }
     private static void Close(Group group)
     {
-        foreach (var (host, taskbar) in group.Outputs) { taskbar.Dispose(); host.Dispose(); }
+        foreach (var (_, host, taskbar) in group.Outputs) { taskbar.Dispose(); host.Dispose(); }
         group.Renderer.Clear(); group.Renderer.Close();
     }
     private void CloseGroups() { foreach (var group in current.Values) Close(group); current.Clear(); }
@@ -219,7 +250,6 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         await dispatcher.InvokeAsync(() =>
         {
         CompositionTarget.Rendering -= Render; preview.Dispose(); CloseGroups();
-        foreach (var group in prepared.Values) { group.Renderer.Clear(); group.Renderer.Close(); }
         prepared.Clear(); commits.Clear(); controls.Clear(); attached = false;
         });
     }

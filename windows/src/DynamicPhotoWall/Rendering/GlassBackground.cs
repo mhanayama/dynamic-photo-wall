@@ -94,6 +94,7 @@ public sealed class GlassBackground : IDisposable
         using (var filter = SKImageFilter.CreateBlur(7, 7, SKShaderTileMode.Clamp))
         using (var paint = new SKPaint { ImageFilter = filter }) canvas.DrawBitmap(source, 0, 0, paint);
         Marshal.Copy(blurred.GetPixels(), pixels, 0, pixels.Length);
+        AmbientPixels.EnhanceColors(pixels);
         token.ThrowIfCancellationRequested();
         if (last != null)
             for (var i = 0; i < pixels.Length; i++) pixels[i] = (byte)((pixels[i] + last[i]) / 2);

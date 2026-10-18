@@ -64,6 +64,12 @@ internal static class MirrorAmbientTests
 
     public static async Task AmbientReachesEdges()
     {
+        byte[] muted = [90, 100, 120, 255, 100, 100, 100, 255, 0, 0, 255, 255, 20, 20, 20, 0, 45, 50, 60, 128];
+        AmbientPixels.EnhanceColors(muted);
+        Check(muted[2] - muted[0] >= 45 && muted[2] > 120, "muted photo colors gain chroma and brightness after blur");
+        Check(muted[4] == muted[5] && muted[5] == muted[6] && muted[4] > 100, "neutral photos stay neutral while gaining brightness");
+        Check(muted[8] == 0 && muted[9] == 0 && muted[10] == 255 && muted[11] == 255, "already saturated colors retain their hue and range");
+        Check(muted[15] == 0 && muted[19] == 128 && muted.Skip(16).Take(3).All(v => v <= 128), "color enhancement preserves alpha and premultiplied bounds");
         var pixels = new byte[257 * 19 * 4];
         for (var y = 6; y < 13; y++) { var i = (y * 257 + 128) * 4; pixels[i] = 40; pixels[i + 1] = 80; pixels[i + 2] = 200; pixels[i + 3] = 255; }
         Check(AmbientPixels.ExtendPadding(pixels, 257, 19), "narrow portrait sample must produce ambient color");
@@ -99,6 +105,18 @@ internal static class MirrorAmbientTests
                     Check(color.Alpha >= 250 && color.Red >= 190 && color.Green >= 70 && color.Blue >= 30,
                         $"{mode} ambient must reach all edges without artificial black padding");
                 }
+            }
+            var displayVisual = SharedSceneBuilder.Build(plan, new Dictionary<string, System.Windows.Media.Imaging.BitmapSource>
+            {
+                [photos[0].Key.OpaqueId] = System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, new byte[] { 40, 80, 200, 255 }, 4),
+                [photos[1].Key.OpaqueId] = System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, new byte[] { 40, 80, 200, 255 }, 4)
+            }, displays.Select(d => d.Key.LayoutId).ToArray());
+            foreach (var image in displayVisual.Scene.Surfaces.SelectMany(s => s.Canvas.Children.OfType<System.Windows.Controls.Image>()))
+            {
+                var texture = (System.Windows.Media.Imaging.BitmapSource)image.Source;
+                var color = new byte[4]; texture.CopyPixels(new System.Windows.Int32Rect(0, 0, 1, 1), color, 4, 0);
+                Check(color[3] >= 250 && color[2] >= 240 && color[2] - color[0] >= 200,
+                    "previews from either OS gain color at the Windows display without changing the shared PNG");
             }
         }
     }

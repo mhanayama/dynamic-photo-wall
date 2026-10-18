@@ -23,6 +23,7 @@ public sealed class SceneVisual
     public FrameRect? DisplayRegion { get; set; }
     public List<SceneVisual> Displays { get; } = [];
     public IReadOnlyList<FrameRect> DisplayRegions { get; init; } = [];
+    public IReadOnlyDictionary<string, FrameRect> OutputRegions { get; init; } = new Dictionary<string, FrameRect>();
     public IEnumerable<SceneVisual> Surfaces => Displays.Count == 0 ? new[] { this } : Displays.SelectMany(d => d.Surfaces);
     public IEnumerable<PhotoInfo> DisplayedPhotos => Surfaces.SelectMany(s => s.Photos);
 }
@@ -30,7 +31,7 @@ public sealed class SceneVisual
 public sealed partial class PhotoRenderer : Window
 {
     private readonly Canvas layers;
-    private readonly Viewport viewport;
+    private Viewport viewport;
     private readonly WallSettings settings;
     private readonly TransitionController transitions;
     private readonly AnimationScheduler scheduler;
@@ -90,7 +91,12 @@ public sealed partial class PhotoRenderer : Window
     private void AddPresentation(DisplayView view, SceneVisual scene)
     {
         System.Windows.Shapes.Rectangle rectangle;
-        if (scene.Displays.Count == 0) rectangle = Sample(scene.Canvas, view.Region);
+        if (scene.Displays.Count == 0)
+        {
+            var region = view.Id != null && scene.OutputRegions.TryGetValue(view.Id, out var output) ? output : view.Region;
+            rectangle = Sample(scene.Canvas, region);
+            rectangle.Width = view.Region.Width; rectangle.Height = view.Region.Height;
+        }
         else
         {
             var child = scene.Displays.FirstOrDefault(s => s.DisplayId == view.Id)

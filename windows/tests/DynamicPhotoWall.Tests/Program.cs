@@ -57,6 +57,7 @@ internal static class Program
                 await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);
                 await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
             }
+            if (args.Contains("--scan-only") && args.Contains("--scene-transitions")) await SceneTransitions();
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -104,8 +105,15 @@ internal static class Program
         }
         return path;
     }
+    private static async Task SceneTransitions()
+    {
+        await Test("physical outputs survive mode changes, peer loss and reconnection", SharedSceneTransitionTests.PhysicalOutputsSurviveLogicalCanvasChanges);
+        await Test("all mode handoffs retain outgoing trees and independent canvas regions without captures", SharedSceneTransitionTests.HandoffsRetainTreesAndMapEachScenesOwnCanvas);
+        await Test("Gallery endpoints and isolation repeats keep opaque coverage", SharedSceneTransitionTests.GalleryEndpointAndIsolationRepeatKeepCoverage);
+    }
     private static async Task RunAsync(bool desktop)
     {
+        await SceneTransitions();
         await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);
         await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
         await Test("network update bursts yield to dispatcher input without windows", NetworkResponsivenessTests.NotificationsYieldToInput);
