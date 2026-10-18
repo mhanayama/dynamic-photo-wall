@@ -28,11 +28,11 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
         { var selector = new PhotoSelector(); selectors[groupId] = selector; engines[groupId] = engine = new(selector); }
         var picking = selectors[groupId];
         var views = displays.Select(d => new DynamicPhotoWall.Core.Viewport(d.Width, d.Height)).ToArray();
-        var composition = engine.Next(photos, viewport, settings, displayViewports: views);
+        var regions = displays.Select(d => new DynamicPhotoWall.Core.FrameRect(d.X - left, d.Y - top, d.Width, d.Height)).ToArray();
+        var composition = engine.Next(photos, viewport, settings, displayViewports: views, displayRegions: regions);
         if (composition == null) return null;
         var perDisplay = settings.IsPerDisplay(composition.Mode) || composition.MirrorPerDisplay;
         var placements = new List<Net.ScenePlacement>(); var duration = 0d;
-        var regions = displays.Select(d => new DynamicPhotoWall.Core.FrameRect(d.X - left, d.Y - top, d.Width, d.Height)).ToArray();
         for (var surface = 0; surface < (perDisplay ? displays.Length : 1); surface++)
         {
             token.ThrowIfCancellationRequested();
@@ -46,30 +46,9 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             var seconds = 0d;
             if (plan.Mode == CompositionMode.Gallery)
             {
-                seconds = Math.Max(90, settings.GalleryMaxSeconds * 2);
-                var frames = !perDisplay && settings.AvoidFaceDisplayBoundaries
-                    ? FaceSafeLayout.Gallery(plan.Photos, v, settings.Gap, regions) : CompositionEngine.GalleryLayout(plan.Photos, v, settings.Gap);
-                for (var index = 0; index < plan.Photos.Count; index++)
-                {
-                    var frame = frames[index]; var chosen = plan.Photos[index]; var at = 0d;
-                    while (at < seconds)
-                    {
-                        var until = Math.Min(seconds, at + settings.GalleryMinSeconds + random.NextDouble() * (settings.GalleryMaxSeconds - settings.GalleryMinSeconds));
-                        placements.Add(new(placements.Count, usable[chosen.Path].Key, displayId, clip, frame.Width, frame.Height,
-                            offsetX + frame.X, offsetY + frame.Y, offsetX + frame.X, offsetY + frame.Y, 1, 1, .5, .5,
-                            at, Math.Max(.1, until - at), at, until, settings.FadeSeconds, settings.CornerRadius, false));
-                        if (until >= seconds) break;
-                        at = Math.Max(at + .1, until - settings.FadeSeconds);
-                        chosen = picking.Pick(photos, settings, new HashSet<string> { chosen.Path }) ?? chosen;
-                        // Re-evaluate a replacement's fit using existing Gallery geometry.
-                        var slot = frames[index];
-                        var localRegions = regions.Select(r => new DynamicPhotoWall.Core.FrameRect(r.X - slot.X, r.Y - slot.Y, r.Width, r.Height)).ToArray();
-                        var fit = !perDisplay && settings.AvoidFaceDisplayBoundaries
-                            ? FaceSafeLayout.Gallery([chosen], new(slot.Width, slot.Height), 0, localRegions)[0]
-                            : CompositionEngine.GalleryLayout([chosen], new(slot.Width, slot.Height), 0)[0];
-                        frame = new(slot.X + fit.X, slot.Y + fit.Y, fit.Width, fit.Height);
-                    }
-                }
+                // Gallery is planned once below, across all surfaces.
+                duration = Math.Max(90, settings.GalleryMaxSeconds * 3);
+                continue;
             }
             else if (plan.Mode == CompositionMode.GalleryScroll)
             {
@@ -89,19 +68,44 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             else
             {
                 var chosen = plan.Photos[0];
-                var motion = MotionEngine.Plan(plan.Mode, chosen, v, settings, random.Next(2) == 0,
+                var motion = FaceMotionSafety.Plan(plan.Mode, chosen, v, settings, random.Next(2) == 0,
                     .35 + random.NextDouble() * .3, .35 + random.NextDouble() * .3, perDisplay ? [] : regions);
                 seconds = motion.Seconds + (plan.Mode == CompositionMode.VerticalPan && settings.StopAtFace && chosen.Faces?.Count > 0 ? 3 : 0);
                 if (plan.Mode == CompositionMode.VerticalPan)
                     clip = new(offsetX + motion.FromX, offsetY + (motion.FrameTop ?? (v.Height - Math.Min(v.Height, motion.Height)) / 2),
                         motion.Width, Math.Min(v.Height, motion.Height));
-                var frameTop = plan.Mode == CompositionMode.VerticalPan ? clip.Y - offsetY : 0;
+                var frameTop = plan.Mode == CompositionMode.VerticalPan ? clip.Y - offsetY : motion.FrameTop ?? 0;
                 placements.Add(new(placements.Count, usable[chosen.Path].Key, displayId, clip, motion.Width, motion.Height,
                     offsetX + motion.FromX, offsetY + frameTop + motion.FromY, offsetX + motion.ToX, offsetY + frameTop + motion.ToY,
                     motion.FromScale, motion.ToScale, motion.CenterX, motion.CenterY, 0, motion.Seconds, 0, seconds,
                     0, 0, plan.Mode == CompositionMode.Zoom));
             }
             duration = Math.Max(duration, seconds);
+        }
+        if (composition.Mode == CompositionMode.Gallery)
+        {
+            var gallerySurfaces = new List<GalleryTimeline.Surface>();
+            for (var i = 0; i < (perDisplay ? displays.Length : 1); i++)
+            {
+                var v = perDisplay ? views[i] : viewport;
+                var selected = perDisplay ? engine.ForMode(photos, v, settings, CompositionMode.Gallery) : composition;
+                if (selected == null) return null;
+                gallerySurfaces.Add(new(selected.Photos, v, !perDisplay && settings.AvoidFaceDisplayBoundaries ? regions : []));
+            }
+            var segments = GalleryTimeline.Build(gallerySurfaces, duration, settings,
+                active => picking.Pick(photos, settings, active.Select(p => p.Path).ToHashSet()), random);
+            foreach (var segment in segments)
+            {
+                var i = segment.SurfaceIndex;
+                var x = perDisplay ? regions[i].X : 0; var y = perDisplay ? regions[i].Y : 0;
+                var v = gallerySurfaces[i].Viewport;
+                placements.Add(new(placements.Count, usable[segment.Photo.Path].Key, perDisplay ? displays[i].Key.LayoutId : null,
+                    new(x, y, v.Width, v.Height), segment.To.Width, segment.To.Height,
+                    x + segment.From.X, y + segment.From.Y, x + segment.To.X, y + segment.To.Y, 1, 1, .5, .5,
+                    segment.At, segment.MotionSeconds, segment.At, segment.Until, 0, settings.CornerRadius, true)
+                    { FadeInSeconds = segment.FadeIn, FadeOutSeconds = segment.FadeOut });
+            }
+            if (placements.Count == 0) return null;
         }
         // Short per-display motions hold their endpoints on the group's common timeline.
         placements = placements.Select(p => p.VisibleUntil < duration && composition.Mode is not CompositionMode.Gallery

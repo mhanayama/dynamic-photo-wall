@@ -23,20 +23,24 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
     var horizontalPanEnabled = true
     var zoomEnabled = true
 
-    var galleryWeight = 45
-    var panWeight = 35
-    var zoomWeight = 20
+    var galleryWeight = 80
+    var panWeight = 20
+    var zoomWeight = 0
+    var motionWeight: Int {
+        get { ModeSelection.weights(gallery: galleryWeight, pan: panWeight, zoom: zoomWeight).motion }
+        set { panWeight = newValue; zoomWeight = 0 }
+    }
     var galleryMax = 5
     var panPixelsPerSecond = 120.0
     var maxPanUpscale = 4.0
-    var panWidthFraction = 0.96
+    var panWidthFraction = 1.0
     var galleryScrollPixelsPerSecond = 40.0
     var glassBackground = true
-    var zoomSeconds = 45.0
-    var maxZoom = 1.08
+    var zoomSeconds = 30.0
+    var maxZoom = 1.25
     var fadeSeconds = 1.2
-    var galleryMinSeconds = 30.0
-    var galleryMaxSeconds = 60.0
+    var galleryMinSeconds = 10.0
+    var galleryMaxSeconds = 30.0
     var backgroundHex = "#101116"
     var gap = 8.0
     var cornerRadius = 8.0
@@ -105,8 +109,7 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
 
     var hasEnabledMode: Bool {
         ((galleryEnabled || galleryScrollEnabled) && galleryWeight > 0)
-            || ((verticalPanEnabled || horizontalPanEnabled) && panWeight > 0)
-            || (zoomEnabled && zoomWeight > 0)
+            || ((verticalPanEnabled || horizontalPanEnabled || zoomEnabled) && motionWeight > 0)
     }
 
     func validate() throws {
@@ -131,16 +134,19 @@ nonisolated struct WallSettings: Codable, Equatable, Sendable {
         galleryWeight = galleryWeight.clamped(to: 0...1_000)
         panWeight = panWeight.clamped(to: 0...1_000)
         zoomWeight = zoomWeight.clamped(to: 0...1_000)
+        let weights = ModeSelection.weights(gallery: galleryWeight, pan: panWeight, zoom: zoomWeight)
+        galleryWeight = weights.gallery; motionWeight = min(1_000, weights.motion)
         galleryMax = galleryMax.clamped(to: 1...20)
         panPixelsPerSecond = (panPixelsPerSecond.isFinite ? panPixelsPerSecond : 120.0).clamped(to: 5...500)
         maxPanUpscale = (maxPanUpscale.isFinite ? maxPanUpscale : 4.0).clamped(to: 1...12)
-        panWidthFraction = (panWidthFraction.isFinite ? panWidthFraction : 0.96).clamped(to: 0.3...1)
+        panWidthFraction = (panWidthFraction.isFinite ? panWidthFraction : 1.0).clamped(to: 0.3...1)
         galleryScrollPixelsPerSecond = (galleryScrollPixelsPerSecond.isFinite ? galleryScrollPixelsPerSecond : 40.0).clamped(to: 5...200)
-        zoomSeconds = (zoomSeconds.isFinite ? zoomSeconds : 45.0).clamped(to: 10...600)
-        maxZoom = (maxZoom.isFinite ? maxZoom : 1.08).clamped(to: 1...1.15)
+        zoomSeconds = (zoomSeconds.isFinite ? zoomSeconds : 30.0).clamped(to: 10...600)
+        maxZoom = (maxZoom.isFinite ? maxZoom : 1.25).clamped(to: 1...1.5)
         fadeSeconds = (fadeSeconds.isFinite ? fadeSeconds : 1.2).clamped(to: 0.2...10)
-        galleryMinSeconds = (galleryMinSeconds.isFinite ? galleryMinSeconds : 30.0).clamped(to: 5...600)
-        galleryMaxSeconds = (galleryMaxSeconds.isFinite ? galleryMaxSeconds : 60.0).clamped(to: galleryMinSeconds...1_200)
+        if galleryMinSeconds == 30, galleryMaxSeconds == 60 { galleryMinSeconds = 10; galleryMaxSeconds = 30 }
+        galleryMinSeconds = (galleryMinSeconds.isFinite ? galleryMinSeconds : 10.0).clamped(to: 5...600)
+        galleryMaxSeconds = (galleryMaxSeconds.isFinite ? galleryMaxSeconds : 30.0).clamped(to: galleryMinSeconds...1_200)
         gap = (gap.isFinite ? gap : 8.0).clamped(to: 0...200)
         cornerRadius = (cornerRadius.isFinite ? cornerRadius : 8.0).clamped(to: 0...100)
         cacheMegabytes = cacheMegabytes.clamped(to: 64...1_024)

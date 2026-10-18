@@ -19,15 +19,17 @@ extension WallScenePlanner {
         for mode in WallMode.allCases {
             let pool = assets.filter { asset in
                 if settings.perDisplay(mode) {
-                    return displays.contains { Self.isEligible(asset, for: mode, settings: settings, viewport: $0.rect.size) }
+                    return displays.contains { Self.isSafeEligible(asset, for: mode, settings: settings, viewport: $0.rect.size) }
                 }
                 if Self.needsMirror(asset, for: mode, viewport: group.viewport, displays: displays, settings: settings) {
                     return Self.shouldMirror(asset, for: mode, viewport: group.viewport, displays: displays, settings: settings)
                 }
-                return Self.isEligible(asset, for: mode, settings: settings, viewport: group.viewport)
+                return Self.isSafeEligible(asset, for: mode, settings: settings, viewport: group.viewport)
+                    && (![.verticalPan, .horizontalPan, .zoom].contains(mode) || FaceMotionSafety.plan(for: mode, asset: asset,
+                        viewport: group.viewport, settings: settings, displayRegions: displays.map { group.region($0) }) != nil)
             }
             let available = settings.perDisplay(mode)
-                ? displays.allSatisfy { d in pool.contains { Self.isEligible($0, for: mode, settings: settings, viewport: d.rect.size) } }
+                ? displays.allSatisfy { d in pool.contains { Self.isSafeEligible($0, for: mode, settings: settings, viewport: d.rect.size) } }
                 : !pool.isEmpty
             candidates[mode] = pool
             if !available { eligible.disable(mode) }
@@ -56,7 +58,7 @@ extension WallScenePlanner {
             scene.displayRegions = displays.map { group.region($0) }
             return [WallSurfacePlan(displayID: nil, viewport: group.viewport, scene: scene)]
         }
-        guard var scene = next(assets: pool, settings: settings, viewport: group.viewport, excluding: excluding, forcedMode: mode) else { return nil }
+        guard var scene = next(assets: pool, settings: settings, viewport: group.viewport, excluding: excluding, forcedMode: mode, displayRegions: displays.map { group.region($0) }) else { return nil }
         scene.displayRegions = displays.map { group.region($0) }
         return [WallSurfacePlan(displayID: nil, viewport: group.viewport, scene: scene)]
     }
@@ -68,7 +70,8 @@ extension WallScenePlanner {
     }
     nonisolated static func shouldMirror(_ asset: PhotoAsset, for mode: WallMode = .verticalPan, viewport: CGSize, displays: [WallDisplay], settings: WallSettings) -> Bool {
         needsMirror(asset, for: mode, viewport: viewport, displays: displays, settings: settings)
-            && displays.allSatisfy { isEligible(asset, for: mode, settings: settings, viewport: $0.rect.size) }
+            && displays.allSatisfy { isEligible(asset, for: mode, settings: settings, viewport: $0.rect.size)
+                && FaceMotionSafety.plan(for: mode, asset: asset, viewport: $0.rect.size, settings: settings) != nil }
     }
 }
 
@@ -122,6 +125,8 @@ final class WallGroupPlayback {
     private var duration: TimeInterval = 5
     private var clock = WallPlaybackClock()
     private var ready = false
+    private var nextGalleryAt: TimeInterval = 0
+    private var galleryWasBusy = false
     private let legacy: Bool
 
     var primary: WallPlaybackController { current?.surfaces.first?.playback ?? fallback }
@@ -147,7 +152,7 @@ final class WallGroupPlayback {
 
     private func buildBatch(now: TimeInterval) -> Batch? {
         let excluded = Set((current?.assets ?? []).map(\.url) + (outgoing?.assets ?? []).map(\.url))
-        let available = assets.filter { !(images?.failed($0) ?? false) }
+        let available = assets.filter { !(images?.failed($0) ?? false) }.map { images?.assetWithFaces($0) ?? $0 }
         guard let plans = planner.nextGroup(assets: available, settings: settings, group: group, connected: connected, excluding: excluded) else { return nil }
         let surfaces = plans.map { plan in
             let playback = WallPlaybackController(imageStore: images)
@@ -167,12 +172,13 @@ final class WallGroupPlayback {
         for s in current.surfaces { s.playback.update(now: now) }
         for s in prepared?.surfaces ?? [] { s.playback.update(now: now) }
         if current.surfaces.contains(where: { $0.playback.currentScene == nil }) {
-            dispose(current); self.current = nil; ready = false; waiting = true; return
+            dispose(current); self.current = buildBatch(now: now); ready = false; waiting = self.current == nil; return
         }
         if !ready {
             guard current.surfaces.allSatisfy({ !$0.playback.waitingForImages }) else { return }
             ready = true; waiting = false
             startedAt = clock.elapsed(at: now); fade = outgoing == nil ? 1 : 0
+            nextGalleryAt = settings.fadeSeconds + planner.galleryInterval(settings: settings); galleryWasBusy = false
             duration = current.surfaces.map { $0.playback.sceneDuration }.max() ?? 5
             for s in current.surfaces {
                 s.playback.synchronizeStart(now: now)
@@ -180,6 +186,15 @@ final class WallGroupPlayback {
             }
         }
         let elapsed = clock.elapsed(at: now) - (startedAt ?? 0)
+        if !paused, current.surfaces.first?.playback.currentScene?.mode == .gallery {
+            let busy = current.surfaces.contains { $0.playback.galleryBusy }
+            if galleryWasBusy, !busy { nextGalleryAt = elapsed + planner.galleryInterval(settings: settings); galleryWasBusy = false }
+            if !busy, !galleryWasBusy, elapsed >= nextGalleryAt,
+               let surface = current.surfaces.filter({ !$0.playback.slots.isEmpty }).randomElement() {
+                galleryWasBusy = surface.playback.shuffleGallery(now: now, excluding: Set(current.assets.map(\.url)))
+                if !galleryWasBusy { nextGalleryAt = elapsed + planner.galleryInterval(settings: settings) }
+            }
+        }
         fade = outgoing == nil ? 1 : WallAnimation.ease(elapsed / settings.fadeSeconds)
         if fade >= 1, let outgoing { dispose(outgoing); self.outgoing = nil }
         updateAmbient(current, now: now)

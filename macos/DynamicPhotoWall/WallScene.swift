@@ -39,39 +39,39 @@ final class WallScenePlanner {
     }
 
     func next(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
-              excluding: Set<URL> = [], forcedMode: WallMode? = nil) -> WallScene? {
-        func choices(excluding: Set<URL>) -> [Choice] {
+              excluding: Set<URL> = [], forcedMode: WallMode? = nil, displayRegions: [CGRect] = []) -> WallScene? {
+        func availableChoices(excluding: Set<URL>) -> [Choice] {
             eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: excluding)
                 .filter { forcedMode == nil || $0.mode == forcedMode }
+                .map { choice in
+                    Choice(mode: choice.mode, assets: choice.assets.filter { asset in
+                        if choice.mode == .gallery, settings.avoidFaceDisplayBoundaries {
+                            return !FixedGalleryLayout.arrange([asset], viewport: viewport, gap: settings.gap, displays: displayRegions).isEmpty
+                        }
+                        return ![.verticalPan, .horizontalPan, .zoom].contains(choice.mode)
+                            || FaceMotionSafety.plan(for: choice.mode, asset: asset, viewport: viewport, settings: settings, displayRegions: displayRegions) != nil
+                    })
+                }.filter { !$0.assets.isEmpty }
         }
-        var choices = choices(excluding: excluding)
+        var choices = availableChoices(excluding: excluding)
         if choices.isEmpty, !excluding.isEmpty {
-            choices = eligibleChoices(assets: assets, settings: settings, viewport: viewport, excluding: [])
-                .filter { forcedMode == nil || $0.mode == forcedMode }
+            choices = availableChoices(excluding: [])
         }
         guard !choices.isEmpty else { return nil }
-        let galleryCount = choices.filter { $0.mode == .gallery || $0.mode == .horizontalGallery }.count
-        let panCount = choices.filter { $0.mode == .verticalPan || $0.mode == .horizontalPan }.count
-        for index in choices.indices {
-            switch choices[index].mode {
-            case .gallery, .horizontalGallery: choices[index].weight /= Double(galleryCount)
-            case .verticalPan, .horizontalPan: choices[index].weight /= Double(panCount)
-            case .zoom: break
-            }
-        }
-        if forcedMode == nil, repeats >= 2, choices.count > 1 { choices.removeAll { $0.mode == previous } }
-        var ticket = Double.random(in: 0..<choices.reduce(0) { $0 + $1.weight }, using: &generator)
-        let chosen = choices.first { ticket -= $0.weight; return ticket < 0 } ?? choices[choices.count - 1]
+        let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
+        guard let mode = ModeSelection.pick(choices.map(\.mode), galleryWeight: weights.gallery, motionWeight: weights.motion,
+            previous: forcedMode == nil ? previous : nil, repeats: forcedMode == nil ? repeats : 0, using: &generator),
+              let chosen = choices.first(where: { $0.mode == mode }) else { return nil }
         var selected: [PhotoAsset] = []
         var used: Set<URL> = []
         let count: Int
         switch chosen.mode {
         case .gallery:
-            count = min(settings.galleryMax, max(1, Int((viewport.width / viewport.height / 0.68).rounded())))
+            count = settings.galleryMax
         case .horizontalGallery: count = min(24, chosen.assets.count)
         default: count = 1
         }
-        let portraits = chosen.assets.filter { $0.aspectRatio < 1 }
+        let portraits = chosen.assets.filter { viewport.width >= viewport.height ? $0.aspectRatio < 1 : $0.aspectRatio >= 1 }
         var stripWidth = settings.gap
         for _ in 0..<count {
             let pool = (chosen.mode == .gallery || chosen.mode == .horizontalGallery)
@@ -83,6 +83,7 @@ final class WallScenePlanner {
             if chosen.mode == .horizontalGallery, selected.count >= 2,
                stripWidth >= viewport.width + viewport.height * 1.5 { break }
         }
+        if chosen.mode == .gallery { selected = FixedGalleryLayout.arrange(selected, viewport: viewport, gap: settings.gap).map { selected[$0.index] } }
         guard !selected.isEmpty else { return nil }
         if forcedMode == nil {
             repeats = chosen.mode == previous ? repeats + 1 : 1
@@ -96,23 +97,17 @@ final class WallScenePlanner {
     }
 
     func chooseGroupMode(settings: WallSettings) -> WallMode? {
+        let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
         let definitions: [(WallMode, Bool, Double)] = [
-            (.gallery, settings.galleryEnabled, Double(settings.galleryWeight)),
-            (.horizontalGallery, settings.galleryScrollEnabled, Double(settings.galleryWeight)),
-            (.verticalPan, settings.verticalPanEnabled, Double(settings.panWeight)),
-            (.horizontalPan, settings.horizontalPanEnabled, Double(settings.panWeight)),
-            (.zoom, settings.zoomEnabled, Double(settings.zoomWeight))
+            (.gallery, settings.galleryEnabled, Double(weights.gallery)),
+            (.horizontalGallery, settings.galleryScrollEnabled, Double(weights.gallery)),
+            (.verticalPan, settings.verticalPanEnabled, Double(weights.motion)),
+            (.horizontalPan, settings.horizontalPanEnabled, Double(weights.motion)),
+            (.zoom, settings.zoomEnabled, Double(weights.motion))
         ]
-        var choices = definitions.filter { $0.1 && $0.2 > 0 }
-        let galleryCount = max(1, choices.filter { [.gallery, .horizontalGallery].contains($0.0) }.count)
-        let panCount = max(1, choices.filter { [.verticalPan, .horizontalPan].contains($0.0) }.count)
-        choices = choices.map { mode, enabled, weight in
-            (mode, enabled, weight / Double([.gallery, .horizontalGallery].contains(mode) ? galleryCount : ([.verticalPan, .horizontalPan].contains(mode) ? panCount : 1)))
-        }
-        if repeats >= 2 && choices.count > 1 { choices.removeAll { $0.0 == previous } }
-        guard !choices.isEmpty else { return nil }
-        var ticket = Double.random(in: 0..<choices.reduce(0) { $0 + $1.2 }, using: &generator)
-        let mode = choices.first { ticket -= $0.2; return ticket < 0 }?.0 ?? choices.last!.0
+        let choices = definitions.filter { $0.1 && $0.2 > 0 }
+        guard let mode = ModeSelection.pick(choices.map { $0.0 }, galleryWeight: weights.gallery, motionWeight: weights.motion,
+            previous: previous, repeats: repeats, using: &generator) else { return nil }
         repeats = mode == previous ? repeats + 1 : 1; previous = mode
         return mode
     }
@@ -133,25 +128,26 @@ final class WallScenePlanner {
     private struct Choice {
         let mode: WallMode
         let assets: [PhotoAsset]
-        var weight: Double
     }
 
     private func eligibleChoices(assets: [PhotoAsset], settings: WallSettings, viewport: CGSize,
                                  excluding: Set<URL>) -> [Choice] {
         guard viewport.width > 0, viewport.height > 0 else { return [] }
+        let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
         let definitions: [(WallMode, Bool, Int)] = [
-            (.gallery, settings.galleryEnabled, settings.galleryWeight),
-            (.horizontalGallery, settings.galleryScrollEnabled && assets.count > 1, settings.galleryWeight),
-            (.verticalPan, settings.verticalPanEnabled, settings.panWeight),
-            (.horizontalPan, settings.horizontalPanEnabled, settings.panWeight),
-            (.zoom, settings.zoomEnabled, settings.zoomWeight)
+            (.gallery, settings.galleryEnabled, weights.gallery),
+            (.horizontalGallery, settings.galleryScrollEnabled && assets.count > 1, weights.gallery),
+            (.verticalPan, settings.verticalPanEnabled, weights.motion),
+            (.horizontalPan, settings.horizontalPanEnabled, weights.motion),
+            (.zoom, settings.zoomEnabled, weights.motion)
         ]
         return definitions.compactMap { mode, enabled, weight in
             guard enabled, weight > 0 else { return nil }
             let candidates = assets.filter {
                 !excluding.contains($0.url) && Self.isEligible($0, for: mode, settings: settings, viewport: viewport)
+                    && (![.verticalPan, .horizontalPan, .zoom].contains(mode) || FaceMotionSafety.plan(for: mode, asset: $0, viewport: viewport, settings: settings) != nil)
             }
-            return candidates.isEmpty ? nil : Choice(mode: mode, assets: candidates, weight: Double(weight))
+            return candidates.isEmpty ? nil : Choice(mode: mode, assets: candidates)
         }
     }
 
@@ -169,6 +165,11 @@ final class WallScenePlanner {
                 && viewport.height / CGFloat(asset.pixelHeight) <= settings.maxPanUpscale
         case .zoom: return asset.aspectRatio >= 1
         }
+    }
+
+    nonisolated static func isSafeEligible(_ asset: PhotoAsset, for mode: WallMode, settings: WallSettings, viewport: CGSize) -> Bool {
+        isEligible(asset, for: mode, settings: settings, viewport: viewport)
+            && (![.verticalPan, .horizontalPan, .zoom].contains(mode) || FaceMotionSafety.plan(for: mode, asset: asset, viewport: viewport, settings: settings) != nil)
     }
 }
 
@@ -312,7 +313,7 @@ nonisolated enum WallMotionGeometry {
     ) -> TimeInterval {
         guard let asset = scene.assets.first else { return 5 }
         let seconds = [.verticalPan, .horizontalPan, .zoom].contains(scene.mode)
-            ? plan(for: scene.mode, asset: asset, viewport: viewport, settings: settings, reverse: scene.reverse, displayRegions: scene.displayRegions).seconds
+            ? FaceMotionSafety.plan(for: scene.mode, asset: asset, viewport: viewport, settings: settings, reverse: scene.reverse, displayRegions: scene.displayRegions)?.seconds ?? 5
             : duration(for: scene.mode, asset: asset, viewport: viewport, settings: settings)
         return seconds + (scene.mode == .verticalPan && settings.stopAtFace && !(asset.faces ?? []).isEmpty ? 3 : 0)
     }

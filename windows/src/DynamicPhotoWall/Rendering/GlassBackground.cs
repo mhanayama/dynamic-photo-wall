@@ -16,19 +16,20 @@ public sealed class GlassBackground : IDisposable
     private readonly Canvas foreground;
     private readonly Viewport viewport;
     private readonly AnimationScheduler scheduler;
-    private readonly ImageBrush target;
+    private readonly AmbientTexturePresenter presenter;
+    private readonly AmbientTransition colors = new();
     private readonly DispatcherTimer timer;
     private readonly int width, height;
     private readonly CancellationTokenSource lifetime = new();
-    private byte[]? previous;
     private bool busy, disposed, failed;
     public int UpdateCount { get; private set; }
     public double MaximumCaptureMilliseconds { get; private set; }
-    public BitmapSource? Texture => target.ImageSource as BitmapSource;
+    public BitmapSource? Texture => presenter.Texture;
 
-    public GlassBackground(Canvas foreground, Viewport viewport, AnimationScheduler scheduler, ImageBrush target)
+    public GlassBackground(Canvas foreground, Viewport viewport, AnimationScheduler scheduler, ImageBrush target, TransitionController transitions)
     {
-        this.foreground = foreground; this.viewport = viewport; this.scheduler = scheduler; this.target = target;
+        this.foreground = foreground; this.viewport = viewport; this.scheduler = scheduler;
+        presenter = new(target, foreground, transitions);
         var scale = 160 / Math.Max(viewport.Width, viewport.Height);
         width = Math.Max(1, (int)Math.Ceiling(viewport.Width * scale));
         height = Math.Max(1, (int)Math.Ceiling(viewport.Height * scale));
@@ -65,12 +66,10 @@ public sealed class GlassBackground : IDisposable
             sample.Render(drawing);
             var pixels = new byte[width * height * 4]; sample.CopyPixels(pixels, width * 4, 0);
             MaximumCaptureMilliseconds = Math.Max(MaximumCaptureMilliseconds, clock.Elapsed.TotalMilliseconds);
-            var last = previous;
-            var result = await Task.Run(() => Process(pixels, last, lifetime.Token), lifetime.Token);
+            var at = scheduler.ElapsedSeconds;
+            var result = await Task.Run(() => Process(pixels, at, lifetime.Token), lifetime.Token);
             if (disposed || result == null) return;
-            previous = result;
-            var texture = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, result, width * 4);
-            texture.Freeze(); target.ImageSource = texture; UpdateCount++;
+            presenter.SetFrame(result, width, height, scheduler.ElapsedSeconds); UpdateCount++;
         }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception e)
@@ -81,7 +80,7 @@ public sealed class GlassBackground : IDisposable
         finally { busy = false; if (disposed) lifetime.Dispose(); }
     }
 
-    private byte[]? Process(byte[] pixels, byte[]? last, CancellationToken token)
+    private byte[]? Process(byte[] pixels, double at, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         // Extend the nearest visible color into transparent padding. Treating
@@ -96,9 +95,7 @@ public sealed class GlassBackground : IDisposable
         Marshal.Copy(blurred.GetPixels(), pixels, 0, pixels.Length);
         AmbientPixels.EnhanceColors(pixels);
         token.ThrowIfCancellationRequested();
-        if (last != null)
-            for (var i = 0; i < pixels.Length; i++) pixels[i] = (byte)((pixels[i] + last[i]) / 2);
-        return pixels;
+        return colors.Push(pixels, at);
     }
 
     public void Dispose()
@@ -106,6 +103,6 @@ public sealed class GlassBackground : IDisposable
         if (disposed) return;
         disposed = true; timer.Stop(); timer.Tick -= Tick; lifetime.Cancel();
         if (!busy) lifetime.Dispose();
-        previous = null;
+        presenter.Dispose();
     }
 }

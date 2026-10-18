@@ -286,15 +286,15 @@ private struct CompositionSettingsView: View {
             }
 
             Section("抽選ウェイト（0で抽選対象から除外）") {
-                NumericField(title: "Gallery", value: $settings.galleryWeight)
-                NumericField(title: "Pan（縦・横の合計）", value: $settings.panWeight)
-                NumericField(title: "Zoom", value: $settings.zoomWeight)
+                NumericField(title: "ギャラリー（静止・スクロール）", value: $settings.galleryWeight)
+                NumericField(title: "パン・ズーム（縦・横・拡大縮小）", value: $settings.motionWeight)
+                Text("初期値はギャラリー80：パン・ズーム20。系統を選んでから、有効な表示モードを選びます。").font(.caption).foregroundStyle(.secondary)
             }
 
             Section("構成") {
                 NumericField(title: "Galleryの最大枚数（1〜20）", value: $settings.galleryMax)
                 DoubleField(title: "パンで許容する拡大率（1〜12倍、初期値4倍）", value: $settings.maxPanUpscale)
-                DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0）", value: $settings.panWidthFraction)
+                DoubleField(title: "縦パンの表示幅（画面幅の割合、0.3〜1.0、初期値1.0）", value: $settings.panWidthFraction)
                 Toggle("顔が見える位置で縦パンを止める", isOn: $settings.stopAtFace)
                 Toggle("全画面表示でも顔が見える位置を優先", isOn: $settings.faceAwareFraming)
                 Toggle("スパン時に顔が画面の境目に重ならないよう配置", isOn: $settings.avoidFaceDisplayBoundaries)
@@ -349,10 +349,11 @@ private struct MotionSettingsView: View {
                 DoubleField(title: "パン速度（物理px / 秒、5〜500）", value: $settings.panPixelsPerSecond)
                 DoubleField(title: "Scrolling Galleryの速度（px / 秒、5〜200）", value: $settings.galleryScrollPixelsPerSecond)
                 DoubleField(title: "ズームの所要時間（秒、10〜600）", value: $settings.zoomSeconds)
-                DoubleField(title: "最大ズーム倍率（1.0〜1.15）", value: $settings.maxZoom)
+                DoubleField(title: "最大ズーム倍率（1.0〜1.5）", value: $settings.maxZoom)
+                Text("動きが分かるズームの目安：30秒・1.25倍").font(.caption).foregroundStyle(.secondary)
                 DoubleField(title: "クロスフェード（秒、0.2〜10）", value: $settings.fadeSeconds)
-                DoubleField(title: "Galleryの更新間隔 — 最短（秒）", value: $settings.galleryMinSeconds)
-                DoubleField(title: "Galleryの更新間隔 — 最長（秒）", value: $settings.galleryMaxSeconds)
+                DoubleField(title: "Gallery全体の交換間隔 — 最短（秒）", value: $settings.galleryMinSeconds)
+                DoubleField(title: "Gallery全体の交換間隔 — 最長（秒）", value: $settings.galleryMaxSeconds)
             }
         }
         .formStyle(.grouped)

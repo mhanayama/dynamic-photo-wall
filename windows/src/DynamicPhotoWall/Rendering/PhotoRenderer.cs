@@ -173,18 +173,20 @@ public sealed partial class PhotoRenderer : Window
             var backgroundBrush = new ImageBrush { Stretch = Stretch.Fill };
             var glass = new System.Windows.Shapes.Rectangle { Width = viewport.Width, Height = viewport.Height, Fill = backgroundBrush };
             RenderOptions.SetBitmapScalingMode(glass, BitmapScalingMode.Linear); scene.Canvas.Children.Add(glass);
-            scene.Ambient = new GlassBackground(scene.Foreground, viewport, scheduler, backgroundBrush);
+            scene.Ambient = new GlassBackground(scene.Foreground, viewport, scheduler, backgroundBrush, transitions);
             scene.Canvas.Children.Add(new Border { Width = viewport.Width, Height = viewport.Height, Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
         }
         scene.Canvas.Children.Add(scene.Foreground);
         if (plan.Mode == CompositionMode.Gallery)
         {
-            var frames = scene.DisplayRegions.Count > 0 ? FaceSafeLayout.Gallery(plan.Photos, viewport, settings.Gap, regions)
-                : CompositionEngine.GalleryLayout(plan.Photos, viewport, settings.Gap);
-            for (var i = 0; i < plan.Photos.Count; i++)
+            var items = FixedGalleryLayout.Arrange(plan.Photos, viewport, settings.Gap, scene.DisplayRegions);
+            scene.Photos.Clear(); scene.Bitmaps.Clear();
+            foreach (var item in items)
             {
-                var slot = CreateSlot(plan.Photos[i], bitmaps[i]); SetRect(slot, frames[i]); scene.Slots.Add(slot); scene.Foreground.Children.Add(slot);
+                var slot = CreateSlot(plan.Photos[item.Index], bitmaps[item.Index]); SetRect(slot, item.Frame);
+                scene.Photos.Add(plan.Photos[item.Index]); scene.Bitmaps.Add(bitmaps[item.Index]); scene.Slots.Add(slot); scene.Foreground.Children.Add(slot);
             }
+            if (items.Count == 0) throw new InvalidOperationException("固定サイズで写真と顔を収められる配置がありません。");
             scene.Seconds = Math.Max(90, settings.GalleryMaxSeconds * 2);
         }
         else if (plan.Mode == CompositionMode.GalleryScroll)
@@ -202,7 +204,8 @@ public sealed partial class PhotoRenderer : Window
         }
         else
         {
-            var motion = Core.MotionEngine.Plan(plan.Mode, plan.Photos[0], viewport, settings, random.Next(2) == 0, .35 + random.NextDouble() * .3, .35 + random.NextDouble() * .3, regions);
+            var motion = FaceMotionSafety.Plan(plan.Mode, plan.Photos[0], viewport, settings, random.Next(2) == 0, .35 + random.NextDouble() * .3, .35 + random.NextDouble() * .3,
+                renderViewport == null ? displayRegions : []);
             var image = new System.Windows.Controls.Image { Source = bitmaps[0], Width = motion.Width, Height = motion.Height, Stretch = Stretch.Fill,
                 RenderTransformOrigin = new System.Windows.Point(motion.CenterX, motion.CenterY) };
             var scale = new ScaleTransform(motion.FromScale, motion.FromScale);
@@ -297,31 +300,42 @@ public sealed partial class PhotoRenderer : Window
         var photos = scene.Photos.ToArray(); photos[index] = photo;
         // Protect the resting layout. Faces may cross seams while the existing
         // slots smoothly move and resize toward their new positions.
-        var frames = scene.DisplayRegions.Count > 0 ? FaceSafeLayout.Gallery(photos, viewport, settings.Gap, scene.DisplayRegions)
-            : CompositionEngine.GalleryLayout(photos, viewport, settings.Gap);
+        var items = FixedGalleryLayout.Arrange(photos, viewport, settings.Gap, scene.DisplayRegions, index);
+        if (items.All(i => i.Index != index)) return;
         var slot = scene.Slots[index];
         var old = slot.Child;
         var next = CreatePhoto(photo, bitmap); next.Opacity = 0;
+        var replacementFrame = items.First(i => i.Index == index).Frame;
+        next.Width = replacementFrame.Width; next.Height = replacementFrame.Height;
+        next.HorizontalAlignment = HorizontalAlignment.Left; next.VerticalAlignment = VerticalAlignment.Top;
+        if (old is FrameworkElement oldPhoto) { oldPhoto.Width = slot.Width; oldPhoto.Height = slot.Height; oldPhoto.HorizontalAlignment = HorizontalAlignment.Left; oldPhoto.VerticalAlignment = VerticalAlignment.Top; }
         var stack = new Grid(); if (old != null) { slot.Child = null; stack.Children.Add(old); } stack.Children.Add(next); slot.Child = stack;
         scene.Photos[index] = photo; scene.Bitmaps[index] = bitmap;
         var fade = transitions.Create(); TransitionController.Animate(fade, next, OpacityProperty, 0, 1, settings.FadeSeconds);
-        for (var i = 0; i < frames.Count; i++)
+        foreach (var layout in items)
         {
-            var item = scene.Slots[i]; var frame = frames[i];
+            var item = scene.Slots[layout.Index]; var frame = layout.Frame;
             TransitionController.Animate(fade, item, Canvas.LeftProperty, Canvas.GetLeft(item), frame.X, settings.FadeSeconds);
             TransitionController.Animate(fade, item, Canvas.TopProperty, Canvas.GetTop(item), frame.Y, settings.FadeSeconds);
             TransitionController.Animate(fade, item, WidthProperty, item.ActualWidth > 0 ? item.ActualWidth : item.Width, frame.Width, settings.FadeSeconds);
             TransitionController.Animate(fade, item, HeightProperty, item.ActualHeight > 0 ? item.ActualHeight : item.Height, frame.Height, settings.FadeSeconds);
         }
+        var kept = items.Select(i => i.Index).ToHashSet();
+        for (var i = 0; i < scene.Slots.Count; i++)
+            if (!kept.Contains(i)) TransitionController.Animate(fade, scene.Slots[i], OpacityProperty, 1, 0, settings.FadeSeconds);
         transitions.Start(fade, next);
         try { await scheduler.DelayAsync(settings.FadeSeconds, token); }
         finally
         {
-            for (var i = 0; i < frames.Count; i++) SetRect(scene.Slots[i], frames[i]);
+            foreach (var layout in items) SetRect(scene.Slots[layout.Index], layout.Frame);
             // Commit final values before removing clocks, including Next/stop
             // cancellation, so the outgoing scene cannot snap back mid-fade.
             next.Opacity = 1; transitions.RemoveRoot(next);
             stack.Children.Clear(); slot.Child = next;
+            var slots = scene.Slots.ToArray(); var images = scene.Bitmaps.ToArray();
+            for (var i = 0; i < slots.Length; i++) if (!kept.Contains(i)) scene.Foreground.Children.Remove(slots[i]);
+            scene.Slots.Clear(); scene.Photos.Clear(); scene.Bitmaps.Clear();
+            foreach (var item in items) { scene.Slots.Add(slots[item.Index]); scene.Photos.Add(photos[item.Index]); scene.Bitmaps.Add(images[item.Index]); }
         }
     }
     private Border CreateSlot(PhotoInfo photo, BitmapSource bitmap)

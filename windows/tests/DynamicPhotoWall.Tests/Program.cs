@@ -58,6 +58,10 @@ internal static class Program
                 await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
             }
             if (args.Contains("--scan-only") && args.Contains("--scene-transitions")) await SceneTransitions();
+            if (args.Contains("--scan-only") && args.Contains("--zoom-motion")) await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);
+            if (args.Contains("--scan-only") && args.Contains("--mode-weights")) await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
+            if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
+            if (args.Contains("--scan-only") && args.Contains("--gallery-face")) await GalleryFaces();
             var output = Path.Combine(root, "test-results.json");
             File.WriteAllText(output, JsonSerializer.Serialize(new { Failed = failures, Results = results }, new JsonSerializerOptions { WriteIndented = true }));
             Console.WriteLine($"Results: {output}"); app.Shutdown(failures == 0 ? 0 : 1);
@@ -105,6 +109,19 @@ internal static class Program
         }
         return path;
     }
+    private static async Task GalleryFaces()
+    {
+        await Test("motion face rectangles fit physical outputs or skip unsafe pans", GalleryFaceTests.MotionFacesFitPhysicalOutputs);
+        await Test("gallery repacking retains near-full height or width", GalleryFaceTests.GalleryKeepsItsShortAxisDuringRepacking);
+        await Test("one group gallery timeline changes a photo every ten to thirty seconds", GalleryFaceTests.GroupTimelineChangesOnePhotoAfterEachQuietInterval);
+        await Test("local gallery replacement reflows at fixed height without a visible window", GalleryFaceTests.LocalReplacementKeepsHeightWithoutShowingAWindow);
+    }
+    private static async Task AmbientTransitions()
+    {
+        await Test("ambient color changes follow time without flashing or losing vividness", AmbientTransitionTests.ColorsFollowTimeWithoutFlashingOrLosingSaturation);
+        await Test("live ambient fades retarget from the visible mix without replacing the brush", AmbientTransitionTests.LiveTextureRetargetsFromTheVisibleMix);
+        await Test("shared ambient sample boundaries keep stable sources and opaque coverage", AmbientTransitionTests.SharedFrameBoundariesNeverSwapImageSources);
+    }
     private static async Task SceneTransitions()
     {
         await Test("physical outputs survive mode changes, peer loss and reconnection", SharedSceneTransitionTests.PhysicalOutputsSurviveLogicalCanvasChanges);
@@ -113,6 +130,10 @@ internal static class Program
     }
     private static async Task RunAsync(bool desktop)
     {
+        await GalleryFaces();
+        await AmbientTransitions();
+        await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
+        await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);
         await SceneTransitions();
         await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);
         await Test("ambient color reaches edges in every mode without GUI captures", MirrorAmbientTests.AmbientReachesEdges);
@@ -303,17 +324,16 @@ internal static class Program
             var plan = new CompositionEngine(selector, new Random(2)).Next(photos, new(3840, 1100), new WallSettings { PanWeight = 0, ZoomWeight = 0, GalleryScrollEnabled = false })!;
             Check(plan.Photos.Select(p => p.Path).Distinct().Count() == plan.Photos.Count, "duplicate gallery");
         }));
-        await Test("weighted modes and pan grouping", () => Sync(() =>
+        await Test("gallery versus pan-and-zoom categories preserve an eighty-twenty draw", () => Sync(() =>
         {
             var engine = new CompositionEngine(new PhotoSelector(new Random(9)), new Random(3));
             var photos = new[] { Photo("portrait", 3000, 5000), Photo("wide", 8000, 1200), Photo("landscape", 4000, 2400) };
             var totals = new int[5]; var s = new WallSettings();
             for (var i = 0; i < 20000; i++) totals[(int)engine.Next(photos, new(3840, 1100), s)!.Mode]++;
-            // Repetition suppression deliberately shifts exact raw ratios slightly.
             var gallery = (totals[0] + totals[4]) / 20000d; var pan = (totals[1] + totals[2]) / 20000d; var zoom = totals[3] / 20000d;
             Console.WriteLine($"Observed weights: gallery={gallery:P1}, pan={pan:P1}, zoom={zoom:P1}");
-            Check(gallery > .35 && gallery < .5 && pan > .29 && pan < .45 && zoom > .15 && zoom < .3, "distribution");
-            s.GalleryWeight = s.PanWeight = 0;
+            Check(gallery > .78 && gallery < .82 && pan + zoom > .18 && pan + zoom < .22, "category distribution");
+            s.GalleryWeight = 0; s.MotionWeight = 20; s.VerticalPanEnabled = s.HorizontalPanEnabled = false;
             for (var i = 0; i < 20; i++) Check(engine.Next(photos, new(3840, 1100), s)!.Mode == CompositionMode.Zoom, "zero weights");
             s.ZoomEnabled = false; Check(engine.Next(photos, new(3840, 1100), s) == null, "all disabled");
         }));

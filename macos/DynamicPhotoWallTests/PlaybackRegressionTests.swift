@@ -43,9 +43,9 @@ struct PlaybackRegressionTests {
         settings.zoomEnabled = false
         #expect(WallScenePlanner(seed: 42).next(assets: photos, settings: settings, viewport: viewport) == nil)
         settings.zoomEnabled = true
-        settings.zoomWeight = 0
+        settings.motionWeight = 0
         #expect(WallScenePlanner(seed: 42).next(assets: photos, settings: settings, viewport: viewport) == nil)
-        settings.zoomWeight = 20
+        settings.motionWeight = 20
         let portrait = PhotoAsset(url: URL(filePath: "/p.jpg"), pixelWidth: 800, pixelHeight: 1600)
         #expect(WallScenePlanner(seed: 42).next(assets: [portrait], settings: settings, viewport: viewport) == nil)
     }
@@ -61,7 +61,7 @@ struct PlaybackRegressionTests {
         #expect(names == ["0.jpg", "1.jpg", "2.jpg", "3.jpg", "4.jpg", "5.jpg", "6.jpg", "0.jpg"])
     }
 
-    @Test func plannerAvoidsThreeRepeatedModesAndKeepsSingleModeRunning() throws {
+    @Test func plannerAllowsRepeatsWhenEachCategoryHasOneModeAndKeepsSingleModeRunning() throws {
         var settings = WallSettings()
         settings.galleryScrollEnabled = false
         let planner = WallScenePlanner(seed: 42)
@@ -69,7 +69,8 @@ struct PlaybackRegressionTests {
         for _ in 0..<1000 {
             history.append(try #require(planner.next(assets: photos, settings: settings, viewport: viewport)).mode)
         }
-        #expect(!(2..<history.count).contains { history[$0] == history[$0 - 1] && history[$0] == history[$0 - 2] })
+        #expect(Set(history) == [.gallery, .zoom])
+        #expect((2..<history.count).contains { history[$0] == history[$0 - 1] && history[$0] == history[$0 - 2] })
         let single = WallScenePlanner(seed: 42)
         for _ in 0..<10 { #expect(single.next(assets: photos, settings: zoomOnly, viewport: viewport)?.mode == .zoom) }
     }
@@ -124,7 +125,7 @@ struct PlaybackRegressionTests {
         #expect(playback.presentation(now: 20001)?.elapsed == 1)
     }
 
-    @Test func galleryUpdatesOnlyDueSlotWithoutRepeatingVisiblePhotos() throws {
+    @Test func galleryUpdatesOneRandomSlotWithoutRepeatingVisiblePhotos() throws {
         var settings = WallSettings()
         settings.galleryScrollEnabled = false
         settings.verticalPanEnabled = false
@@ -134,14 +135,18 @@ struct PlaybackRegressionTests {
         settings.galleryMinSeconds = 5
         settings.galleryMaxSeconds = 5
         let playback = WallPlaybackController()
-        playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
+        let portraits = (0..<7).map { PhotoAsset(url: URL(filePath: "/\($0).jpg"), pixelWidth: 800, pixelHeight: 1600, faces: []) }
+        playback.start(assets: portraits, settings: settings, viewport: viewport, seed: 42, now: 0)
         let initial = try #require(playback.currentScene).assets
         playback.update(now: 5 + settings.fadeSeconds)
         let updated = try #require(playback.currentScene).assets
-        #expect(updated[0] != initial[0])
-        #expect(updated[1] == initial[1])
-        #expect(!initial.contains(updated[0]))
-        #expect(playback.slots[0].previousAsset == initial[0])
+        let changed = initial.indices.filter { updated[$0] != initial[$0] }
+        #expect(changed.count == 1)
+        let index = try #require(changed.first)
+        #expect(!initial.contains(updated[index]))
+        #expect(playback.slots[index].previousAsset == initial[index])
+        playback.update(now: 6 + settings.fadeSeconds)
+        #expect(playback.currentScene?.assets == updated)
     }
 
     @Test func horizontalGalleryStartsFilledAndStreamsAtTheConfiguredSpeed() throws {

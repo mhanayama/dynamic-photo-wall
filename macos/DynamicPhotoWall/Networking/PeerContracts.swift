@@ -193,9 +193,12 @@ nonisolated struct PNPlacement: Codable, Identifiable, Sendable {
     var width: Double; var height: Double; var fromX: Double; var fromY: Double; var toX: Double; var toY: Double
     var fromScale: Double; var toScale: Double; var centerX: Double; var centerY: Double
     var startSeconds: Double; var motionSeconds: Double; var visibleFrom: Double; var visibleUntil: Double; var fadeSeconds: Double; var cornerRadius: Double; var ease: Bool
+    var fadeInSeconds: Double? = nil; var fadeOutSeconds: Double? = nil
     func evaluate(_ elapsed: Double) -> (x: Double, y: Double, scale: Double, opacity: Double) {
         var t = min(1, max(0, (elapsed - startSeconds) / motionSeconds)); if ease { t = 0.5 - cos(t * .pi) / 2 }
-        let opacity = elapsed < visibleFrom || elapsed >= visibleUntil ? 0 : fadeSeconds <= 0 ? 1 : min(min(1, max(0, (elapsed - visibleFrom) / fadeSeconds)), min(1, max(0, (visibleUntil - elapsed) / fadeSeconds)))
+        let fadeIn = fadeInSeconds ?? fadeSeconds, fadeOut = fadeOutSeconds ?? fadeSeconds
+        let opacity = elapsed < visibleFrom || elapsed >= visibleUntil ? 0
+            : min(fadeIn <= 0 ? 1 : min(1, max(0, (elapsed - visibleFrom) / fadeIn)), fadeOut <= 0 ? 1 : min(1, max(0, (visibleUntil - elapsed) / fadeOut)))
         return (fromX + (toX - fromX) * t, fromY + (toY - fromY) * t, fromScale + (toScale - fromScale) * t, opacity)
     }
 }
@@ -215,6 +218,7 @@ nonisolated struct PNScene: Codable, Identifiable, Sendable {
             try p.asset.validate()
             try PNWire.require([p.width, p.height, p.fromX, p.fromY, p.toX, p.toY, p.fromScale, p.toScale, p.centerX, p.centerY, p.startSeconds, p.motionSeconds, p.visibleFrom, p.visibleUntil, p.fadeSeconds, p.cornerRadius, p.clip.x, p.clip.y, p.clip.width, p.clip.height].allSatisfy(\.isFinite)
                 && p.width > 0 && p.height > 0 && p.clip.width > 0 && p.clip.height > 0 && p.motionSeconds > 0 && p.fromScale > 0 && p.toScale > 0 && p.visibleFrom >= 0 && p.visibleUntil <= duration && p.visibleUntil >= p.visibleFrom && p.fadeSeconds >= 0 && p.cornerRadius >= 0, "Invalid placement")
+            try PNWire.require([p.fadeInSeconds, p.fadeOutSeconds].compactMap { $0 }.allSatisfy { $0.isFinite && $0 >= 0 }, "Invalid independent fade")
         }
         try PNWire.require(ambient.allSatisfy { $0.png.count <= 131072 && $0.at >= 0 && $0.at <= duration }, "Invalid ambient frames")
     }

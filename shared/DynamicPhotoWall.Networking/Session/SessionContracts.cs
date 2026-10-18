@@ -28,18 +28,20 @@ public sealed record PlaybackOptions
     public bool GlassBackground { get; init; } = true;
     public int RecentCount { get; init; } = 30;
     public int GalleryMax { get; init; } = 5;
-    public int GalleryWeight { get; init; } = 45;
-    public int PanWeight { get; init; } = 35;
-    public int ZoomWeight { get; init; } = 20;
+    public int GalleryWeight { get; init; } = 80;
+    // PanWeight carries the combined motion category. ZoomWeight is read for
+    // legacy compatibility and written as zero by the native settings adapters.
+    public int PanWeight { get; init; } = 20;
+    public int ZoomWeight { get; init; }
     public double PanPixelsPerSecond { get; init; } = 120;
     public double GalleryScrollPixelsPerSecond { get; init; } = 40;
-    public double PanWidthFraction { get; init; } = .96;
+    public double PanWidthFraction { get; init; } = 1;
     public double MaxPanUpscale { get; init; } = 4;
-    public double ZoomSeconds { get; init; } = 45;
-    public double MaxZoom { get; init; } = 1.08;
+    public double ZoomSeconds { get; init; } = 30;
+    public double MaxZoom { get; init; } = 1.25;
     public double FadeSeconds { get; init; } = 1.2;
-    public double GalleryMinSeconds { get; init; } = 30;
-    public double GalleryMaxSeconds { get; init; } = 60;
+    public double GalleryMinSeconds { get; init; } = 10;
+    public double GalleryMaxSeconds { get; init; } = 30;
     public double Gap { get; init; } = 8;
     public double CornerRadius { get; init; } = 8;
     public string Background { get; init; } = "#101116";

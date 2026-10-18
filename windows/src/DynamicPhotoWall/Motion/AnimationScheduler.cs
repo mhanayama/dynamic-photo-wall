@@ -8,6 +8,7 @@ public sealed class AnimationScheduler
     private TaskCompletionSource resumed = Completed();
     private bool paused;
     public bool IsPaused => paused;
+    public double ElapsedSeconds => activeTime.Elapsed.TotalSeconds;
     private static TaskCompletionSource Completed() { var value = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); value.SetResult(); return value; }
     public void SetPaused(bool value)
     {

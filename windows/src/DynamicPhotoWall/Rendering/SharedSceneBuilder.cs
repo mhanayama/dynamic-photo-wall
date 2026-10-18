@@ -36,11 +36,6 @@ public static class SharedSceneBuilder
             var frames = plan.Ambient.Where(f => f.DisplayId == id).OrderBy(f => f.At).ToArray();
             if (frames.Length > 0)
             {
-                var a = new System.Windows.Controls.Image { Width = surface.Viewport.Width, Height = surface.Viewport.Height, Stretch = Stretch.Fill };
-                var b = new System.Windows.Controls.Image { Width = a.Width, Height = a.Height, Stretch = Stretch.Fill };
-                surface.Canvas.Children.Add(a); surface.Canvas.Children.Add(b);
-                surface.Canvas.Children.Add(new Border { Width = a.Width, Height = a.Height,
-                    Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
                 var bitmaps = frames.Select(frame =>
                 {
                     using var stream = new MemoryStream(frame.Png, false);
@@ -55,8 +50,11 @@ public static class SharedSceneBuilder
                         PixelFormats.Pbgra32, null, pixels, converted.PixelWidth * 4);
                     texture.Freeze(); return texture;
                 }).ToArray();
-                a.Source = b.Source = bitmaps[0]; b.Opacity = 0;
-                visual.Backgrounds.Add((id, a, b, frames, bitmaps));
+                var ambient = new AmbientFrameVisual(frames, bitmaps, surface.Viewport.Width, surface.Viewport.Height);
+                foreach (var image in ambient.Images) surface.Canvas.Children.Add(image);
+                surface.Canvas.Children.Add(new Border { Width = surface.Viewport.Width, Height = surface.Viewport.Height,
+                    Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
+                visual.Backgrounds.Add(ambient);
             }
             surface.Canvas.Children.Add(surface.Foreground);
             foreach (var p in plan.Placements.Where(p => p.DisplayId == id))

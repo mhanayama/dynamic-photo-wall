@@ -67,7 +67,7 @@ struct GalleryFillRegressionTests {
     }
 
     @Test(arguments: ["enabled", "ordered", "perDisplay", "disabled", "decodeFailure"])
-    func scenePreparationOptimizesLazilyAndKeepsOriginalWhenUnavailable(_ variant: String) async throws {
+    func scenePreparationUsesFixedSizeWithoutDecodingUnselectedCandidates(_ variant: String) async throws {
         let audit = FillDecodeAudit(), good = good
         let pixels = try #require(AmbientProcessor.image(Array(repeating: UInt8(255), count: 64), width: 4, height: 4))
         let images = PhotoImageStore(decode: { request in
@@ -91,11 +91,14 @@ struct GalleryFillRegressionTests {
         #expect(!controller.waitingForImages)
         let selected = try #require(controller.currentScene?.assets)
         let decoded = await audit.urls
-        if variant == "enabled" { #expect(selected.contains(good)); #expect(decoded.contains(good.url)) }
-        else { #expect(selected == [a,bad]) }
+        let expected = FixedGalleryLayout.arrange([a,bad], viewport: viewport, gap: settings.gap,
+            displays: settings.avoidFaceDisplayBoundaries ? displays : []).map { [a,bad][$0.index] }
+        #expect(selected == expected)
+        let frames = try #require(controller.presentation(now: 0)?.galleryLayout).to
+        #expect(frames.allSatisfy { $0.height == viewport.height - 2 * settings.gap })
         #expect(!decoded.contains(unknown.url))
-        #expect(decoded.count <= 3)
-        if !["enabled", "decodeFailure"].contains(variant) { #expect(!decoded.contains(good.url)) }
+        #expect(decoded.count <= 2)
+        #expect(!decoded.contains(good.url))
         let before = controller.presentation(now: 0)
         controller.setPaused(true, now: 0); controller.update(now: 100)
         #expect(controller.presentation(now: 100) == before)
@@ -118,42 +121,36 @@ struct GalleryFillRegressionTests {
         try await Task.sleep(for: .milliseconds(30))
         #expect(controller.currentScene == nil && images.displayedImages.isEmpty)
     }
-    @Test func periodicReplacementImprovesOnlyDueSlotAndPreservesOtherPhotos() async throws {
-        let alternate = PhotoAsset(url: URL(filePath: "/fill/d.jpg"), pixelWidth: good.pixelWidth, pixelHeight: good.pixelHeight, faces: good.faces)
-        let photos = [a,good,bad,alternate]
-        var settings = WallSettings()
-        settings.galleryMinSeconds = 5; settings.galleryMaxSeconds = 5; settings.glassBackground = false
-        let excluded: Set<URL> = [a.url,good.url]
-        let seed = try #require((UInt64(0)..<30).first { seed in
-            let selector = PhotoSelector(seed: seed)
-            return selector.pick(from: photos, settings: settings, excluding: excluded) == bad
-        })
+    @Test func managedGalleryWaitsForOneGroupShuffleAndFreezesAfterPause() async throws {
+        let portraits = (0..<8).map { PhotoAsset(url: URL(filePath: "/fill/portrait-\($0).jpg"), pixelWidth: 400, pixelHeight: 800, faces: []) }
+        var settings = WallSettings(); settings.glassBackground = false
+        settings.galleryMinSeconds = 5; settings.galleryMaxSeconds = 5
         let pixels = try #require(AmbientProcessor.image(Array(repeating: UInt8(255), count: 64), width: 4, height: 4))
         let images = PhotoImageStore(decode: { _ in DecodedPhoto(image: pixels) })
         let controller = WallPlaybackController(imageStore: images)
-        controller.start(assets: [a,good], settings: settings, viewport: viewport, seed: seed, now: 0,
-            scene: WallScene(id: 20, mode: .gallery, assets: [a,good], displayRegions: displays), externallyManaged: true)
+        controller.start(assets: portraits, settings: settings, viewport: viewport, seed: 1, now: 0,
+            scene: WallScene(id: 20, mode: .gallery, assets: Array(portraits.prefix(2)), displayRegions: displays), externallyManaged: true)
         defer { controller.stop() }
         for _ in 0..<2000 {
             controller.update(now: 0)
             if !controller.waitingForImages { break }
             try await Task.sleep(for: .milliseconds(1))
         }
-        #expect(controller.currentScene?.assets == [a,good])
-        // The first slot cannot change at its deadline. Add candidates afterwards,
-        // so only the second slot is due during this optimization.
-        controller.update(now: 6.3)
-        controller.updateLibrary(assets: photos, now: 7)
+        let initial = try #require(controller.currentScene).assets
+        controller.update(now: 20)
+        #expect(controller.currentScene?.assets == initial) // A managed surface has no independent timer.
+        #expect(controller.shuffleGallery(now: 20))
         for _ in 0..<2000 {
-            controller.update(now: 9.3)
-            if controller.slots[1].previousAsset != nil { break }
+            controller.update(now: 20)
+            if controller.slots.contains(where: { $0.previousAsset != nil }) { break }
             try await Task.sleep(for: .milliseconds(1))
         }
-        #expect(controller.slots[1].asset == alternate)
-        #expect(controller.slots[1].previousAsset == good && controller.slots[0].asset == a)
-        #expect(controller.presentation(now: 9.3)?.galleryLayout != nil)
-        controller.setPaused(true, now: 9.4)
-        let frozen = controller.presentation(now: 9.4)
+        #expect(controller.slots.filter { $0.previousAsset != nil }.count == 1)
+        #expect(!controller.shuffleGallery(now: 20.1))
+        let p = try #require(controller.presentation(now: 20.1))
+        #expect(p.galleryLayout?.to.allSatisfy { $0.height == viewport.height - 2 * settings.gap } == true)
+        controller.setPaused(true, now: 20.2)
+        let frozen = controller.presentation(now: 20.2)
         controller.update(now: 100)
         #expect(controller.presentation(now: 100) == frozen)
     }

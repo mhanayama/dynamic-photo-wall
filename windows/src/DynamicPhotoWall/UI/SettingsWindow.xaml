@@ -103,16 +103,16 @@
                 <CheckBox x:Name="AvoidFaceDisplayBoundariesCheck" Content="スパン時に顔が画面の境目に重ならないよう配置" IsChecked="{Binding AvoidFaceDisplayBoundaries}"/>
                 <TextBlock Text="Galleryの停止後の配置・Vertical Panで顔を画面内へ収めます。位置の調整だけで収まらない場合は写真を小さくします。Galleryの再配置中や横スクロール・横パンは境界を通過します。" Style="{StaticResource Hint}"/>
                 <TextBlock Text="抽選ウェイト（0で抽選対象から除外）"/>
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,12,0"><TextBlock Text="Gallery"/><TextBox Text="{Binding GalleryWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
-                    <StackPanel Grid.Column="1" Margin="0,0,12,0"><TextBlock Text="Pan（縦・横の合計）"/><TextBox Text="{Binding PanWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
-                    <StackPanel Grid.Column="2"><TextBlock Text="Zoom"/><TextBox Text="{Binding ZoomWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,12,0"><TextBlock Text="ギャラリー（静止・スクロール）"/><TextBox Text="{Binding GalleryWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
+                    <StackPanel Grid.Column="1"><TextBlock Text="パン・ズーム（縦・横・拡大縮小）"/><TextBox Text="{Binding MotionWeight, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/></StackPanel>
                 </Grid>
+                <TextBlock Text="初期値はギャラリー80：パン・ズーム20。系統を選んでから、有効な表示モードを選びます。" Style="{StaticResource Hint}"/>
                 <TextBlock Text="Galleryの最大枚数（1〜20）"/>
                 <TextBox Text="{Binding GalleryMax, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="パンで許容する拡大率（1〜12倍、初期値4倍）"/>
                 <TextBox Text="{Binding MaxPanUpscale, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="縦パンの表示幅（画面幅の割合、0.3〜1.0）"/>
+                <TextBlock Text="縦パンの表示幅（画面幅の割合、0.3〜1.0、初期値1.0）"/>
                 <TextBox Text="{Binding PanWidthFraction, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <CheckBox Content="顔が見える位置で縦パンを止める" IsChecked="{Binding StopAtFace}"/>
                 <CheckBox Content="全画面表示でも顔が見える位置を優先" IsChecked="{Binding FaceAwareFraming}"/>
@@ -124,10 +124,11 @@
                 <TextBlock Text="パン速度（物理px / 秒、5〜500）"/><TextBox Text="{Binding PanPixelsPerSecond, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="Scrolling Galleryの速度（px / 秒、5〜200）"/><TextBox Text="{Binding GalleryScrollPixelsPerSecond, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
                 <TextBlock Text="ズームの所要時間（秒、10〜600）"/><TextBox Text="{Binding ZoomSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="最大ズーム倍率（1.0〜1.15）"/><TextBox Text="{Binding MaxZoom, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="最大ズーム倍率（1.0〜1.5）"/><TextBox Text="{Binding MaxZoom, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="動きが分かるズームの目安：30秒・1.25倍" TextWrapping="Wrap"/>
                 <TextBlock Text="クロスフェード（秒、0.2〜10）"/><TextBox Text="{Binding FadeSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Galleryの更新間隔 — 最短（秒）"/><TextBox Text="{Binding GalleryMinSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
-                <TextBlock Text="Galleryの更新間隔 — 最長（秒）"/><TextBox Text="{Binding GalleryMaxSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Gallery全体の交換間隔 — 最短（秒）"/><TextBox Text="{Binding GalleryMinSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
+                <TextBlock Text="Gallery全体の交換間隔 — 最長（秒）"/><TextBox Text="{Binding GalleryMaxSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}"/>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="見た目"><ScrollViewer><StackPanel>
                 <TextBlock Text="写真の見せ方" FontSize="20"/>

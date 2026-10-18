@@ -9,7 +9,7 @@ public sealed class SharedVisual
     public required Net.SharedScenePlan Plan { get; init; }
     public required IReadOnlyDictionary<string, BitmapSource> Images { get; init; }
     internal List<(Net.ScenePlacement Plan, FrameworkElement Image, ScaleTransform Scale, TranslateTransform Translation)> Photos { get; } = [];
-    internal List<(string? Id, System.Windows.Controls.Image A, System.Windows.Controls.Image B, Net.AmbientFrame[] Frames, BitmapSource[] Images)> Backgrounds { get; } = [];
+    internal List<AmbientFrameVisual> Backgrounds { get; } = [];
 }
 
 public sealed partial class PhotoRenderer
@@ -48,14 +48,7 @@ public sealed partial class PhotoRenderer
             scale.ScaleX = scale.ScaleY = value.Scale;
             translation.X = value.X - p.Clip.X; translation.Y = value.Y - p.Clip.Y; image.Opacity = value.Opacity;
         }
-        foreach (var (_, a, b, frames, images) in visual.Backgrounds)
-        {
-            var index = 0;
-            while (index + 1 < frames.Length && frames[index + 1].At <= elapsed) index++;
-            var next = Math.Min(index + 1, frames.Length - 1);
-            a.Source = images[index]; b.Source = images[next];
-            b.Opacity = next == index ? 0 : Math.Clamp((elapsed - frames[index].At) / Math.Max(.001, frames[next].At - frames[index].At), 0, 1);
-        }
+        foreach (var background in visual.Backgrounds) background.Present(elapsed);
         visual.Scene.Canvas.Opacity = visual.Plan.FadeSeconds <= 0 ? 1 : Math.Clamp(elapsed / visual.Plan.FadeSeconds, 0, 1);
     }
 }

@@ -5,7 +5,13 @@ public sealed record ScenePlacement(int Id, SharedAssetKey Asset, string? Displa
     double Width, double Height, double FromX, double FromY, double ToX, double ToY,
     double FromScale, double ToScale, double CenterX, double CenterY,
     double StartSeconds, double MotionSeconds, double VisibleFrom, double VisibleUntil,
-    double FadeSeconds, double CornerRadius, bool Ease);
+    double FadeSeconds, double CornerRadius, bool Ease)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public double? FadeInSeconds { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public double? FadeOutSeconds { get; init; }
+}
 public sealed record AmbientFrame(double At, byte[] Png) { public string? DisplayId { get; init; } }
 public sealed record SharedScenePlan(Guid Id, Guid GroupId, Guid SessionId, long SettingsRevision,
     SceneMode Mode, Viewport Viewport, PeerDisplay[] Displays, double Duration, double FadeSeconds,
@@ -34,6 +40,8 @@ public sealed record SharedScenePlan(Guid Id, Guid GroupId, Guid SessionId, long
                 && p.Clip.Height > 0 && p.FromScale > 0 && p.ToScale > 0 && p.MotionSeconds > 0
                 && p.VisibleFrom >= 0 && p.VisibleUntil >= p.VisibleFrom && p.VisibleUntil <= Duration
                 && p.FadeSeconds >= 0 && p.CornerRadius >= 0, "Invalid photo placement.");
+            PeerProtocol.Require((p.FadeInSeconds == null || double.IsFinite(p.FadeInSeconds.Value) && p.FadeInSeconds >= 0)
+                && (p.FadeOutSeconds == null || double.IsFinite(p.FadeOutSeconds.Value) && p.FadeOutSeconds >= 0), "Invalid independent photo fade.");
         }
         PeerProtocol.Require(Placements.Select(p => p.Id).Distinct().Count() == Placements.Length, "Duplicate placement ID.");
         foreach (var frame in Ambient!) PeerProtocol.Require(double.IsFinite(frame.At) && frame.At >= 0
@@ -50,8 +58,10 @@ public static class SceneEvaluation
     {
         var progress = Math.Clamp((elapsed - p.StartSeconds) / p.MotionSeconds, 0, 1);
         if (p.Ease) progress = .5 - Math.Cos(progress * Math.PI) / 2;
-        var opacity = elapsed < p.VisibleFrom || elapsed >= p.VisibleUntil ? 0 : p.FadeSeconds <= 0 ? 1
-            : Math.Min(Math.Clamp((elapsed - p.VisibleFrom) / p.FadeSeconds, 0, 1), Math.Clamp((p.VisibleUntil - elapsed) / p.FadeSeconds, 0, 1));
+        var fadeIn = p.FadeInSeconds ?? p.FadeSeconds; var fadeOut = p.FadeOutSeconds ?? p.FadeSeconds;
+        var opacity = elapsed < p.VisibleFrom || elapsed >= p.VisibleUntil ? 0
+            : Math.Min(fadeIn <= 0 ? 1 : Math.Clamp((elapsed - p.VisibleFrom) / fadeIn, 0, 1),
+                fadeOut <= 0 ? 1 : Math.Clamp((p.VisibleUntil - elapsed) / fadeOut, 0, 1));
         return new(p.FromX + (p.ToX - p.FromX) * progress, p.FromY + (p.ToY - p.FromY) * progress,
             p.FromScale + (p.ToScale - p.FromScale) * progress, opacity);
     }

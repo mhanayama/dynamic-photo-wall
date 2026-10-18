@@ -1,7 +1,18 @@
 # ピア間ネットワークの実装と検証
 
-更新: 2026-10-18。[基本設計](NETWORK-PEER-DESIGN.md)に沿って、通信から設定UI・同期表示まで接続した。Windowsのビルドと自動検証に加え、Macでコンパイル修正・隔離テストとSwift／.NETの通信検証を実施した。**Mac上の相互TLS・multicast検出と、実際のMac↔Windows間のLAN・画面表示は別の検証**。[Macの結果](../macos/docs/NETWORK-TEST-RESULTS-2026-10-18.md)と後述の実機確認項目を参照。
+更新: 2026-10-19。[基本設計](NETWORK-PEER-DESIGN.md)に沿って、通信から設定UI・同期表示まで接続した。Windowsのビルドと自動検証に加え、Macでコンパイル修正・隔離テストとSwift／.NETの通信検証を実施した。**Mac上の相互TLS・multicast検出と、実際のMac↔Windows間のLAN・画面表示は別の検証**。[Macの結果](../macos/docs/NETWORK-TEST-RESULTS-2026-10-18.md)と後述の実機確認項目を参照。
 
+## Gallery・顔サイズ・背景の表示部品（2026-10-19）
+
+固定サイズの配置は.NET Coreの`FixedGalleryLayout`とSwiftの同名部品、グループ全体の交換予定は`GalleryTimeline`で計算する。UI・ファイルI/O・通信から独立し、縦横のグループと複数の画面別表示を部品単位で検証する。Galleryは短辺をほぼいっぱいに固定し、隣の写真の移動・退場で交換を収める。待ち時間の初期値は10〜30秒、前の交換のフェード完了後から次を数える。
+
+共通placementへ省略可能な`fadeInSeconds`／`fadeOutSeconds`を追加した。未指定は従来の`fadeSeconds`へフォールバックし、旧wire fixtureの直列化は変えない。新Galleryでは写真の入場・退場と隣の写真の位置移動を分け、動かすだけの写真を再フェードさせない。すべての接続ピアをこの契約に対応した版へ揃える。
+
+`FaceMotionSafety`は既存の動き計算の結果を受け、全顔の外接矩形が実ディスプレイへ収まるようZoomの開始・終了倍率、Panの画像サイズと停止位置を補正する。20pxを超える移動が残らないPanは候補から除外する。共有計画に確定した位置・寸法・倍率を載せ、受信側で顔検出をやり直さない。
+
+Windowsの背景は`AmbientTransition`で経過時間による色平滑化、`AmbientTexturePresenter`で125msの表示補間を行う。共有背景は`AmbientFrameVisual`に全サンプルを固定して載せ、更新は不透明度だけにする。Macの背景色平滑化の差分は[handover](../macos/WINDOWS_DELTA_HANDOVER.md)へ記録した。
+
+Windowsの対象部品17ケース、ネットワーク25ケース／224 assertions、既存fixture1,176 assertionsが成功。結果は`artifacts/windows/gallery-face/`。GUIの撮影・表示・描画キャプチャは行っていない。Macには配置・交換時計・顔サイズのSwift実装と回帰テストを追加したが、今回追加した差分のMacビルド・実機同期は未検証。
 ## モジュールと責任境界
 
 Windowsの通常再生Coreからネットワーク基盤を独立させ、[shared/DynamicPhotoWall.Networking](../shared/DynamicPhotoWall.Networking)を`net10.0`のライブラリーにした。WPF・Win32・PhotoKit・既存のWindows Coreを参照しない。Macへ.NETを埋め込まず、同じ契約とポートをSwiftで実装する。
@@ -80,6 +91,10 @@ opaqueId:    lowercase SHA-256("{provider:N}:{source:N}:{generation:N}:{imageId}
 Macは起動時とバックグラウンド処理のKeychainアクセスでOSの確認を出さない。許可が必要ならオンライン化を保留し、起動時または設定上部の「アクセス権限の確認」の一括取得から対話を許可する。ネットワーク設定の権限不足も同じ画面へ案内する。初期化後の信頼情報保存は再び非対話に戻す。[Macの権限取得フロー](../macos/docs/PERMISSIONS.md)も参照。現在のアドホック署名候補はfile-based login Keychainを使うため、非対話制御には非推奨の`SecKeychainGet/SetUserInteractionAllowed`を同期・排他・元値復帰付きで使う。署名・provisioningを整えたData Protection Keychainへの移行は別途必要。鍵の読取り失敗時に別identityを生成したり平文へ退避したりしない。
 
 ## 同期表示・切断
+
+表示モードの抽選は`ModeSelection`で、ギャラリー（静止・スクロール）80／パン・ズーム（縦・横・拡大縮小）20の2系統を先に選び、その系統の適性を満たす有効モードを均等に選ぶ。連続回避は選択済みの系統内だけに適用し、候補不足時は利用可能な系統へ配分する。Swiftの同名部品を単画面・グループ・ネットワーク進行役から利用する。
+
+共有契約の`galleryWeight`はギャラリー系、`panWeight`はパン・ズーム系を表す。旧`zoomWeight`は読込み互換用に残し、保存時は0とする。旧初期値45／35／20は80／20へ移行し、それ以外の旧設定はPanとZoomを合算する。ネイティブUIは2項目で編集し、部品内でも旧既定値を解決するため、旧共有状態を受信しても新しい系統の割合で抽選する。同じウォールの両OSはこの新規則を実装した版に揃える。
 
 表示の最優先要件は視覚的・知覚的な自然さ。出力ウィンドウは画面の表示先を所有し、表示計画は写真・動き・背景だけを所有する。計画の先読みではウィンドウを生成しない。通常のモード切り替えと切断・再接続・単体再生への移行では表示先を維持し、次の表示が準備できるまで直前の有効な表示を残す。明示的な停止・物理的な画面構成の変更・OSによる表示面破棄を除き、計画更新からウィンドウを閉じない。この規則は[共通設計原則](CROSS-PLATFORM-WALL-PLAN.md#最優先の設計原則視覚知覚の自然さ)に従う。
 

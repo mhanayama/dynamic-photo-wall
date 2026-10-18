@@ -38,20 +38,7 @@ import SwiftUI
             let seconds: Double
             switch scene.mode {
             case .gallery:
-                seconds = max(90, settings.galleryMaxSeconds * 2)
-                let frames = FaceSafeLayout.gallery(scene.assets, viewport: v, gap: settings.gap, displays: settings.avoidFaceDisplayBoundaries ? scene.displayRegions : [])
-                for (index, asset) in scene.assets.enumerated() {
-                    var at = 0.0; var chosen = asset
-                    while at < seconds {
-                        let until = min(seconds, at + planner.galleryInterval(settings: settings)); let slot = frames[index]
-                        let localRegions = scene.displayRegions.map { $0.offsetBy(dx: -slot.minX, dy: -slot.minY) }
-                        let fit = FaceSafeLayout.gallery([chosen], viewport: slot.size, gap: 0, displays: settings.avoidFaceDisplayBoundaries ? localRegions : []).first ?? CGRect(origin: .zero, size: slot.size)
-                        add(chosen, width: fit.width, height: fit.height, fromX: slot.minX + fit.minX, fromY: slot.minY + fit.minY, toX: slot.minX + fit.minX, toY: slot.minY + fit.minY, start: at, motion: max(0.1, until - at), visibleFrom: at, visibleUntil: until, fade: settings.fadeSeconds, corner: settings.cornerRadius)
-                        if until >= seconds { break }
-                        at = max(at + 0.1, until - settings.fadeSeconds)
-                        chosen = planner.replacement(assets: assets, settings: settings, excluding: [chosen.url]) ?? chosen
-                    }
-                }
+                seconds = max(90, settings.galleryMaxSeconds * 3)
             case .horizontalGallery:
                 seconds = max(120, settings.galleryMaxSeconds * 3)
                 let h = max(1, v.height - 2 * settings.gap); var x = settings.gap; var index = 0
@@ -63,13 +50,33 @@ import SwiftUI
                 }
             default:
                 guard let asset = scene.assets.first else { continue }
-                let motion = WallMotionGeometry.plan(for: scene.mode, asset: asset, viewport: v, settings: settings, reverse: scene.reverse, center: scene.zoomCenter, displayRegions: scene.displayRegions)
+                guard let motion = FaceMotionSafety.plan(for: scene.mode, asset: asset, viewport: v, settings: settings, reverse: scene.reverse, center: scene.zoomCenter, displayRegions: scene.displayRegions) else { return nil }
                 seconds = motion.seconds + (scene.mode == .verticalPan && settings.stopAtFace && !(asset.faces ?? []).isEmpty ? 3 : 0)
-                let frameTop = scene.mode == .verticalPan ? motion.frameTop : 0
+                let frameTop = scene.mode == .verticalPan || scene.mode == .horizontalPan ? motion.frameTop : 0
                 if scene.mode == .verticalPan { clip = PNRect(x: ox + motion.fromX, y: oy + frameTop, width: motion.width, height: min(v.height, motion.height)) }
                 add(asset, width: motion.width, height: motion.height, fromX: motion.fromX, fromY: motion.fromY + frameTop, toX: motion.toX, toY: motion.toY + frameTop, fromScale: motion.fromScale, toScale: motion.toScale, centerX: motion.center.x, centerY: motion.center.y, motion: motion.seconds, visibleUntil: seconds, ease: scene.mode == .zoom)
             }
             duration = max(duration, seconds)
+        }
+        if first.scene.mode == .gallery {
+            let inputs = surfaces.map { GalleryTimeline.Surface(assets: $0.scene.assets, viewport: $0.viewport,
+                displays: settings.avoidFaceDisplayBoundaries ? $0.scene.displayRegions : []) }
+            let segments = GalleryTimeline.build(inputs, duration: duration, settings: settings, replacement: { active in
+                planner.replacement(assets: assets, settings: settings, excluding: Set(active.map(\.url)))
+            })
+            for s in segments {
+                let surface = surfaces[s.surface]
+                let display = surface.displayID.flatMap { id in displays.indices.contains(Int(id) - 1) ? displays[Int(id) - 1] : nil }
+                let x = Double(display.map { $0.x - left } ?? 0), y = Double(display.map { $0.y - top } ?? 0)
+                guard let photo = byURL[s.asset.url] else { continue }
+                var p = PNPlacement(id: placements.count, asset: photo.key, displayId: display?.id,
+                    clip: PNRect(x: x, y: y, width: surface.viewport.width, height: surface.viewport.height), width: s.to.width, height: s.to.height,
+                    fromX: x + s.from.minX, fromY: y + s.from.minY, toX: x + s.to.minX, toY: y + s.to.minY,
+                    fromScale: 1, toScale: 1, centerX: 0.5, centerY: 0.5, startSeconds: s.at, motionSeconds: s.motion,
+                    visibleFrom: s.at, visibleUntil: s.until, fadeSeconds: 0, cornerRadius: settings.cornerRadius, ease: true)
+                p.fadeInSeconds = s.fadeIn; p.fadeOutSeconds = s.fadeOut; placements.append(p)
+            }
+            guard !placements.isEmpty else { return nil }
         }
         if first.scene.mode != .gallery { for index in placements.indices { placements[index].visibleUntil = duration } }
         let mode = first.scene.mode == .horizontalGallery ? "galleryScroll" : first.scene.mode.rawValue

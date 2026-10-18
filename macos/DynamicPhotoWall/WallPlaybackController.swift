@@ -37,7 +37,10 @@ nonisolated struct GallerySlot: Identifiable, Equatable, Sendable {
     var previousAsset: PhotoAsset?
     var changedAt: TimeInterval = -.infinity
     var nextReplacementAt: TimeInterval
+    var previousFrame: CGRect? = nil
 }
+
+nonisolated struct GalleryRemoved: Equatable, Sendable { var asset: PhotoAsset; var frame: CGRect; var at: TimeInterval }
 
 nonisolated struct GalleryFrameTransition: Equatable, Sendable {
     let from: [CGRect]
@@ -60,6 +63,7 @@ nonisolated struct WallScenePresentation: Equatable, Sendable {
     let slots: [GallerySlot]
     let scrollDistance: CGFloat
     var galleryLayout: GalleryFrameTransition? = nil
+    var galleryRemoved: [GalleryRemoved] = []
 }
 
 nonisolated struct WallSceneLayerPresentation: Identifiable {
@@ -85,6 +89,9 @@ final class WallPlaybackController {
     private(set) var slots: [GallerySlot] = []
     private(set) var sceneStartedAt: TimeInterval = 0
     private var galleryLayout: GalleryFrameTransition?
+    private var removedGallery: [GalleryRemoved] = []
+    private var nextGalleryAt: TimeInterval = 0
+    var galleryBusy: Bool { !pendingSlots.isEmpty || slots.contains { $0.previousAsset != nil } || !removedGallery.isEmpty }
     private(set) var sceneDuration: TimeInterval = 5
     private var removedScrollDistance: CGFloat = 0
     private var scrollHeldSeconds: TimeInterval = 0
@@ -121,12 +128,11 @@ final class WallPlaybackController {
 
     private var availableAssets: [PhotoAsset] {
         assets.filter { !failedVersions.contains(PhotoImageKey($0)) && !(imageStore?.failed($0) ?? false) }
+            .map { imageStore?.assetWithFaces($0) ?? $0 }
     }
 
     private func needsFaces(_ scene: WallScene) -> Bool {
-        (scene.mode == .verticalPan && settings.stopAtFace)
-            || ([.verticalPan, .horizontalPan].contains(scene.mode) && settings.faceAwarePanDirection)
-            || (scene.mode == .zoom && settings.faceAwareFraming)
+        [.verticalPan, .horizontalPan, .zoom].contains(scene.mode)
             || ([.gallery, .verticalPan].contains(scene.mode) && settings.avoidFaceDisplayBoundaries
                 && FaceSafeLayout.requiresProtection(viewport, displays: scene.displayRegions))
     }
@@ -138,12 +144,23 @@ final class WallPlaybackController {
     }
 
     private func applyPreparedFaces() {
-        guard var scene = currentScene, let imageStore else { return }
-        scene.assets = scene.assets.map { imageStore.assetWithFaces($0) }
-        currentScene = scene
-        if scene.mode == .gallery {
-            for index in slots.indices { slots[index].asset = scene.assets[index] }
+        guard var scene = currentScene else { return }
+        scene.assets = scene.assets.map { imageStore?.assetWithFaces($0) ?? $0 }
+        if [.verticalPan, .horizontalPan, .zoom].contains(scene.mode), let asset = scene.assets.first,
+           FaceMotionSafety.plan(for: scene.mode, asset: asset, viewport: viewport, settings: settings,
+                reverse: scene.reverse, center: scene.zoomCenter, displayRegions: scene.displayRegions) == nil {
+            currentScene = nil; slots = []; waitingForImages = false; return
         }
+        if scene.mode == .gallery {
+            let items = FixedGalleryLayout.arrange(scene.assets, viewport: viewport, gap: settings.gap,
+                displays: settings.avoidFaceDisplayBoundaries ? scene.displayRegions : [])
+            guard !items.isEmpty else { currentScene = nil; slots = []; waitingForImages = false; return }
+            let previousSlots = slots
+            slots = items.map { item in var slot = previousSlots[item.index]; slot.asset = scene.assets[item.index]; return slot }
+            scene.assets = items.map { scene.assets[$0.index] }
+            let frames = items.map(\.frame); galleryLayout = GalleryFrameTransition(from: frames, to: frames, startedAt: 0)
+        }
+        currentScene = scene
         sceneDuration = WallMotionGeometry.duration(for: scene, viewport: viewport, settings: settings)
     }
 
@@ -177,6 +194,7 @@ final class WallPlaybackController {
         assets = []
         galleryCompleted = []; optimizationPhotos = [:]; preparedGalleryFrames = [:]
         galleryLayout = nil
+        removedGallery = []; nextGalleryAt = 0
         failedVersions.removeAll()
         isPaused = false
         scrollHoldAt = nil
@@ -245,7 +263,7 @@ final class WallPlaybackController {
         guard let currentScene else { return nil }
         let elapsed = waitingForImages ? 0 : max(0, time - sceneStartedAt)
         return WallScenePresentation(scene: currentScene, progress: min(1, elapsed / sceneDuration),
-                                     elapsed: elapsed, slots: slots, scrollDistance: scrollDistance(elapsed: elapsed), galleryLayout: galleryLayout)
+                                     elapsed: elapsed, slots: slots, scrollDistance: scrollDistance(elapsed: elapsed), galleryLayout: galleryLayout, galleryRemoved: removedGallery)
     }
 
     private func rawScrollDistance(elapsed: TimeInterval) -> CGFloat {
@@ -279,6 +297,7 @@ final class WallPlaybackController {
         if waitingForImages, let imageStore {
             if isPrepared(currentScene) {
                 applyPreparedFaces()
+                if self.currentScene == nil { moveToNext(at: activeTime); return }
                 waitingForImages = false
                 sceneStartedAt = activeTime
                 if currentScene.mode == .horizontalGallery { prepareNextScrollPhoto(elapsed: 0) }
@@ -313,7 +332,7 @@ final class WallPlaybackController {
         var excluded = Set(currentScene?.assets.map(\.url) ?? [])
         excluded.formUnion(outgoingPhotoURLs)
         excluded.formUnion(slots.compactMap { $0.previousAsset?.url })
-        var next = managedScene ?? preloadedScene ?? (externallyManaged ? nil : planner.next(assets: availableAssets, settings: settings, viewport: viewport, excluding: excluded))
+        var next = managedScene ?? preloadedScene ?? (externallyManaged ? nil : planner.next(assets: availableAssets, settings: settings, viewport: viewport, excluding: excluded, displayRegions: displayRegions))
         if next?.displayRegions.isEmpty == true { next?.displayRegions = displayRegions }
         managedScene = nil
         preloadedScene = nil
@@ -345,12 +364,16 @@ final class WallPlaybackController {
         scrollHoldAt = nil
         slots = next.mode == .gallery ? next.assets.enumerated().map { index, asset in
             GallerySlot(id: index, asset: asset,
-                        nextReplacementAt: settings.fadeSeconds + settings.galleryMinSeconds + Double(index * 3))
+                        nextReplacementAt: .infinity)
         } : []
+        removedGallery = []; nextGalleryAt = settings.fadeSeconds + planner.galleryInterval(settings: settings)
         pinDisplayedImages()
         // Readiness must use the newly selected mode's dimensions, not the old ones.
         waitingForImages = !isPrepared(next)
-        if !waitingForImages { applyPreparedFaces() }
+        if !waitingForImages {
+            applyPreparedFaces()
+            if currentScene == nil, !externallyManaged { moveToNext(at: time); return }
+        }
         scenePreparation = prepareScene(next)
         if !waitingForImages, next.mode == .horizontalGallery { prepareNextScrollPhoto(elapsed: 0) }
     }
@@ -358,7 +381,7 @@ final class WallPlaybackController {
     private func preloadNextScene() {
         guard imageStore != nil, !waitingForImages, preloadedScene == nil, let scene = currentScene else { return }
         let excluded = Set(scene.assets.map(\.url)).union(outgoingPhotoURLs)
-        guard var next = planner.next(assets: availableAssets, settings: settings, viewport: viewport, excluding: excluded) else { return }
+        guard var next = planner.next(assets: availableAssets, settings: settings, viewport: viewport, excluding: excluded, displayRegions: displayRegions) else { return }
         next.displayRegions = displayRegions
         preloadedScene = next
         pinDisplayedImages()
@@ -381,13 +404,11 @@ final class WallPlaybackController {
     }
 
     private func needsPreparedGallery(_ scene: WallScene) -> Bool {
-        scene.mode == .gallery && settings.avoidFaceDisplayBoundaries
-            && FaceSafeLayout.requiresProtection(viewport, displays: scene.displayRegions)
+        false // Fixed-size layout filters/reflows instead of shrinking a row.
     }
 
     private func canImproveGallery(_ scene: WallScene) -> Bool {
-        scene.mode == .gallery && settings.randomOrder && settings.avoidFaceDisplayBoundaries
-            && !settings.galleryPerDisplay && FaceSafeLayout.requiresProtection(viewport, displays: scene.displayRegions)
+        false // The former shrink-based loss is not the current layout policy.
     }
 
     private func prepareScene(_ scene: WallScene) -> Task<Void, Never>? {
@@ -483,7 +504,8 @@ final class WallPlaybackController {
             displayed.append(photo)
             let width: CGFloat
             switch mode {
-            case .gallery, .horizontalGallery, .horizontalPan: width = viewport.height * photo.aspectRatio
+            case .gallery: width = viewport.width >= viewport.height ? viewport.height * photo.aspectRatio : viewport.width
+            case .horizontalGallery, .horizontalPan: width = viewport.height * photo.aspectRatio
             case .verticalPan: width = viewport.width * settings.panWidthFraction
             case .zoom: width = max(viewport.width, viewport.height * photo.aspectRatio)
             }
@@ -499,8 +521,10 @@ final class WallPlaybackController {
         if let old = outgoing {
             for photo in old.scene.assets { add(photo, mode: old.scene.mode) }
             for photo in old.slots.compactMap(\.previousAsset) { add(photo, mode: .gallery) }
+            for item in old.galleryRemoved { add(item.asset, mode: .gallery) }
         }
         for photo in slots.compactMap(\.previousAsset) { add(photo, mode: .gallery) }
+        for item in removedGallery { add(item.asset, mode: .gallery) }
         for photo in pendingSlots.values { add(photo, mode: .gallery) }
         if let pendingScroll { add(pendingScroll, mode: .horizontalGallery) }
         for photos in optimizationPhotos.values { for photo in photos { add(photo, mode: .gallery) } }
@@ -509,8 +533,8 @@ final class WallPlaybackController {
     }
 
     private func galleryFrames(_ assets: [PhotoAsset]) -> [CGRect] {
-        FaceSafeLayout.gallery(assets, viewport: viewport, gap: settings.gap,
-            displays: settings.avoidFaceDisplayBoundaries ? currentScene?.displayRegions ?? [] : [])
+        FixedGalleryLayout.arrange(assets, viewport: viewport, gap: settings.gap,
+            displays: settings.avoidFaceDisplayBoundaries ? currentScene?.displayRegions ?? [] : []).map(\.frame)
     }
 
     func synchronizeStart(now: TimeInterval) {
@@ -518,61 +542,76 @@ final class WallPlaybackController {
         clock.setPaused(isPaused, at: now)
     }
 
-    private func replaceSlot(_ index: Int, with photo: PhotoAsset, elapsed: TimeInterval) {
-        let from = galleryLayout?.frames(elapsed: elapsed, duration: settings.fadeSeconds)
-            ?? galleryFrames(slots.map(\.asset))
-        slots[index].previousAsset = slots[index].asset
-        slots[index].asset = imageStore?.assetWithFaces(photo) ?? photo
-        slots[index].changedAt = elapsed
-        currentScene?.assets[index] = slots[index].asset
-        galleryLayout = GalleryFrameTransition(from: from,
-            to: slotPreparedFrames.removeValue(forKey: index) ?? galleryFrames(slots.map(\.asset)), startedAt: elapsed)
-        slots[index].nextReplacementAt = elapsed + settings.fadeSeconds + planner.galleryInterval(settings: settings)
-        pendingSlots.removeValue(forKey: index)
-        optimizedSlots.remove(index)
-        if activeSlotOptimization == index { activeSlotOptimization = nil }
-        slotPreparations.removeValue(forKey: index)
-        pinDisplayedImages()
+    @discardableResult
+    private func replaceSlot(_ index: Int, with photo: PhotoAsset, elapsed: TimeInterval) -> Bool {
+        let old = slots
+        let before = galleryLayout?.frames(elapsed: elapsed, duration: settings.fadeSeconds) ?? galleryFrames(old.map(\.asset))
+        let replacement = imageStore?.assetWithFaces(photo) ?? photo
+        var proposed = old.map(\.asset); proposed[index] = replacement
+        let items = FixedGalleryLayout.arrange(proposed, viewport: viewport, gap: settings.gap,
+            displays: settings.avoidFaceDisplayBoundaries ? currentScene?.displayRegions ?? [] : [], pinned: index)
+        pendingSlots.removeAll(); slotPreparations.removeAll(); optimizedSlots = []; activeSlotOptimization = nil
+        nextGalleryAt = elapsed + settings.fadeSeconds + planner.galleryInterval(settings: settings)
+        guard items.contains(where: { $0.index == index }), before.count == old.count else { return false }
+        let kept = Set(items.map(\.index))
+        for i in old.indices where !kept.contains(i) { removedGallery.append(GalleryRemoved(asset: old[i].asset, frame: before[i], at: elapsed)) }
+        var from: [CGRect] = []
+        slots = items.map { item in
+            var slot = old[item.index]
+            if item.index == index {
+                slot.previousAsset = slot.asset; slot.previousFrame = before[item.index]
+                slot.asset = replacement; slot.changedAt = elapsed
+            }
+            var start = before[item.index]
+            start.size = item.frame.size // Never resize the replacement's short axis during its fade.
+            from.append(start); return slot
+        }
+        currentScene?.assets = slots.map(\.asset)
+        galleryLayout = GalleryFrameTransition(from: from, to: items.map(\.frame), startedAt: elapsed)
+        pinDisplayedImages(); return true
+    }
+
+    private func requestGalleryShuffle(elapsed: TimeInterval, excluding extra: Set<URL> = []) -> Bool {
+        guard !slots.isEmpty, !galleryBusy else { return false }
+        let index = Int.random(in: slots.indices)
+        var excluded = Set(slots.map { $0.asset.url }); excluded.formUnion(extra)
+        excluded.formUnion(outgoingPhotoURLs)
+        guard let photo = planner.replacement(assets: availableAssets, settings: settings, excluding: excluded) else { return false }
+        pendingSlots[index] = photo; pinDisplayedImages()
+        if let imageStore, !imageStore.isReady([photo]) || (needsFaces(currentScene!) && !imageStore.facesReady([photo])) {
+            slotPreparations[index] = prepare([photo])
+        } else { replaceSlot(index, with: photo, elapsed: elapsed) }
+        return true
+    }
+
+    @discardableResult
+    func shuffleGallery(now: TimeInterval, excluding: Set<URL> = []) -> Bool {
+        guard currentScene?.mode == .gallery, !isPaused, !waitingForImages else { return false }
+        return requestGalleryShuffle(elapsed: max(0, clock.elapsed(at: now) - sceneStartedAt), excluding: excluding)
     }
 
     private func updateGallery(elapsed: TimeInterval) {
-        for index in slots.indices {
-            if slots[index].previousAsset != nil, elapsed - slots[index].changedAt >= settings.fadeSeconds {
-                slots[index].previousAsset = nil; pinDisplayedImages()
+        var released = false
+        for i in slots.indices where slots[i].previousAsset != nil && elapsed - slots[i].changedAt >= settings.fadeSeconds {
+            slots[i].previousAsset = nil; slots[i].previousFrame = nil
+            released = true
+        }
+        let removedCount = removedGallery.count
+        removedGallery.removeAll { elapsed - $0.at >= settings.fadeSeconds }
+        if released || removedGallery.count != removedCount { pinDisplayedImages() }
+        if let (index, pending) = pendingSlots.first, let imageStore {
+            if imageStore.isReady([pending]) && (!needsFaces(currentScene!) || imageStore.facesReady([pending])) {
+                replaceSlot(index, with: pending, elapsed: elapsed)
+            } else if imageStore.failed(pending) {
+                failedVersions.insert(PhotoImageKey(pending)); pendingSlots.removeAll(); slotPreparations.removeAll()
+                nextGalleryAt = elapsed + planner.galleryInterval(settings: settings); pinDisplayedImages()
             }
-            if let pending = pendingSlots[index], let imageStore {
-                if imageStore.isReady([pending]) && (!needsFaces(currentScene!) || imageStore.facesReady([pending])) {
-                    if needsPreparedGallery(currentScene!), !optimizedSlots.contains(index) {
-                        if activeSlotOptimization == nil { optimizeSlot(index, pending: pending) }
-                    } else { replaceSlot(index, with: pending, elapsed: elapsed) }
-                }
-                else if imageStore.failed(pending) {
-                    failedVersions.insert(PhotoImageKey(pending))
-                    pendingSlots.removeValue(forKey: index)
-                    slotPreparations.removeValue(forKey: index)
-                    slots[index].nextReplacementAt = elapsed + 1
-                    pinDisplayedImages()
-                }
-                continue
-            }
-            guard elapsed >= slots[index].nextReplacementAt else { continue }
-            var excluded = Set(slots.map { $0.asset.url })
-            excluded.formUnion(slots.compactMap { $0.previousAsset?.url })
-            excluded.formUnion(outgoingPhotoURLs)
-            excluded.formUnion(pendingSlots.values.map(\.url))
-            if let photo = planner.replacement(assets: availableAssets, settings: settings, excluding: excluded) {
-                pendingSlots[index] = photo
-                pinDisplayedImages()
-                if let imageStore, !imageStore.isReady([photo]) || (needsFaces(currentScene!) && !imageStore.facesReady([photo])) { slotPreparations[index] = prepare([photo]) }
-                else if needsPreparedGallery(currentScene!), imageStore != nil {
-                    if activeSlotOptimization == nil { optimizeSlot(index, pending: photo) }
-                } else { replaceSlot(index, with: photo, elapsed: elapsed) }
-            } else {
-                slots[index].nextReplacementAt = elapsed + planner.galleryInterval(settings: settings)
-            }
+            return
+        }
+        if !externallyManaged, !galleryBusy, elapsed >= nextGalleryAt {
+            if !requestGalleryShuffle(elapsed: elapsed) { nextGalleryAt = elapsed + planner.galleryInterval(settings: settings) }
         }
     }
-
     private func prepareNextScrollPhoto(elapsed: TimeInterval) {
         guard pendingScroll == nil, let scene = currentScene, scene.mode == .horizontalGallery else { return }
         let candidates = availableAssets

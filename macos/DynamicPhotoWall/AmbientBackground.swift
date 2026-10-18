@@ -15,16 +15,19 @@ nonisolated enum ForegroundGeometry {
         switch p.scene.mode {
         case .gallery:
             let frames = p.galleryLayout?.frames(elapsed: p.elapsed, duration: s.fadeSeconds)
-                ?? FaceSafeLayout.gallery(p.slots.map(\.asset), viewport: v, gap: s.gap, displays: s.avoidFaceDisplayBoundaries ? p.scene.displayRegions : [])
-            return p.slots.enumerated().flatMap { index, slot -> [ForegroundPlacement] in
+                ?? FixedGalleryLayout.arrange(p.slots.map(\.asset), viewport: v, gap: s.gap, displays: s.avoidFaceDisplayBoundaries ? p.scene.displayRegions : []).map(\.frame)
+            var placements = p.galleryRemoved.map { item in ForegroundPlacement(asset: item.asset, frame: item.frame,
+                opacity: 1 - WallAnimation.ease((p.elapsed - item.at) / s.fadeSeconds), cornerRadius: s.cornerRadius) }
+            placements += p.slots.enumerated().flatMap { index, slot -> [ForegroundPlacement] in
                 guard frames.indices.contains(index) else { return [] }
                 let frame = frames[index]
                 var result: [ForegroundPlacement] = []
-                if let previous = slot.previousAsset { result.append(.init(asset: previous, frame: frame, cornerRadius: s.cornerRadius)) }
+                if let previous = slot.previousAsset { result.append(.init(asset: previous, frame: slot.previousFrame ?? frame, cornerRadius: s.cornerRadius)) }
                 let fade = slot.previousAsset == nil ? 1 : WallAnimation.ease((p.elapsed - slot.changedAt) / s.fadeSeconds)
                 result.append(.init(asset: slot.asset, frame: frame, opacity: fade, cornerRadius: s.cornerRadius))
                 return result
             }
+            return placements
         case .horizontalGallery:
             let height = max(1, v.height - 2 * s.gap)
             var x = s.gap - p.scrollDistance
@@ -35,11 +38,11 @@ nonisolated enum ForegroundGeometry {
             }
         case .verticalPan, .horizontalPan, .zoom:
             guard let asset = p.scene.assets.first else { return [] }
-            let plan = WallMotionGeometry.plan(for: p.scene.mode, asset: asset, viewport: v, settings: s,
-                                               reverse: p.scene.reverse, center: p.scene.zoomCenter, displayRegions: p.scene.displayRegions)
+            guard let plan = FaceMotionSafety.plan(for: p.scene.mode, asset: asset, viewport: v, settings: s,
+                                               reverse: p.scene.reverse, center: p.scene.zoomCenter, displayRegions: p.scene.displayRegions) else { return [] }
             let progress = min(1, max(0, p.elapsed / plan.seconds))
             var frame = plan.frame(at: progress)
-            if p.scene.mode == .verticalPan { frame.origin.y += plan.frameTop }
+            if p.scene.mode == .verticalPan || p.scene.mode == .horizontalPan { frame.origin.y += plan.frameTop }
             let scale = plan.fromScale + (plan.toScale - plan.fromScale) * WallAnimation.ease(progress)
             frame.origin.x -= frame.width * (scale - 1) * plan.center.x
             frame.origin.y -= frame.height * (scale - 1) * plan.center.y

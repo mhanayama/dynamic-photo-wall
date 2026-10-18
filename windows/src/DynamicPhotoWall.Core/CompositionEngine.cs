@@ -28,16 +28,22 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
     private CompositionMode? previous;
     private int repeats;
     public CompositionPlan? Next(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, ISet<string>? excluded = null,
-        IReadOnlyList<Viewport>? displayViewports = null)
+        IReadOnlyList<Viewport>? displayViewports = null, IReadOnlyList<FrameRect>? displayRegions = null)
     {
-        var modes = new List<(CompositionMode Mode, PhotoInfo[] Photos, double Weight)>();
+        var modes = new List<(CompositionMode Mode, PhotoInfo[] Photos)>();
+        var weights = ModeSelection.Weights(s.GalleryWeight, s.PanWeight, s.ZoomWeight);
+        bool SuitableAt(PhotoInfo p, Viewport v, CompositionMode m) => policy.Suitable(p, v, m, s)
+            && (m == CompositionMode.Gallery
+                ? FixedGalleryLayout.Arrange([p], v, s.Gap, s.AvoidFaceDisplayBoundaries && v == viewport && !s.IsPerDisplay(m) ? displayRegions : null).Count > 0
+                : m == CompositionMode.GalleryScroll || FaceMotionSafety.TryPlan(m, p, v, s,
+                    displays: v == viewport && !s.IsPerDisplay(m) ? displayRegions : null) != null);
         bool NeedsMirror(PhotoInfo p, CompositionMode mode) => MirrorPolicy.Supports(mode) && !s.IsPerDisplay(mode)
             && displayViewports?.Count > 0 && displayViewports.Any(v => v.Width < viewport.Width || v.Height < viewport.Height)
             && MirrorPolicy.IsBelowHalf(p.Width, p.Height, viewport);
         bool Mirror(PhotoInfo p, CompositionMode mode) => NeedsMirror(p, mode)
-            && displayViewports!.All(v => policy.Suitable(p, v, mode, s));
+            && displayViewports!.All(v => SuitableAt(p, v, mode));
         bool Suitable(PhotoInfo p, Viewport v, CompositionMode m) => NeedsMirror(p, m)
-            ? Mirror(p, m) : policy.Suitable(p, v, m, s);
+            ? Mirror(p, m) : SuitableAt(p, v, m);
         void Add(CompositionMode m, bool enabled, double weight)
         {
             if (!enabled || weight <= 0) return;
@@ -46,22 +52,16 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
             // suitable candidate for that mode at its own physical dimensions.
             if (targets.Any(v => !photos.Any(p => Suitable(p, v, m) && (excluded == null || !excluded.Contains(p.Path))))) return;
             var suitable = photos.Where(p => Suitable(p, targets[0], m) && (excluded == null || !excluded.Contains(p.Path))).ToArray();
-            if (suitable.Length > 0) modes.Add((m, suitable, weight));
+            if (suitable.Length > 0) modes.Add((m, suitable));
         }
-        Add(CompositionMode.Gallery, s.GalleryEnabled, s.GalleryWeight);
-        Add(CompositionMode.GalleryScroll, s.GalleryScrollEnabled && photos.Count > 1, s.GalleryWeight);
-        Add(CompositionMode.VerticalPan, s.VerticalPanEnabled, s.PanWeight);
-        Add(CompositionMode.HorizontalPan, s.HorizontalPanEnabled, s.PanWeight);
-        Add(CompositionMode.Zoom, s.ZoomEnabled, s.ZoomWeight);
-        var panCount = modes.Count(m => m.Mode is CompositionMode.VerticalPan or CompositionMode.HorizontalPan);
-        var galleryCount = modes.Count(m => m.Mode is CompositionMode.Gallery or CompositionMode.GalleryScroll);
-        // Pan's total weight stays 35 even when both pan directions are possible.
-        modes = modes.Select(m => (m.Mode, m.Photos, m.Weight / (m.Mode is CompositionMode.VerticalPan or CompositionMode.HorizontalPan ? panCount : m.Mode is CompositionMode.Gallery or CompositionMode.GalleryScroll ? galleryCount : 1))).ToList();
-        if (modes.Count == 0) return null;
-        if (repeats >= 2 && modes.Count > 1) modes.RemoveAll(m => m.Mode == previous);
-        var ticket = random.NextDouble() * modes.Sum(m => m.Weight);
-        var chosen = modes[^1];
-        foreach (var mode in modes) { ticket -= mode.Weight; if (ticket < 0) { chosen = mode; break; } }
+        Add(CompositionMode.Gallery, s.GalleryEnabled, weights.Gallery);
+        Add(CompositionMode.GalleryScroll, s.GalleryScrollEnabled && photos.Count > 1, weights.Gallery);
+        Add(CompositionMode.VerticalPan, s.VerticalPanEnabled, weights.Motion);
+        Add(CompositionMode.HorizontalPan, s.HorizontalPanEnabled, weights.Motion);
+        Add(CompositionMode.Zoom, s.ZoomEnabled, weights.Motion);
+        var selectedMode = ModeSelection.Pick(modes.Select(m => m.Mode).ToArray(), weights.Gallery, weights.Motion, previous, repeats, random);
+        if (selectedMode == null) return null;
+        var chosen = modes.First(m => m.Mode == selectedMode);
         repeats = previous == chosen.Mode ? repeats + 1 : 1;
         previous = chosen.Mode;
         var target = s.IsPerDisplay(chosen.Mode) && displayViewports?.Count > 0 ? displayViewports[0] : viewport;
@@ -70,17 +70,19 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
     }
     public CompositionPlan? ForMode(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, CompositionMode mode, ISet<string>? excluded = null)
     {
-        var suitable = photos.Where(p => policy.Suitable(p, viewport, mode, s) && (excluded == null || !excluded.Contains(p.Path))).ToArray();
+        var suitable = photos.Where(p => policy.Suitable(p, viewport, mode, s)
+            && (mode is CompositionMode.Gallery or CompositionMode.GalleryScroll || FaceMotionSafety.TryPlan(mode, p, viewport, s) != null)
+            && (excluded == null || !excluded.Contains(p.Path))).ToArray();
         return suitable.Length > 0 ? SelectPhotos(mode, suitable, viewport, s, excluded) : null;
     }
     private CompositionPlan? SelectPhotos(CompositionMode mode, PhotoInfo[] photos, Viewport viewport, WallSettings s, ISet<string>? excluded)
     {
         var selected = new List<PhotoInfo>();
         var used = new HashSet<string>(excluded ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
-        var count = mode is CompositionMode.Gallery or CompositionMode.GalleryScroll ? Math.Clamp((int)Math.Round(viewport.Aspect / .68), 1, s.GalleryMax) : 1;
+        var count = mode == CompositionMode.Gallery ? s.GalleryMax : 1;
         if (mode == CompositionMode.GalleryScroll) count = Math.Min(24, photos.Length);
         var stripWidth = s.Gap;
-        var preferred = photos.Where(p => p.Aspect < 1).ToArray();
+        var preferred = photos.Where(p => viewport.Width >= viewport.Height ? p.Aspect < 1 : p.Aspect >= 1).ToArray();
         for (var i = 0; i < count; i++)
         {
             var photo = selector.Pick(mode is CompositionMode.Gallery or CompositionMode.GalleryScroll && preferred.Any(p => !used.Contains(p.Path)) ? preferred : photos, s, used);
@@ -89,6 +91,8 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
             stripWidth += Math.Max(1, viewport.Height - 2 * s.Gap) * photo.Aspect + s.Gap;
             if (mode == CompositionMode.GalleryScroll && selected.Count >= 2 && stripWidth >= viewport.Width + viewport.Height * 1.5) break;
         }
+        if (mode == CompositionMode.Gallery)
+            selected = FixedGalleryLayout.Arrange(selected, viewport, s.Gap).Select(i => selected[i.Index]).ToList();
         return selected.Count > 0 ? new(mode, selected) : null;
     }
     public static IReadOnlyList<FrameRect> GalleryLayout(IReadOnlyList<PhotoInfo> photos, Viewport v, double gap)

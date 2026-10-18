@@ -105,34 +105,33 @@ struct ImageTransitionRegressionTests {
     }
 
     @Test func galleryKeepsSlotAndBackgroundPhotoUntilReplacementHasDecoded() async throws {
-        let decoder = HeldPhotoDecoder(blocked: Set(photos.dropFirst(2).map(\.url)))
+        let galleryPhotos = photos.map { PhotoAsset(url: $0.url, pixelWidth: 800, pixelHeight: 1600, faces: []) }
+        let decoder = HeldPhotoDecoder(blocked: Set(galleryPhotos.dropFirst(2).map(\.url)))
         let images = PhotoImageStore(decode: { await decoder.decode($0.asset) })
-        #expect(await images.prepare(Array(photos.prefix(2))))
+        #expect(await images.prepare(Array(galleryPhotos.prefix(2))))
         var settings = zoomOnly
-        settings.zoomEnabled = false
-        settings.galleryEnabled = true
-        settings.galleryMax = 2
-        settings.galleryMinSeconds = 5
-        settings.galleryMaxSeconds = 10
+        settings.zoomEnabled = false; settings.galleryEnabled = true; settings.galleryMax = 2
+        settings.galleryMinSeconds = 5; settings.galleryMaxSeconds = 5
         let playback = WallPlaybackController(imageStore: images)
         defer { playback.stop() }
-        playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)
-        let old = try #require(images.image(for: photos[0]))
-        playback.update(now: 5)
-        playback.update(now: 7)
-        #expect(playback.slots[0].asset == photos[0])
-        #expect(playback.currentScene?.assets.first == photos[0])
-        #expect(playback.slots[0].previousAsset == nil)
-        #expect(images.image(for: photos[0]) === old)
-        for photo in photos.dropFirst(2) { await decoder.release(photo.url) }
-        #expect(await images.prepare(Array(photos.dropFirst(2))))
+        playback.start(assets: galleryPhotos, settings: settings, viewport: viewport, seed: 42, now: 0)
+        let initial = try #require(playback.currentScene).assets
+        let old = try #require(images.image(for: initial[0]))
+        playback.update(now: 5); playback.update(now: 7)
+        #expect(playback.currentScene?.assets == initial)
+        #expect(playback.slots.allSatisfy { $0.previousAsset == nil })
+        #expect(images.image(for: initial[0]) === old)
+        for photo in galleryPhotos.dropFirst(2) { await decoder.release(photo.url) }
+        #expect(await images.prepare(Array(galleryPhotos.dropFirst(2))))
         playback.update(now: 7.5)
-        #expect(photos.dropFirst(2).contains(playback.slots[0].asset))
-        #expect(playback.slots[0].previousAsset == photos[0])
-        #expect(playback.slots[0].changedAt == 7.5)
-        #expect(images.image(for: photos[0]) === old)
+        let changed = playback.slots.filter { $0.previousAsset != nil }
+        #expect(changed.count == 1)
+        let slot = try #require(changed.first)
+        #expect(galleryPhotos.dropFirst(2).contains(slot.asset))
+        #expect(initial.contains(try #require(slot.previousAsset)))
+        #expect(slot.changedAt == 7.5)
+        #expect(images.image(for: initial[0]) === old)
     }
-
     @Test func failedIncomingImageSkipsItAndRetainsTheLastGoodScene() async throws {
         let good = photos[0]
         let bad = photos[1]

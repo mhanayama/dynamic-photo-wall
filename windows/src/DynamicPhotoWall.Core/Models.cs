@@ -55,23 +55,25 @@ public sealed class WallSettings
         CompositionMode.Zoom => ZoomPerDisplay,
         _ => false
     };
-    public int GalleryWeight { get; set; } = 45;
-    public int PanWeight { get; set; } = 35;
-    public int ZoomWeight { get; set; } = 20;
+    public int GalleryWeight { get; set; } = 80;
+    public int PanWeight { get; set; } = 20;
+    public int ZoomWeight { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int MotionWeight { get => ModeSelection.Weights(GalleryWeight, PanWeight, ZoomWeight).Motion; set { PanWeight = value; ZoomWeight = 0; } }
     public int GalleryMax { get; set; } = 5;
     public double PanPixelsPerSecond { get; set; } = 120;
     public double MaxPanUpscale { get; set; } = 4;
-    public double PanWidthFraction { get; set; } = .96;
+    public double PanWidthFraction { get; set; } = 1;
     public bool StopAtFace { get; set; } = true;
     public bool FaceAwarePanDirection { get; set; } = true;
     public bool FaceAwareFraming { get; set; } = true;
     public double GalleryScrollPixelsPerSecond { get; set; } = 40;
     public bool GlassBackground { get; set; } = true;
-    public double ZoomSeconds { get; set; } = 45;
-    public double MaxZoom { get; set; } = 1.08;
+    public double ZoomSeconds { get; set; } = 30;
+    public double MaxZoom { get; set; } = 1.25;
     public double FadeSeconds { get; set; } = 1.2;
-    public double GalleryMinSeconds { get; set; } = 30;
-    public double GalleryMaxSeconds { get; set; } = 60;
+    public double GalleryMinSeconds { get; set; } = 10;
+    public double GalleryMaxSeconds { get; set; } = 30;
     public string Background { get; set; } = "#101116";
     public double Gap { get; set; } = 8;
     public double CornerRadius { get; set; } = 8;
@@ -89,15 +91,18 @@ public sealed class WallSettings
         GalleryWeight = Math.Clamp(GalleryWeight, 0, 1000);
         PanWeight = Math.Clamp(PanWeight, 0, 1000);
         ZoomWeight = Math.Clamp(ZoomWeight, 0, 1000);
+        var weights = ModeSelection.Weights(GalleryWeight, PanWeight, ZoomWeight);
+        GalleryWeight = weights.Gallery; MotionWeight = Math.Min(1000, weights.Motion);
         PanPixelsPerSecond = Clamp(PanPixelsPerSecond, 5, 500, 120);
         MaxPanUpscale = Clamp(MaxPanUpscale, 1, 12, 4);
-        PanWidthFraction = Clamp(PanWidthFraction, .3, 1, .96);
+        PanWidthFraction = Clamp(PanWidthFraction, .3, 1, 1);
         GalleryScrollPixelsPerSecond = Clamp(GalleryScrollPixelsPerSecond, 5, 200, 40);
-        ZoomSeconds = Clamp(ZoomSeconds, 10, 600, 45);
-        MaxZoom = Clamp(MaxZoom, 1, 1.15, 1.08);
+        ZoomSeconds = Clamp(ZoomSeconds, 10, 600, 30);
+        MaxZoom = Clamp(MaxZoom, 1, 1.5, 1.25);
         FadeSeconds = Clamp(FadeSeconds, .2, 10, 1.2);
-        GalleryMinSeconds = Clamp(GalleryMinSeconds, 5, 600, 30);
-        GalleryMaxSeconds = Clamp(GalleryMaxSeconds, GalleryMinSeconds, 1200, 60);
+        if (GalleryMinSeconds == 30 && GalleryMaxSeconds == 60) { GalleryMinSeconds = 10; GalleryMaxSeconds = 30; }
+        GalleryMinSeconds = Clamp(GalleryMinSeconds, 5, 600, 10);
+        GalleryMaxSeconds = Clamp(GalleryMaxSeconds, GalleryMinSeconds, 1200, 30);
         Gap = Clamp(Gap, 0, 200, 8);
         CornerRadius = Clamp(CornerRadius, 0, 100, 8);
         CacheMegabytes = Math.Clamp(CacheMegabytes, 64, 1024);

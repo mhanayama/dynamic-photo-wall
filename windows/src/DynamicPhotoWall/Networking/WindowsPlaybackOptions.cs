@@ -14,8 +14,11 @@ public static class WindowsPlaybackOptions
         return JsonSerializer.Deserialize<Net.PlaybackOptions>(JsonSerializer.Serialize(map), Net.PeerProtocol.Json)!;
     }
     public static WallSettings Import(Net.PlaybackOptions options)
-        => JsonSerializer.Deserialize<WallSettings>(JsonSerializer.Serialize(options, Net.PeerProtocol.Json),
+    {
+        var settings = JsonSerializer.Deserialize<WallSettings>(JsonSerializer.Serialize(options, Net.PeerProtocol.Json),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        settings.Normalize(); return settings;
+    }
     public static void Apply(Net.PlaybackOptions options, WallSettings destination)
     {
         var common = Import(options);
