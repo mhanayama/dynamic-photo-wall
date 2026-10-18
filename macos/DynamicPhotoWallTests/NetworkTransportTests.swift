@@ -6,19 +6,6 @@ import Testing
 @testable import DynamicPhotoWall
 
 @MainActor struct NetworkTransportTests {
-    @Test func keychainAdapterRoundTripsAnIsolatedEntry() throws {
-        let service = "asia.dix.mhanayama.DynamicPhotoWall.Regression.Network.\(UUID())"
-        let store = PNKeychain(service: service)
-        defer {
-            SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service,
-                kSecAttrAccount: "synthetic-test"] as CFDictionary)
-        }
-        #expect(try store.read("synthetic-test") == nil)
-        try store.write("synthetic-test", Data([1, 2, 3]))
-        #expect(try store.read("synthetic-test") == Data([1, 2, 3]))
-        try store.write("synthetic-test", Data([4, 5, 6]))
-        #expect(try store.read("synthetic-test") == Data([4, 5, 6]))
-    }
     private nonisolated final class Secrets: PNSecretStore, @unchecked Sendable {
         private let lock = NSLock()
         private var values: [String: Data] = [:]

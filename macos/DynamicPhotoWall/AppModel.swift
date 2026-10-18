@@ -141,12 +141,7 @@ final class AppModel {
             permissions = StartupPermissions(client: permissionClient)
         } else if observeEnvironment {
             permissions = StartupPermissions(client: .system(defaults: defaults,
-                keychain: { [weak self] interactive in
-                    guard let network = self?.network else { return .unavailable("ネットワーク機能を準備できません。") }
-                    do { try network.prepareKeychain(allowInteraction: interactive); return .granted }
-                    catch let error as PNKeychainError { return error.needsAuthorization ? .denied : .unavailable(error.localizedDescription) }
-                    catch { return .unavailable(error.localizedDescription) }
-                }, folders: { [weak self] in self?.folderPermissionStatus ?? .notDetermined },
+                folders: { [weak self] in self?.folderPermissionStatus ?? .notDetermined },
                 requestFolders: { [weak self] in self?.recoverFolderPermissions() ?? .notDetermined }))
         }
     }
@@ -166,12 +161,8 @@ final class AppModel {
         guard !terminated, let permissions, !permissions.busy else { return }
         // Photo access can recover even if networking or notifications are denied.
         reloadPhotos()
-        guard
-              permissions.statuses[.keychain]?.satisfied == true,
-              permissions.statuses[.localNetwork]?.satisfied == true else { return }
-        if network?.keychainNeedsAuthorization == true {
-            Task { await network?.setOnline(true) }
-        } else { network?.restore() }
+        guard permissions.statuses[.localNetwork]?.satisfied == true else { return }
+        network?.restore()
     }
     private var folderPermissionStatus: WallPermissionStatus {
         folderStore.folders.allSatisfy(\.isAccessible) ? .granted : .unavailable("再許可またはドライブの接続が必要です。")

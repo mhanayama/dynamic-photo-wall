@@ -205,6 +205,7 @@ struct ImageTransitionRegressionTests {
         var settings = zoomOnly
         settings.zoomEnabled = false
         settings.galleryScrollEnabled = true
+        settings.galleryMaxSeconds = 60 // Keep the scene alive past this test's 151-second scroll clock.
         let playback = WallPlaybackController(imageStore: images)
         defer { playback.stop() }
         playback.start(assets: photos, settings: settings, viewport: viewport, seed: 42, now: 0)

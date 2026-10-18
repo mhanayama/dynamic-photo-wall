@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 nonisolated enum FixedGalleryLayout {
     struct Item: Sendable { var index: Int; var frame: CGRect }

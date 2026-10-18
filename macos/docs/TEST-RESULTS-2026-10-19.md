@@ -1,0 +1,57 @@
+# Windows差分確認とMac build 10・11
+
+2026-10-19（日本時間）。作業前は`855d899`で変更なし。`git pull --ff-only origin main`で`39bbdb9`（Galleryの配置・交換時計と顔を守る動き）を取得した。Windowsの追加実装・共通契約・Macへの移植を比較し、Macで残っていた背景処理とコンパイル・回帰検証を補った。
+
+## 差分と対応
+
+| 項目 | Macの対応 |
+|---|---|
+| Galleryの固定サイズ・交換 | 取得済みの`FixedGalleryLayout`と`GalleryTimeline`を使用。縦横の短辺を維持し、画面別表示もグループ全体の時計で1枚ずつ交換する部品・コントローラーテストに成功 |
+| 顔のサイズと移動 | 取得済みの`FaceMotionSafety`を確認。Zoomは全区間で顔を実画面へ収め、移動が残らないPanは除外。旧raw geometryのfixtureと現在の安全処理の期待値を分けた |
+| 抽選・既存設定 | ギャラリー80／パン・ズーム20の2段抽選と旧値の移行、Zoomの30秒・1.25倍、上限1.5倍を確認。保存済みZoom設定を保持 |
+| 背景色の平滑化 | 50%の整数平均を0.8秒基準の浮動小数点フィルターへ変更。入力の周期に依存せず、静止時の色彩を弱めず収束する |
+| 背景画像の更新 | 小画像2枚を保持して125msで補間。途中の更新は見えている混色から再開。通常の表示tickでは画像を生成せず不透明度だけを変える。pauseは再生時刻とともに保持 |
+| 同期用背景・Galleryのfade | PNG生成時に計画上のサンプル時刻を渡す。PNGは未補正のまま送り、受信時に色を一度だけ補正。受信した個別の`fadeInSeconds`／`fadeOutSeconds`を既存の表示アダプターで上書きしないよう修正 |
+
+取得したSwiftの`FaceMotionSafety`・`FixedGalleryLayout`・`GalleryFaceTests`には`CoreGraphics`の明示importが不足していたため追加した。古いテストでは、全顔を収めると移動できないPanを表示する期待値、旧顔停止時間、既定値変更で途中終了するScrolling Galleryの時間条件が残っていた。現在の安全処理の期待値へ更新し、Scrolling Galleryの準備待ち検証はシーンが終了しない明示設定で継続した。旧共通fixtureの期待値は再生成していない。
+
+Dock／メニューバーをOS設定へ委ねる合意、Macの写真アプリ連携・起動時権限復旧・非対話Keychain・画面IDによるBinding・表示面保持を維持する。Windowsの描画クラス構造はそのまま移植せず、SwiftUIとAppKitの既存出力を使用する。
+
+## 検証
+
+```sh
+bash macos/scripts/verify.sh --unit-only
+bash macos/scripts/package.sh
+```
+
+| 検証 | 結果 |
+|---|---|
+| Swift単体 | 165件・26 suites成功 |
+| Windows既存共通fixture | 704＋472 assertions成功 |
+| 背景色fixture | Windows本体の色補正コードと12ケース一致 |
+| .NETネットワーク基盤 | 25ケース・224 assertions・失敗0 |
+| Mac Release | arm64コンパイル・archive成功 |
+| ローカル配布物 | 1.1.0 build 10のAPP／ZIP／DMGを生成。署名・arm64・DMG・SHA256SUMSを確認 |
+| 配置・内容 | 展開済みAPPとZIP内の全ファイルが一致。ルート直下のファイル一覧が作業前後で不変 |
+
+新規の背景試験は合成画素で8Hz／60Hzの応答一致、pause、定常色への収束、交互色の変化幅、途中更新の紫色の混合、不透明な基底と画像参照の保持、サイズ変更を検証する。背景処理の既存試験も新しい時間依存の係数で確認した。ネットワーク出力の試験はfake surfaceで個別fadeと旧fadeへのフォールバック、不正なfadeの拒否を確認する。実ウィンドウの生成・表示・撮影・GUI操作は行っていない。
+
+ログと生の照合結果は`artifacts/macos/remote-sync-2026-10-19/`の`baseline.log`、`verification.log`、`verification-final.log`、`package.log`、`release-verification.json`。配布物は`release/macos/arm64/`。置換前のbuild 9は`artifacts/macos/package/previous-release.15x7F1/`へ退避した。通常のユーザー設定・個人写真・OS権限を変更せず、`/Applications`の置換とGitHub Releaseへの公開も行っていない。
+
+## 残る実機確認
+
+実際のMac↔Windowsでの新Gallery計画の同期、顔保護後の構図、背景の追従と知覚的な自然さ、実ケーブル抜差し・スリープ・長時間再生は未確認。部品テストとビルド成功から、実画面でのブラックアウト・ちらつきがないと断定しない。GUI自動テストはユーザーから明示依頼がある場合だけ実施する。既存の[受け入れ残件](../MACOS_PARITY_TODO.md#release前に残す実機受け入れ)も維持する。
+
+## build 11: Keychainへのアクセスを廃止
+
+同日のユーザー報告で、Keychainの許可確認が連続することを受け、保存方式の選択を確認した。ユーザーは同一ユーザー権限の別プロセスに対する保護が弱くなる点を確認して、Keychainを使わない方式を選んだ。`PNKeychain`・対話許可・起動時のKeychain事前確認を削除し、`PNFileSecrets`を既定の保存先にした。[保存仕様](LOCAL-NETWORK-STORAGE.md)と[現在の権限フロー](PERMISSIONS.md)を参照。
+
+旧`network/`と新`network/local-v2/`を区別し、旧通信データがある場合は明示的な新設定作成までオンライン化を保留する。旧Keychainと旧通信ファイルを読み出し・上書き・削除しない。新しい設定で他の端末へ接続し直し、写真ソース・共有側配置を再確認する。写真・共有設定の暗号化と相互TLSは維持する。新方式の鍵の破損・欠落時は鍵を再生成せず停止する。
+
+`bash macos/scripts/verify.sh --unit-only`は単体167件・27 suites、共有fixture704＋472 assertions、背景色12ケース、.NETネットワーク25ケース・224 assertions、arm64 Releaseコンパイルが成功した。新規`FileSecretsTests`の5件で鍵・pinの再読込み、0700／0600とバックアップ除外、原子的更新、identity上書き拒否、リンク・権限不正・サイズ超過の拒否、破損・鍵欠落時の停止、旧データの不変を確認した。`NetworkAvailabilityTests`は秘密ストアの再利用とI/O失敗時の非接続へ変更し、OSのKeychain項目を使う試験は削除した。
+
+`bash macos/scripts/verify-network-interop.sh`でもSwift／.NETの両方向の相互TLS・hello・length-prefixed JSON・ping/pongが成功した。Macのloopback上のCLI試験で、実Windows端末の受け入れやmulticast探索はこの更新では実行していない。GUI操作・画面撮影・通常アプリの起動・OS権限のリセットは行っていない。
+
+最終コードの1.1.0 build 11をAPP／ZIP／DMGへ更新した。署名・arm64・DMG・SHA256SUMS・ZIP内の全ファイルと展開済みAPPの一致、ルート直下のファイル一覧が不変であることを確認した。実行ファイルの未定義シンボルに`SecItem*`／`SecKeychain*`の参照がなく、配布APPに秘密ファイルが含まれていないことも確認した。API参照の確認は、すべてのOSダイアログが出ないというGUI実機検証の代わりではない。
+
+検証ログ・シンボル一覧・照合結果は`artifacts/macos/file-secrets-2026-10-19/`。置換前のbuild 10は`artifacts/macos/package/previous-release.YC6D0V/`へ退避した。`/Applications`の置換とGitHub Releaseへの公開は行っていない。実アプリの更新後の操作と、旧環境から新しい接続情報でのMac↔Windows再接続は手動確認の残件。

@@ -12,13 +12,13 @@ import SwiftUI
     }
     func evaluate(_ placement: PNPlacement) -> (x: Double, y: Double, scale: Double, opacity: Double) {
         var value = placement.evaluate(elapsed)
-        if placement.fadeSeconds > 0 {
-            // Scene opacity owns the first fade. Terminal Gallery photos stay
-            // visible while a successor is loading or the peer is disconnected.
-            let fadeIn = placement.visibleFrom == 0 ? 1 : min(1, max(0, (elapsed - placement.visibleFrom) / placement.fadeSeconds))
-            let fadeOut = placement.visibleUntil == frame.plan.duration ? 1 : min(1, max(0, (placement.visibleUntil - elapsed) / placement.fadeSeconds))
-            value.opacity = elapsed < placement.visibleFrom || elapsed >= placement.visibleUntil ? 0 : min(fadeIn, fadeOut)
-        }
+        // Scene opacity owns the first fade. Honor independent Gallery fades,
+        // including zero for surviving cards that only change position.
+        let fadeInSeconds = placement.visibleFrom == 0 ? 0 : placement.fadeInSeconds ?? placement.fadeSeconds
+        let fadeOutSeconds = placement.visibleUntil == frame.plan.duration ? 0 : placement.fadeOutSeconds ?? placement.fadeSeconds
+        let fadeIn = fadeInSeconds <= 0 ? 1 : min(1, max(0, (elapsed - placement.visibleFrom) / fadeInSeconds))
+        let fadeOut = fadeOutSeconds <= 0 ? 1 : min(1, max(0, (placement.visibleUntil - elapsed) / fadeOutSeconds))
+        value.opacity = elapsed < placement.visibleFrom || elapsed >= placement.visibleUntil ? 0 : min(fadeIn, fadeOut)
         return value
     }
 }

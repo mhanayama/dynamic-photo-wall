@@ -156,14 +156,14 @@ flowchart LR
 | ピア間通信 | オンライン待受で受け入れた接続について、端末IDと交換した鍵情報を使うTLS接続で転送する。初回の受信側承認やコード入力を追加しない |
 | ディスク上のキャッシュ | AES-256-GCM等の認証付き暗号を使用し、内容の暗号化と改ざん検出を行う |
 | 一時・中断ファイル | 書込み段階から暗号化する。平文画像を一時ファイルへ出してから暗号化する手順にしない |
-| 復号鍵 | 各ピアで生成し、Windowsはユーザー単位のDPAPI、MacはKeychainで保護する。設定JSON・ログ・キャッシュ本体へ平文鍵を保存しない |
+| 復号鍵 | 各ピアで生成し、Windowsはユーザー単位のDPAPIで保護する。Mac build 11はユーザー選択によりsandbox内の0700／0600の専用ファイルへ保存する。鍵ファイル自体は平文で、同一ユーザー権限の別プロセスに対する保護はKeychainより弱い。通常の設定JSON・ログ・写真キャッシュへ鍵を混ぜない |
 | 表示・デコード | 必要な画像をメモリ上で復号し、既存のデコード／描画へ渡す。アプリが平文の中間画像やデバッグ用画像をディスクへ出力しない |
 
 保存鍵は端末ごとに独立させ、進行役の交代や写真転送で端末の保存鍵を配布しない。提供元が暗号化キャッシュを持つ場合はメモリで取り出して認証済み暗号化通信へ渡し、転送先は自分の保存鍵で暗号化する。Macの暗号化ファイルをそのままWindowsの鍵で読める前提にはしない。
 
 認証付き暗号は既存の暗号APIを使い、同じ鍵でnonceを再利用しない。保存形式の版・不透明なオブジェクトID・チャンク順序等を認証へ結び付け、必要な復号・検証が完了した画像だけを利用可能にする。再開可能なチャンク形式・鍵の世代管理・索引の暗号化形式は詳細設計で定める。外部ファイル名や平文ログへ元のファイル名・アルバム名・鍵を出さない。改ざん・鍵の喪失時はそのキャッシュを利用せず再取得可能な状態へ戻し、平文保存へ切り替えない。
 
-方式の確認先: [.NET AesGcm](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.aesgcm?view=net-10.0)、[Windows ProtectedData／DPAPI](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.protecteddata?view=windowsdesktop-10.0)、[Apple Keychain services](https://developer.apple.com/documentation/security/keychain-services)。暗号化する保存形式・鍵の保護・転送の相互運用は実装時にそれぞれ検証する。
+方式の確認先: [.NET AesGcm](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.aesgcm?view=net-10.0)、[Windows ProtectedData／DPAPI](https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.protecteddata?view=windowsdesktop-10.0)、[Macの専用ファイル保存仕様](../macos/docs/LOCAL-NETWORK-STORAGE.md)。旧Keychain項目は新方式から読み出し・削除しない。暗号化する保存形式・鍵の保護・転送の相互運用をそれぞれ検証する。
 
 ### 先読みした表示計画を共通時刻で評価する
 

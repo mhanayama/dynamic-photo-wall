@@ -10,9 +10,9 @@
 
 `FaceMotionSafety`は既存の動き計算の結果を受け、全顔の外接矩形が実ディスプレイへ収まるようZoomの開始・終了倍率、Panの画像サイズと停止位置を補正する。20pxを超える移動が残らないPanは候補から除外する。共有計画に確定した位置・寸法・倍率を載せ、受信側で顔検出をやり直さない。
 
-Windowsの背景は`AmbientTransition`で経過時間による色平滑化、`AmbientTexturePresenter`で125msの表示補間を行う。共有背景は`AmbientFrameVisual`に全サンプルを固定して載せ、更新は不透明度だけにする。Macの背景色平滑化の差分は[handover](../macos/WINDOWS_DELTA_HANDOVER.md)へ記録した。
+Windowsの背景は`AmbientTransition`で経過時間による色平滑化、`AmbientTexturePresenter`で125msの表示補間を行う。共有背景は`AmbientFrameVisual`に全サンプルを固定して載せ、更新は不透明度だけにする。Mac build 10は`AmbientTransition`と`AmbientTextureTransition`で同等の時間依存処理を行い、同期用PNGにも計画中のサンプル時刻を使う。受信側は準備時に保持した背景画像を連続補間する。[handover](../macos/WINDOWS_DELTA_HANDOVER.md)を参照。
 
-Windowsの対象部品17ケース、ネットワーク25ケース／224 assertions、既存fixture1,176 assertionsが成功。結果は`artifacts/windows/gallery-face/`。GUIの撮影・表示・描画キャプチャは行っていない。Macには配置・交換時計・顔サイズのSwift実装と回帰テストを追加したが、今回追加した差分のMacビルド・実機同期は未検証。
+Windowsの対象部品17ケース、ネットワーク25ケース／224 assertions、既存fixture1,176 assertionsが成功。結果は`artifacts/windows/gallery-face/`。GUIの撮影・表示・描画キャプチャは行っていない。Macでも追加分を含む単体165件、共有fixture1,176 assertionsと背景色12ケース、ネットワーク25ケース／224 assertions、arm64 Releaseコンパイルが成功した。[Macの2026-10-19の結果](../macos/docs/TEST-RESULTS-2026-10-19.md)を参照。実機同期・知覚確認は未検証。
 ## モジュールと責任境界
 
 Windowsの通常再生Coreからネットワーク基盤を独立させ、[shared/DynamicPhotoWall.Networking](../shared/DynamicPhotoWall.Networking)を`net10.0`のライブラリーにした。WPF・Win32・PhotoKit・既存のWindows Coreを参照しない。Macへ.NETを埋め込まず、同じ契約とポートをSwiftで実装する。
@@ -41,7 +41,7 @@ Macの`PNPlayback`はデコード済みの計画と物理出力を分離する�
 
 同期開始と共有設定の適用はワーカー上で行い、開始元のUI同期コンテキストを定期処理へ引き継がない。同じソース設定の再適用ではディスク索引を再走査せず、有効なキャッシュの再通知では原データを復号し直さない。原データの認証・ハッシュ検証は実際の読込み時に行い、破損・消失を検出したら未取得へ戻して再取得する。Windows写真提供側も、起動後に原データのハッシュがキャッシュと一致すれば既存の顔metadataを再利用する。
 
-Mac側は[Networking/](../macos/DynamicPhotoWall/Networking)に、Keychain／Network.framework／PhotoKit／Vision／AppKitのアダプターを置く。`NetworkModel`が組立てとUI、`PeerSettingsAdapter`が既存の設定モデルとの変換を担当する。データ契約へフォルダー権限・PhotoKit識別子・AppModelを持ち込まない。
+Mac側は[Networking/](../macos/DynamicPhotoWall/Networking)に、専用ファイル保存／Network.framework／PhotoKit／Vision／AppKitのアダプターを置く。`NetworkModel`が組立てとUI、`PeerSettingsAdapter`が既存の設定モデルとの変換を担当する。データ契約へフォルダー権限・PhotoKit識別子・AppModelを持ち込まない。
 
 MacのキャッシュI/Oは専用actor、写真の読込み・解析はバックグラウンド処理を使う。`PNViewUpdates`は画面への通知を100msごとに集約し、セッション終了時に保留中の更新を破棄する。受信チャンクごとの画面更新と次要求の探索を避け、写真の暗号化保存完了時に進める。同一ソースの設定再適用では索引を再走査せず、取得済み写真の再通知でも原データを復号し直さない。実際の転送・表示・背景生成で破損や消失を検出した写真は取得済み一覧から外し、再取得の対象へ戻す。
 
@@ -86,9 +86,9 @@ AAD:         UTF-8 "DPWCAC01:{opaqueId}:{blockNumber}:{plaintextLength}"
 opaqueId:    lowercase SHA-256("{provider:N}:{source:N}:{generation:N}:{imageId}")
 ```
 
-保存はAES-256-GCM。WindowsはDPAPI、MacはKeychainで端末の鍵とIDを保護する。MacのTLS identityは保護済みデータから`SecIdentityCreate`でメモリ上に組み立て、追加の永久鍵や証明書をlogin keychainへ登録しない。信頼情報の書込みに失敗した場合も、メモリ上だけで登録済み扱いにしない。保存鍵は他ピアへ送らない。途中の`.tmp`も暗号文。完了時に原データのSHA-256、ヘッダー、チャンク認証と順序を確認してから公開する。改ざんや不完全なデータを再生へ渡さない。画像・顔・元の名前はログに出さない。
+写真・共有設定の保存はAES-256-GCM。WindowsはDPAPI、Mac build 11はユーザーの明示選択により、sandbox内の所有者のみ読書きできる専用ファイルで端末の鍵とIDを保持する。Macの鍵ファイル自体は平文であり、同じユーザー権限の別プロセスに対する保護はKeychainより弱い。TLS identityは`SecIdentityCreate`でメモリ上に組み立て、Keychainへ登録しない。信頼情報の書込みに失敗した場合も、メモリ上だけで登録済み扱いにしない。保存鍵は他ピアへ送らない。写真キャッシュの途中の`.tmp`も暗号文。完了時に原データのSHA-256、ヘッダー、チャンク認証と順序を確認してから公開する。改ざんや不完全なデータを再生へ渡さない。画像・顔・元の名前はログに出さない。
 
-Macは起動時とバックグラウンド処理のKeychainアクセスでOSの確認を出さない。許可が必要ならオンライン化を保留し、起動時または設定上部の「アクセス権限の確認」の一括取得から対話を許可する。ネットワーク設定の権限不足も同じ画面へ案内する。初期化後の信頼情報保存は再び非対話に戻す。[Macの権限取得フロー](../macos/docs/PERMISSIONS.md)も参照。現在のアドホック署名候補はfile-based login Keychainを使うため、非対話制御には非推奨の`SecKeychainGet/SetUserInteractionAllowed`を同期・排他・元値復帰付きで使う。署名・provisioningを整えたData Protection Keychainへの移行は別途必要。鍵の読取り失敗時に別identityを生成したり平文へ退避したりしない。
+Mac build 11は起動・権限確認・オンライン化・信頼情報保存・旧版からの切替でKeychainへアクセスしない。`PNFileSecrets`が0700の専用ディレクトリと0600の秘密ファイルを使い、リンク・別所有者・不正な権限を拒否する。旧通信データがあるのに新方式の鍵がない場合はオンライン化を保留し、ネットワーク設定の「新しい通信設定を作成」を明示的に選んだ後に別領域で開始する。旧Keychainと旧通信データは読み出し・削除・上書きしない。新方式の鍵が破損・消失した場合も別identityを自動生成しない。[Macの保存仕様](../macos/docs/LOCAL-NETWORK-STORAGE.md)と[権限取得フロー](../macos/docs/PERMISSIONS.md)を参照。
 
 ## 同期表示・切断
 
@@ -147,7 +147,7 @@ bash macos/scripts/verify.sh --unit-only
 
 新規の`NetworkModuleTests`は共通fixture、C#暗号文のSwift復号、原寸保持、改ざん拒否、14日期限、切断状態、予約Commitを対象にする。既存のPhotoKit・グループ・表示・権限・設定テストも維持する。出力は`artifacts/macos/verification/`。
 
-`NetworkTransportTests`は隔離したKeychain項目、メモリ上のidentity再生成、信頼情報の書込み失敗、ネイティブ相互TLSを検証する。アプリと同じSwiftコードと.NETモジュールの通信を別プロセスで確認する場合:
+`NetworkTransportTests`はメモリ上のidentity再生成、信頼情報の書込み失敗、ネイティブ相互TLSを検証する。`FileSecretsTests`は専用一時領域で鍵・pinの保持、ファイル権限、リンク・破損・消失の拒否、旧データの保持を検証する。Keychain項目を読み書きするテストは廃止した。アプリと同じSwiftコードと.NETモジュールの通信を別プロセスで確認する場合:
 
 ```sh
 bash macos/scripts/verify-network-interop.sh

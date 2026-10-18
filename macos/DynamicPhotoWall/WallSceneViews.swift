@@ -15,9 +15,14 @@ struct WallSceneLayer: View {
     var body: some View {
         ZStack {
             Color(hex: settings.backgroundHex)
-            if settings.glassBackground, let image = (sharedAmbient ?? ambient).image {
-                Image(nsImage: image).resizable().interpolation(.high)
-                    .overlay(Color.black.opacity(0.18))
+            if settings.glassBackground, (sharedAmbient ?? ambient).image != nil {
+                ZStack {
+                    let layers = (sharedAmbient ?? ambient).textures.layers(at: presentation.elapsed)
+                    ForEach(Array(layers.enumerated()), id: \.offset) { _, layer in
+                        Image(decorative: layer.image, scale: 1).resizable().interpolation(.high)
+                            .opacity(layer.opacity)
+                    }
+                }.overlay(Color.black.opacity(0.18))
             }
             let placements = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport)
             ForEach(Array(placements.enumerated()), id: \.offset) { _, item in

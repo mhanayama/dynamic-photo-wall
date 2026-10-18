@@ -170,6 +170,27 @@ import Testing
         #expect(f.log.events.last == "enter" && f.output.isDisplaying && f.log.created == 2)
     }
 
+    @Test func independentGalleryFadesSurviveTheOutputAdapterAndLegacyDefaults() async throws {
+        let f = try await Fixture(); defer { f.close() }
+        var plan = f.plan("gallery")
+        var placement = plan.placements[0]
+        placement.visibleFrom = 2; placement.visibleUntil = 8
+        placement.fadeSeconds = 1; placement.fadeInSeconds = 0; placement.fadeOutSeconds = 2
+        plan.placements = [placement]
+        try await f.show(plan)
+        f.clock.time += 2; f.output.render()
+        let surface = try #require(f.log.surfaces[1])
+        #expect(try #require(surface.layers.last).evaluate(placement).opacity == 1)
+        f.clock.time += 5; f.output.render()
+        let layer = try #require(surface.layers.last)
+        #expect(layer.evaluate(placement).opacity == 0.5)
+        placement.fadeOutSeconds = nil
+        #expect(layer.evaluate(placement).opacity == 1)
+        placement.fadeOutSeconds = -1
+        plan.placements = [placement]
+        #expect(throws: (any Error).self) { try plan.validate() }
+    }
+
     private final class Clock: PNClock {
         var time = 100.0
         var now: Double { time }; var elapsed: Double { time }

@@ -37,7 +37,7 @@ struct ContentView: View {
                 AppearanceSettingsView(settings: $model.settings)
                     .tabItem { Label("見た目", systemImage: "paintpalette") }
                 if let network = model.network {
-                    NetworkSettingsView(network: network, showPermissions: model.showPermissions).tabItem { Label("ネットワーク", systemImage: "network") }
+                    NetworkSettingsView(network: network).tabItem { Label("ネットワーク", systemImage: "network") }
                 }
             }
 

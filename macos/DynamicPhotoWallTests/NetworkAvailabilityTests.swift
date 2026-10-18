@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import Testing
 @testable import DynamicPhotoWall
 
@@ -20,63 +19,36 @@ import Testing
         #expect(PNNetworkModel.visibleDisplays(displays + [removed], connected: [displays[0].key], showDisconnected: false) == [displays[0]])
         #expect(displays[1].x == 1920 && displays[1].y == 40 && displays[1].groupId == group)
     }
-    @Test func startupKeychainDenialShowsAnAppMessageWithoutRequestingInteraction() async {
-        let profile = "DynamicPhotoWall.KeychainConsent.Tests.\(UUID())"
+    @Test func storageFailureDoesNotStartNetworkingOrDiscardOnlineIntent() async {
+        let profile = "DynamicPhotoWall.StorageFailure.Tests.\(UUID())"
         let defaults = UserDefaults(suiteName: profile)!
         defer { defaults.removePersistentDomain(forName: profile) }
         defaults.set(true, forKey: "networkOnline")
         let denied = DeniedSecrets()
-        var requestedInteraction: [Bool] = []
+        var requests = 0
         let model = PNNetworkModel(defaults: defaults, settings: { WallSettings() }, displays: { [] },
             folders: { [] }, albums: { [] }, assets: { [] }, enter: {}, sharedSettings: { _ in },
-            secretStore: { _, allowed in requestedInteraction.append(allowed); return denied })
+            secretStore: { _ in requests += 1; return denied })
         model.restore()
-        for _ in 0..<100 where !model.keychainNeedsAuthorization { await Task.yield() }
-        #expect(model.keychainNeedsAuthorization)
+        for _ in 0..<100 where model.status == "オフライン" { await Task.yield() }
         #expect(!model.online && !model.busy && model.session == nil)
-        #expect(requestedInteraction == [false])
+        #expect(requests == 1)
         #expect(defaults.bool(forKey: "networkOnline")) // Preserve the user's intent.
-        #expect(model.status.contains("Keychain"))
+        #expect(model.status.contains("保存先"))
     }
-    @Test func interactiveAccessIsRequestedOnlyByTheExplicitRetryAction() async {
-        let defaults = UserDefaults(suiteName: "DynamicPhotoWall.KeychainRetry.Tests.\(UUID())")!
-        let denied = DeniedSecrets()
-        var requestedInteraction: [Bool] = []
-        let model = PNNetworkModel(defaults: defaults, settings: { WallSettings() }, displays: { [] },
-            folders: { [] }, albums: { [] }, assets: { [] }, enter: {}, sharedSettings: { _ in },
-            secretStore: { _, allowed in requestedInteraction.append(allowed); return denied })
-        await model.authorizeKeychain()
-        #expect(requestedInteraction.isEmpty)
-        await model.setOnline(true)
-        #expect(requestedInteraction == [false] && model.keychainNeedsAuthorization)
-        await model.authorizeKeychain()
-        #expect(requestedInteraction == [false, false, true])
-        #expect(!model.online && model.session == nil) // No sockets or cache fallback.
-    }
-    @Test func identityUsesInteractiveSecretsOnlyForInitialization() throws {
-        let initial = MemorySecrets(), quiet = MemorySecrets()
-        let identity = try PNIdentity(secrets: quiet, initialSecrets: initial)
-        #expect(initial.readCount == 2 && quiet.readCount == 0)
-        #expect(initial.writeCount == 1 && quiet.writeCount == 0)
-        try identity.accept(UUID(), digest: String(repeating: "a", count: 64))
-        #expect(initial.writeCount == 1 && quiet.writeCount == 1)
-    }
-    @Test func keychainPreflightKeepsTheIdentityAndDoesNotStartNetworking() throws {
+    @Test func storagePreparationIsCachedWithoutNetworkingOrRepeatedWrites() throws {
         let secrets = MemorySecrets()
-        var requested: [Bool] = []
+        var requests = 0
         let model = PNNetworkModel(defaults: UserDefaults(suiteName: "DPW.Permission.Preflight.\(UUID())")!,
             settings: { WallSettings() }, displays: { [] }, folders: { [] }, albums: { [] }, assets: { [] },
-            enter: {}, sharedSettings: { _ in }, secretStore: { _, interactive in requested.append(interactive); return secrets })
-        try model.prepareKeychain(allowInteraction: false)
-        let identity = try secrets.read("identity-v1")
-        try model.prepareKeychain(allowInteraction: true)
-        #expect(try secrets.read("identity-v1") == identity)
-        #expect(try secrets.read("trusted-peers-v1") != nil)
-        #expect(requested == [false, true] && !model.online && model.session == nil)
+            enter: {}, sharedSettings: { _ in }, secretStore: { _ in requests += 1; return secrets })
+        for _ in 0..<10 { try model.prepareStorage() }
+        #expect(secrets.readCount == 2 && secrets.writeCount == 1 && requests == 1)
+        #expect(!model.online && model.session == nil)
     }
     private nonisolated final class DeniedSecrets: PNSecretStore, @unchecked Sendable {
-        func read(_ name: String) throws -> Data? { throw PNKeychainError(status: errSecInteractionNotAllowed) }
-        func write(_ name: String, _ data: Data) throws { throw PNKeychainError(status: errSecInteractionNotAllowed) }
+        func read(_ name: String) throws -> Data? { throw PNLocalStorageError.inaccessible }
+        func write(_ name: String, _ data: Data) throws { throw PNLocalStorageError.inaccessible }
     }
     private nonisolated final class MemorySecrets: PNSecretStore, @unchecked Sendable {
         private let lock = NSLock()

@@ -6,53 +6,6 @@ nonisolated protocol PNSecretStore: Sendable {
     func read(_ name: String) throws -> Data?
     func write(_ name: String, _ data: Data) throws
 }
-nonisolated struct PNKeychainError: LocalizedError {
-    let status: OSStatus
-    var needsAuthorization: Bool { [errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled].contains(status) }
-    var errorDescription: String? {
-        needsAuthorization ? "Keychainへのアクセス許可が必要です。ネットワーク設定から許可してください。"
-            : "Keychainを利用できません（\(status)）。"
-    }
-}
-nonisolated struct PNKeychain: PNSecretStore {
-    let service: String
-    var allowInteraction = false
-    private static let gate = NSLock()
-    private func perform<T>(_ operation: () throws -> T) throws -> T {
-        Self.gate.lock(); defer { Self.gate.unlock() }
-        // Ad-hoc builds use the login (file-based) keychain. LAContext's
-        // interactionNotAllowed only covers the data-protection implementation.
-        // Keep this compatibility guard synchronous and restore the process flag.
-        var previous = DarwinBoolean(true)
-        let read = SecKeychainGetUserInteractionAllowed(&previous)
-        guard read == errSecSuccess else { throw PNKeychainError(status: read) }
-        let changed = SecKeychainSetUserInteractionAllowed(allowInteraction)
-        guard changed == errSecSuccess else { throw PNKeychainError(status: changed) }
-        defer { SecKeychainSetUserInteractionAllowed(previous.boolValue) }
-        return try operation()
-    }
-    func read(_ name: String) throws -> Data? {
-        try perform {
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching([kSecClass: kSecClassGenericPassword, kSecAttrService: service,
-                kSecAttrAccount: name, kSecReturnData: true, kSecMatchLimit: kSecMatchLimitOne] as CFDictionary, &result)
-            if status == errSecItemNotFound { return nil }
-            guard status == errSecSuccess else { throw PNKeychainError(status: status) }
-            return result as? Data
-        }
-    }
-    func write(_ name: String, _ data: Data) throws {
-        try perform {
-            let query = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: name] as CFDictionary
-            let updated = SecItemUpdate(query, [kSecValueData: data] as CFDictionary)
-            if updated == errSecItemNotFound {
-                let status = SecItemAdd([kSecClass: kSecClassGenericPassword, kSecAttrService: service,
-                    kSecAttrAccount: name, kSecValueData: data] as CFDictionary, nil)
-                guard status == errSecSuccess else { throw PNKeychainError(status: status) }
-            } else if updated != errSecSuccess { throw PNKeychainError(status: updated) }
-        }
-    }
-}
 
 // Identity secrets are device-local. The self-signed certificate is pinned after
 // the encrypted hello; no certificate is added to the system trust anchors.
@@ -63,16 +16,17 @@ nonisolated struct PNKeychain: PNSecretStore {
     let identity: SecIdentity
     private let secrets: any PNSecretStore
     private var pins: [String: String]
-    init(secrets: any PNSecretStore, initialSecrets: (any PNSecretStore)? = nil) throws {
+    init(secrets: any PNSecretStore) throws {
         self.secrets = secrets
-        let initialSecrets = initialSecrets ?? secrets
+        let trusted = try secrets.read("trusted-peers-v1")
         let stored: Stored
-        if let bytes = try initialSecrets.read("identity-v1") { stored = try PNWire.decode(Stored.self, bytes) }
+        if let bytes = try secrets.read("identity-v1") { stored = try PNWire.decode(Stored.self, bytes) }
         else {
+            try PNWire.require(trusted == nil, "通信鍵が見つかりません。既存の接続情報は上書きしません。")
             let privateKey = P256.Signing.PrivateKey()
             stored = Stored(peerId: UUID(), key: Self.random(32), privateKey: privateKey.x963Representation,
                 certificate: try PNCertificate.make(privateKey))
-            try initialSecrets.write("identity-v1", PNWire.encode(stored))
+            try secrets.write("identity-v1", PNWire.encode(stored))
         }
         try PNWire.require(stored.peerId != .pnZero && stored.key.count == 32, "Invalid protected peer identity")
         peerId = stored.peerId; cacheKey = SymmetricKey(data: stored.key)
@@ -80,11 +34,11 @@ nonisolated struct PNKeychain: PNSecretStore {
         guard let key = SecKeyCreateWithData(stored.privateKey as CFData,
             [kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeyClass: kSecAttrKeyClassPrivate, kSecAttrKeySizeInBits: 256] as CFDictionary, &error),
             let certificate = SecCertificateCreateWithData(nil, stored.certificate as CFData) else { throw PNError.invalid("TLS identity is unreadable") }
-        // The protected blob already owns persistence. Build the TLS identity in
-        // memory, without additional permanent keys/certificates in the login keychain.
+        // Persistence belongs to the device-local store. Build TLS in memory;
+        // never register permanent keys or certificates in a system keychain.
         guard let value = SecIdentityCreate(nil, certificate, key) else { throw PNError.invalid("TLS certificate and private key differ") }
         identity = value
-        pins = try initialSecrets.read("trusted-peers-v1").map { try PNWire.decode([String: String].self, $0) } ?? [:]
+        pins = try trusted.map { try PNWire.decode([String: String].self, $0) } ?? [:]
     }
     func accept(_ peer: UUID, digest: String) throws {
         if let previous = pins[peer.pnHex] { try PNWire.require(previous == digest, "登録されたピアの証明書が変更されています。") }
@@ -131,7 +85,7 @@ nonisolated enum PNCertificate {
 nonisolated struct PNCacheHeader: Codable, Sendable { var version = 1; var photo: PNPhoto; var cachedAt: Date; var expiresAt: Date }
 
 // The on-disk envelope matches DPWCAC01 in the portable .NET module. Each device
-// uses its own Keychain key; transferring originals never transfers that key.
+// uses its own local key; transferring originals never transfers that key.
 actor PNPhotoCache {
     private let root: URL
     private let master: SymmetricKey

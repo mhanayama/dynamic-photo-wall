@@ -21,8 +21,8 @@ import Testing
         let a = AmbientCard(image: warm, frame: CGRect(origin: .zero, size: viewport), opacity: 1, radius: 0)
         let b = AmbientCard(image: cool, frame: CGRect(origin: .zero, size: viewport), opacity: 1, radius: 0)
         let processor = AmbientProcessor()
-        let first = try #require(await processor.render(cards: [a], viewport: viewport))
-        let second = try #require(await processor.render(cards: [b], viewport: viewport))
+        let first = try #require(await processor.render(cards: [a], viewport: viewport, at: 0))
+        let second = try #require(await processor.render(cards: [b], viewport: viewport, at: 0.125))
         let coolOnly = try #require(await AmbientProcessor().render(cards: [b], viewport: viewport))
         let wire = try #require(await AmbientProcessor().render(cards: [a], viewport: viewport, enhanceColors: false))
         func rgb(_ image: CGImage) throws -> [Double] {
@@ -32,6 +32,7 @@ import Testing
         let c1 = try rgb(first.image), c2 = try rgb(second.image), c3 = try rgb(coolOnly.image), base = try rgb(wire.image)
         #expect(abs(base[0] - 200) < 3 && abs(base[2] - 40) < 3)
         #expect(c1[0] > base[0] && c1[2] < base[2])
-        for i in 0..<3 { #expect(abs(c2[i] - (c1[i] + c3[i]) / 2) < 2) }
+        let amount = 1 - exp(-0.125 / 0.8)
+        for i in 0..<3 { #expect(abs(c2[i] - (c1[i] + (c3[i] - c1[i]) * amount)) < 2) }
     }
 }

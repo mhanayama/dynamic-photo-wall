@@ -256,7 +256,9 @@ struct DisplayParityRegressionTests {
         let asset = photo(width: 1000, height: 2000, faces: [top])
         let p = WallMotionGeometry.plan(for: .verticalPan, asset: asset, viewport: v, settings: s)
         #expect(abs(p.toY + 20) < 1e-7 && abs(p.seconds - 11.5) < 1e-7)
-        #expect(abs(WallMotionGeometry.duration(for: WallScene(id: 0, mode: .verticalPan, assets: [asset]), viewport: v, settings: s) - 14.5) < 1e-7)
+        // Raw geometry above remains a legacy fixture. Current playback also
+        // protects the whole face, then adds the separate three-second hold.
+        #expect(abs(WallMotionGeometry.duration(for: WallScene(id: 0, mode: .verticalPan, assets: [asset]), viewport: v, settings: s) - (1400 / 120.0 + 3)) < 1e-7)
         let largest = FaceRegion(x: 0.3, y: 0.6, width: 0.3, height: 0.3)
         #expect(WallMotionGeometry.primaryFace(photo(faces: [top, largest])) == largest)
         for x in [0.05, 0.45, 0.85] {

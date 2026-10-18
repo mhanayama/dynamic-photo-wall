@@ -106,7 +106,7 @@ import SwiftUI
                     let frame = CGRect(x: value.x - ox - p.width * (value.scale - 1) * p.centerX, y: value.y - oy - p.height * (value.scale - 1) * p.centerY, width: p.width * value.scale, height: p.height * value.scale)
                     return AmbientCard(image: image.image, frame: frame, opacity: value.opacity, radius: p.cornerRadius)
                 }
-                if let image = await processor.render(cards: cards, viewport: size, enhanceColors: false), let png = PNImageDecode.png(image.image) { frames.append(PNAmbient(at: at, png: png, displayId: id)) }
+                if let image = await processor.render(cards: cards, viewport: size, at: at, enhanceColors: false), let png = PNImageDecode.png(image.image) { frames.append(PNAmbient(at: at, png: png, displayId: id)) }
             }
         }
         return frames

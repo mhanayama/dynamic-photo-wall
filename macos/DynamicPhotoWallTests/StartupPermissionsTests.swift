@@ -31,7 +31,7 @@ import Testing
         await model.check()
         #expect(requests.isEmpty)
         await model.requestMissing()
-        #expect(requests == [.photos, .keychain, .notifications, .localNetwork])
+        #expect(requests == [.photos, .notifications, .localNetwork])
         #expect(maximum == 1 && active == 0)
         #expect(model.missing == [.photos] && !model.busy)
     }
@@ -100,7 +100,7 @@ import Testing
             albumsClient: PhotosAlbumClient(catalog: { PhotoAlbumCatalog() }, scan: { _ in
                 PhotoAlbumScan(assets: await gate.allowed ? [photo] : [])
             }), permissionClient: WallPermissionClient(check: { permission in
-                permission == .keychain || permission == .localNetwork ? .denied : .granted
+                permission == .localNetwork ? .denied : .granted
             }, request: { _ in .denied }))
         defer { model.shutdown() }
         for _ in 0..<1000 where model.isScanning { try await Task.sleep(for: .milliseconds(1)) }

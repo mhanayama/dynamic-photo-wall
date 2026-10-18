@@ -28,13 +28,15 @@ import UserNotifications
     private(set) var connected: Set<UUID> = []
     private(set) var connectedDisplays: Set<PNDisplayKey> = []
     var showDisconnectedDisplays = false
-    private(set) var keychainNeedsAuthorization = false
+    private(set) var needsNewStorageProfile = false
     @ObservationIgnored private(set) var session: PNPeerSession?
     @ObservationIgnored private var output: PNPlayback?
     @ObservationIgnored private var identity: PNIdentity?
     @ObservationIgnored private let root: URL
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let secretStore: (String, Bool) -> any PNSecretStore
+    @ObservationIgnored private let secretStore: (URL) -> any PNSecretStore
+    @ObservationIgnored private let usesFileSecrets: Bool
+    private var dataRoot: URL { root.appending(path: "local-v2", directoryHint: .isDirectory) }
     @ObservationIgnored private let settings: () -> WallSettings
     @ObservationIgnored private let displayValues: () -> [WallDisplay]
     @ObservationIgnored private let folders: () -> [PhotoFolder]
@@ -55,36 +57,43 @@ import UserNotifications
          displays: @escaping () -> [WallDisplay], folders: @escaping () -> [PhotoFolder], albums: @escaping () -> [PhotoAlbum],
          assets: @escaping () -> [PhotoAsset], enter: @escaping () -> Void, sharedSettings: @escaping (PNOptions) -> Void,
          leave: @escaping () -> Void = {}, playbackState: @escaping (Bool, Bool) -> Void = { _, _ in },
-         secretStore: @escaping (String, Bool) -> any PNSecretStore = { PNKeychain(service: $0, allowInteraction: $1) }) {
+         secretStore: ((URL) -> any PNSecretStore)? = nil) {
         self.defaults = defaults; self.root = root; self.settings = settings; displayValues = displays; self.folders = folders
         self.albums = albums; self.assets = assets; self.enter = enter; self.sharedSettings = sharedSettings
         self.leave = leave; self.playbackState = playbackState
-        self.secretStore = secretStore
+        usesFileSecrets = secretStore == nil
+        self.secretStore = secretStore ?? { PNFileSecrets(directory: $0.appending(path: "credentials", directoryHint: .isDirectory)) }
     }
     func restore() { if defaults.bool(forKey: "networkOnline") { Task { await setOnline(true) } } }
-    func prepareKeychain(allowInteraction: Bool) throws {
-        let service = "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))"
-        let store = secretStore(service, allowInteraction)
-        _ = try PNIdentity(secrets: store)
-        let trusted = try store.read("trusted-peers-v1") ?? PNWire.encode([String: String]())
-        try store.write("trusted-peers-v1", trusted)
+    func prepareStorage(createNewProfile: Bool = false) throws {
+        if identity != nil { return }
+        if usesFileSecrets, !FileManager.default.fileExists(atPath: dataRoot.appending(path: "credentials/identity-v1").path) {
+            let fm = FileManager.default
+            if ["cache", "wall.encrypted", "credentials/trusted-peers-v1"].contains(where: { fm.fileExists(atPath: dataRoot.appending(path: $0).path) }) {
+                throw PNLocalStorageError.missingIdentity
+            }
+            if !createNewProfile, ["cache", "wall.encrypted"].contains(where: { fm.fileExists(atPath: root.appending(path: $0).path) }) {
+                needsNewStorageProfile = true
+                throw PNLocalStorageError.previousProfile
+            }
+        }
+        identity = try PNIdentity(secrets: secretStore(dataRoot))
+        needsNewStorageProfile = false
+    }
+    func createLocalProfile() {
+        guard needsNewStorageProfile, !busy, !online else { return }
+        do {
+            try prepareStorage(createNewProfile: true)
+            defaults.set(false, forKey: "networkOnline")
+            status = "新しい通信設定を作成しました。オンラインモードを有効にして他の端末と接続し直してください。"
+        } catch { status = error.localizedDescription }
     }
     func setOnline(_ enabled: Bool) async {
-        await setOnline(enabled, allowKeychainInteraction: false)
-    }
-    func authorizeKeychain() async {
-        guard keychainNeedsAuthorization && !busy else { return }
-        if online { await setOnline(false) }
-        await setOnline(true, allowKeychainInteraction: true)
-    }
-    private func setOnline(_ enabled: Bool, allowKeychainInteraction: Bool) async {
         guard enabled != online && !busy else { return }; busy = true; defer { busy = false }
-        keychainNeedsAuthorization = false
-        if !enabled { session?.stop(); session = nil; output = nil; identity = nil; online = false; isDisplaying = false; isRunning = false; isPaused = false; previewVisible = false; clearSessionViewState(); status = "オフライン"; defaults.set(false, forKey: "networkOnline"); leave(); return }
+        if !enabled { session?.stop(); session = nil; output = nil; online = false; isDisplaying = false; isRunning = false; isPaused = false; previewVisible = false; clearSessionViewState(); status = "オフライン"; defaults.set(false, forKey: "networkOnline"); leave(); return }
         do {
-            let service = "DynamicPhotoWall.network.\(PNWire.digest(Data(root.path.utf8)))"
-            let identity = try PNIdentity(secrets: secretStore(service, false),
-                initialSecrets: allowKeychainInteraction ? secretStore(service, true) : nil); self.identity = identity
+            try prepareStorage()
+            guard let identity else { throw PNLocalStorageError.inaccessible }
             let hello = PNHello(peerId: identity.peerId, name: hostName)
             let localSettings = settings(); let values = displayValues()
             let groups = Set(values.compactMap(\.groupID)).sorted().map { PNGroup(id: PNWire.id("\(identity.peerId.pnHex):\($0)"), name: $0) }
@@ -92,26 +101,24 @@ import UserNotifications
                 groupId: groups.first(where: { $0.name == d.groupID })?.id,
                 x: Int(d.x), y: Int(d.y), width: Int(d.width), height: Int(d.height), name: d.name) }
             let initial = PNSnapshot(wallId: UUID(), sessionId: UUID(), leaderId: identity.peerId, revision: 0, groups: groups, displays: displays, sources: [], playback: PNOptions(localSettings))
-            let cache = try PNPhotoCache(root: root.appending(path: "cache"), key: identity.cacheKey)
+            let cache = try PNPhotoCache(root: dataRoot.appending(path: "cache"), key: identity.cacheKey)
             let clock = PNSharedClock(); let planner = PNScenePlanner(cache: cache)
             let output = PNPlayback(local: identity.peerId, clock: clock, cache: cache, budget: { [weak self] in self?.settings().cacheMegabytes ?? 256 }, enter: enter); self.output = output
             let provider = PNSystemPhotoProvider(peerId: identity.peerId, folders: folders, albums: albums, assets: assets,
                 cached: { [weak self] key in self?.session?.photos.available[key.opaqueId] != nil })
             let present = Set(ScreenDescriptor.availableScreens().map { String($0.id) })
             let session = try PNPeerSession(local: hello, displays: displays.filter { present.contains($0.key.displayId) }, transport: PNTLSTransport(local: hello, identity: identity), discovery: PNLanDiscovery(),
-                persistence: PNStateStore(file: root.appending(path: "wall.encrypted"), key: identity.cacheKey), provider: provider, cache: cache, planner: planner, output: output, clock: clock, notifications: notification, initial: initial)
+                persistence: PNStateStore(file: dataRoot.appending(path: "wall.encrypted"), key: identity.cacheKey), provider: provider, cache: cache, planner: planner, output: output, clock: clock, notifications: notification, initial: initial)
             self.session = session; output.bind(planner: planner, photos: session.photos)
             planner.readOriginal = { [weak photos = session.photos] key in try await photos?.readOriginal(key) }
             output.changed = { [weak self] in self?.scheduleRefresh() }; session.changed = { [weak self] in self?.scheduleRefresh() }
             session.failed = { [weak self] error in
-                if (error as? PNKeychainError)?.needsAuthorization == true { self?.keychainNeedsAuthorization = true }
-                if self?.keychainNeedsAuthorization != true { self?.status = error.localizedDescription }
+                self?.status = error.localizedDescription
                 WallLog.write("ネットワーク処理を再試行します。", error: error)
             }
             try await session.start(); online = true; defaults.set(true, forKey: "networkOnline"); notification.install(); refresh()
         } catch {
-            session?.stop(); session = nil; output = nil; identity = nil; clearSessionViewState()
-            keychainNeedsAuthorization = (error as? PNKeychainError)?.needsAuthorization == true
+            session?.stop(); session = nil; output = nil; clearSessionViewState()
             status = error.localizedDescription
         }
     }
@@ -139,7 +146,6 @@ import UserNotifications
             }
             if draft != value { draft = value }
         }
-        if keychainNeedsAuthorization { status = "Keychainへのアクセス許可が必要です。ネットワーク設定から許可してください。"; return }
         status = connected.isEmpty ? "接続待機中" : "\(connected.count + 1)ピア接続 · \(session.photos.available.count)枚準備済み · \(session.playbackState.rawValue)"
         if session.photos.deferredCount > 0 { status += " · 容量上限で\(session.photos.deferredCount)枚待機" }
     }
@@ -214,7 +220,6 @@ import UserNotifications
 
 struct NetworkSettingsView: View {
     @Bindable var network: PNNetworkModel
-    var showPermissions: (() -> Void)?
     var body: some View {
         Form {
             Section("ピア接続") {
@@ -222,14 +227,10 @@ struct NetworkSettingsView: View {
                 Toggle("オンラインモード", isOn: Binding(get: { network.online }, set: { enabled in Task { await network.setOnline(enabled) } }))
                     .disabled(network.busy).accessibilityIdentifier("network-online")
                 Text(network.status).foregroundStyle(.secondary)
-                if network.keychainNeedsAuthorization {
-                    Text("通信と写真キャッシュの暗号鍵を保護するためにKeychainを使います。下のボタンを押すとmacOSの確認が表示される場合があります。")
+                if network.needsNewStorageProfile {
+                    Text("以前の接続情報はKeychainにあるため、この版では読み出しません。新しい通信設定を作成すると、他の端末からは新しい端末として接続し直します。以前の通信設定とキャッシュは残します。写真フォルダーや表示設定は引き継ぎます。")
                         .foregroundStyle(.secondary)
-                    Button("アクセス権限を確認して再試行") {
-                        if let showPermissions { showPermissions() }
-                        else { Task { await network.authorizeKeychain() } }
-                    }
-                        .disabled(network.busy)
+                    Button("新しい通信設定を作成") { network.createLocalProfile() }.disabled(network.busy)
                 }
                 ForEach(network.candidates) { peer in HStack { Label(peer.hello.name, systemImage: "desktopcomputer"); Spacer(); Button("接続") { network.connect(peer) } } }
             }

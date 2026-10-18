@@ -61,11 +61,11 @@ nonisolated struct AmbientCard: @unchecked Sendable {
 
 actor AmbientProcessor {
     private let context = CIContext(options: [.useSoftwareRenderer: true])
-    private var previous: Data?
+    private var transition = AmbientTransition()
     private var previousSize = CGSize.zero
     private var previousEnhanced = true
 
-    func render(cards: [AmbientCard], viewport: CGSize, enhanceColors: Bool = true) -> DecodedPhoto? {
+    func render(cards: [AmbientCard], viewport: CGSize, at: Double = 0, enhanceColors: Bool = true) -> DecodedPhoto? {
         guard !Task.isCancelled, viewport.width > 0, viewport.height > 0 else { return nil }
         let scale = 160 / max(viewport.width, viewport.height)
         let width = max(1, Int(ceil(viewport.width * scale))), height = max(1, Int(ceil(viewport.height * scale)))
@@ -103,10 +103,11 @@ actor AmbientProcessor {
         }
         guard !Task.isCancelled else { return nil }
         if enhanceColors { AmbientColors.enhance(&result) }
-        if previousEnhanced == enhanceColors, previousSize == CGSize(width: width, height: height), let previous, previous.count == result.count {
-            for i in result.indices { result[i] = UInt8((Int(result[i]) + Int(previous[i])) / 2) }
+        if previousEnhanced != enhanceColors || previousSize != CGSize(width: width, height: height) {
+            transition = AmbientTransition()
         }
-        previous = Data(result); previousSize = CGSize(width: width, height: height); previousEnhanced = enhanceColors
+        result = transition.push(result, at: at)
+        previousSize = CGSize(width: width, height: height); previousEnhanced = enhanceColors
         return Self.image(result, width: width, height: height).map { DecodedPhoto(image: $0) }
     }
 
@@ -154,13 +155,16 @@ actor AmbientProcessor {
 @Observable
 final class AmbientSampler {
     private(set) var image: NSImage?
+    private(set) var textures = AmbientTextureTransition()
     private(set) var updateCount = 0
     private let processor = AmbientProcessor()
     private var task: Task<Void, Never>?
     private var busy = false
     private var generation = 0
+    private var latestElapsed = 0.0
 
     func update(_ presentation: WallScenePresentation, settings: WallSettings, viewport: CGSize, images: PhotoImageStore, paused: Bool) {
+        latestElapsed = presentation.elapsed
         guard !paused, !busy else { return }
         let cards = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport).compactMap { item -> AmbientCard? in
             guard let image = images.image(for: item.asset)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
@@ -169,10 +173,11 @@ final class AmbientSampler {
         busy = true
         let generation = self.generation
         task = Task { [weak self, processor] in
-            let result = await processor.render(cards: cards, viewport: viewport)
+            let result = await processor.render(cards: cards, viewport: viewport, at: presentation.elapsed)
             guard let self, !Task.isCancelled, generation == self.generation else { return }
             self.busy = false
             if let result {
+                self.textures.push(result.image, at: self.latestElapsed)
                 self.image = NSImage(cgImage: result.image, size: NSSize(width: result.image.width, height: result.image.height))
                 self.updateCount += 1
             }

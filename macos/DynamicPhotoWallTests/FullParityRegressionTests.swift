@@ -113,10 +113,10 @@ struct FullParityRegressionTests {
         let first = try #require(await processor.render(cards: [.init(image: red, frame: narrow, opacity: 1, radius: 0)], viewport: viewport))
         #expect(first.image.width == 160)
         #expect(first.image.height == 90)
-        let second = try #require(await processor.render(cards: [.init(image: blue, frame: narrow, opacity: 1, radius: 0)], viewport: viewport))
+        let second = try #require(await processor.render(cards: [.init(image: blue, frame: narrow, opacity: 1, radius: 0)], viewport: viewport, at: 0.125))
         let a = try rgba(first.image), b = try rgba(second.image)
         #expect(a[0] > 240 && a[2] < 10 && a[3] == 255)
-        #expect(abs(Int(b[0]) - 127) < 10 && abs(Int(b[2]) - 127) < 10)
+        #expect(abs(Int(b[0]) - 218) < 10 && abs(Int(b[2]) - 37) < 10)
         #expect(await processor.render(cards: [], viewport: viewport) == nil)
     }
 

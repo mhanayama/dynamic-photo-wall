@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 nonisolated enum FaceMotionSafety {
     static func plan(for mode: WallMode, asset: PhotoAsset, viewport v: CGSize, settings s: WallSettings,

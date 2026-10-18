@@ -7,12 +7,11 @@ import SwiftUI
 import UserNotifications
 
 nonisolated enum WallPermission: String, CaseIterable, Identifiable {
-    case photos, keychain, notifications, localNetwork, folders
+    case photos, notifications, localNetwork, folders
     var id: String { rawValue }
     var title: String {
         switch self {
         case .photos: "写真ライブラリ"
-        case .keychain: "Keychain"
         case .notifications: "接続・切断の通知"
         case .localNetwork: "ローカルネットワーク"
         case .folders: "登録済みの写真フォルダー"
@@ -21,7 +20,6 @@ nonisolated enum WallPermission: String, CaseIterable, Identifiable {
     var purpose: String {
         switch self {
         case .photos: "写真アプリのアルバムと原写真を読み込みます。"
-        case .keychain: "通信と写真キャッシュの暗号鍵を保護します。"
         case .notifications: "LAN同期の切断と再接続を知らせます。通知なしでも利用できます。"
         case .localNetwork: "近くのPhoto Wallを検出して同期します。確認だけではオンラインモードを開始しません。"
         case .folders: "アクセスできない登録先を選び直します。外付けドライブも接続してください。"
@@ -88,7 +86,7 @@ nonisolated enum WallPermissionStatus: Equatable {
         let token = generation
         // Network comes last: its privacy API may wait for connectivity or a
         // response to the OS dialog. Never stack a second OS request above it.
-        let order: [WallPermission] = [.photos, .keychain, .notifications, .folders, .localNetwork]
+        let order: [WallPermission] = [.photos, .notifications, .folders, .localNetwork]
         for permission in order where statuses[permission]?.satisfied != true {
             guard token == generation, !Task.isCancelled else { break }
             requesting = permission
@@ -194,8 +192,7 @@ nonisolated enum WallPermissionStatus: Equatable {
 }
 
 extension WallPermissionClient {
-    static func system(defaults: UserDefaults, keychain: @escaping (Bool) -> WallPermissionStatus,
-                       folders: @escaping () -> WallPermissionStatus,
+    static func system(defaults: UserDefaults, folders: @escaping () -> WallPermissionStatus,
                        requestFolders: @escaping () -> WallPermissionStatus) -> Self {
         let probe = LocalNetworkPermissionProbe()
         let proofKey = "localNetworkPermission.checkedCodeIdentity"
@@ -203,7 +200,6 @@ extension WallPermissionClient {
         return Self(check: { permission in
             switch permission {
             case .photos: return SystemWallPermissions.photos()
-            case .keychain: return keychain(false)
             case .notifications: return await SystemWallPermissions.notifications()
             case .folders: return folders()
             case .localNetwork:
@@ -216,7 +212,6 @@ extension WallPermissionClient {
         }, request: { permission in
             switch permission {
             case .photos: return await SystemWallPermissions.requestPhotos()
-            case .keychain: return keychain(true)
             case .folders: return requestFolders()
             case .notifications:
                 if await SystemWallPermissions.notifications() == .notDetermined {
