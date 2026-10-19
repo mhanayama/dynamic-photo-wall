@@ -67,7 +67,7 @@ Xcodeで `macos/DynamicPhotoWall.xcodeproj` を開き、`DynamicPhotoWall` ス�
 open macos/DynamicPhotoWall.xcodeproj
 ```
 
-隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。最新のmacOS v1.1.0（build 12）は[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.12)からダウンロードできます。ネットワーク機能は実機確認用で、実際のMac↔Windows間の同期表示は未検証です。[正式版のbuild 4](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)も保持しています。変更点と検証範囲は[リリースノート](macos/docs/RELEASE-NOTES-v1.1.0-build12.md)、実機受け入れの残件はTODOを参照してください。
+隔離した自動検証は `bash macos/scripts/verify.sh`、ローカルRelease候補の作成は `bash macos/scripts/package.sh` を使用します。最新のmacOS v1.1.0（build 14）は[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14)からダウンロードできます。Zoomの構図と同期Galleryの継続を修正し、同期描画のCPU負荷も軽減しました。ネットワーク機能は実機確認用で、実際のMac↔Windows間の同期表示は未検証です。Windows側もGallery継続修正を含む`d67fd1f`以降からビルドしてください。[正式版のbuild 4](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)も保持しています。変更点と検証範囲は[リリースノート](macos/docs/RELEASE-NOTES-v1.1.0-build14.md)、実機受け入れの残件はTODOを参照してください。
 
 ビルド・テスト手順は [macOS版README](macos/README.md)、不足機能と検証範囲は [差分監査とTODO](macos/MACOS_PARITY_TODO.md) を参照してください。
 

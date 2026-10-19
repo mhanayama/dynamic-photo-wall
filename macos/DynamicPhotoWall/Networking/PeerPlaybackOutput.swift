@@ -1,7 +1,34 @@
 import AppKit
 
 @MainActor final class PNPlayback: PNPlaybackOutput {
-    struct Frame { var plan: PNScene; var images: [String: DecodedPhoto]; var ambient: [PNAmbientImage]; var start = 0.0; var paused = 0.0 }
+    struct PreparedCard { let placement: PNPlacement; let image: CGImage }
+    struct SurfaceContent { let crop: CGRect; let cards: [PreparedCard]; let ambient: [PNAmbientImage] }
+    struct Frame {
+        let plan: PNScene
+        let images: [String: DecodedPhoto]
+        let ambient: [PNAmbientImage]
+        let contents: [PNDisplayKey: SurfaceContent]
+        var start = 0.0, paused = 0.0
+        init(plan: PNScene, images: [String: DecodedPhoto], ambient: [PNAmbientImage]) {
+            self.plan = plan; self.images = images; self.ambient = ambient
+            // Resolve wire identities and display membership once. Hashing asset
+            // IDs inside draw() also charged every invisible timeline segment
+            // to every display on every frame.
+            let byAsset = Dictionary(uniqueKeysWithValues: Set(plan.placements.map(\.asset)).compactMap { key in
+                images[key.opaqueId].map { (key, $0.image) }
+            })
+            let left = plan.displays.map(\.x).min() ?? 0, top = plan.displays.map(\.y).min() ?? 0
+            contents = Dictionary(uniqueKeysWithValues: plan.displays.map { display in
+                let id = display.id
+                let cards = plan.placements.compactMap { placement -> PreparedCard? in
+                    guard placement.displayId == nil || placement.displayId == id, let image = byAsset[placement.asset] else { return nil }
+                    return PreparedCard(placement: placement, image: image)
+                }
+                return (display.key, SurfaceContent(crop: CGRect(x: display.x - left, y: display.y - top, width: display.width, height: display.height),
+                    cards: cards, ambient: ambient.filter { $0.frame.displayId == nil || $0.frame.displayId == id }.sorted { $0.frame.at < $1.frame.at }))
+            })
+        }
+    }
     struct PNAmbientImage { var frame: PNAmbient; var image: NSImage }
     private let local: UUID
     private let clock: any PNClock

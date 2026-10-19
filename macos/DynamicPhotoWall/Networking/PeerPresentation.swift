@@ -6,10 +6,8 @@ import SwiftUI
     let display: PNDisplay
     let elapsed: Double
     let opacity: Double
-    var crop: CGRect {
-        CGRect(x: display.x - (frame.plan.displays.map(\.x).min() ?? 0),
-            y: display.y - (frame.plan.displays.map(\.y).min() ?? 0), width: display.width, height: display.height)
-    }
+    var content: PNPlayback.SurfaceContent? { frame.contents[display.key] }
+    var crop: CGRect { content?.crop ?? .zero }
     func evaluate(_ placement: PNPlacement) -> (x: Double, y: Double, scale: Double, opacity: Double) {
         var value = placement.evaluate(elapsed)
         // Scene opacity owns the first fade. Honor independent Gallery fades,
@@ -100,6 +98,7 @@ import SwiftUI
         guard !layers.isEmpty, let context = NSGraphicsContext.current?.cgContext else { return }
         NSColor.black.setFill(); bounds.fill()
         for layer in layers where layer.opacity > 0 {
+            guard let content = layer.content else { continue }
             let frame = layer.frame, display = layer.display, elapsed = layer.elapsed
             let plan = frame.plan, crop = layer.crop
             context.saveGState()
@@ -109,7 +108,7 @@ import SwiftUI
             context.setAlpha(layer.opacity); context.beginTransparencyLayer(auxiliaryInfo: nil)
             context.setFillColor(NSColor(Color(hex: plan.background)).cgColor)
             context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
-            let ambient = frame.ambient.filter { $0.frame.displayId == display.id || $0.frame.displayId == nil }.sorted { $0.frame.at < $1.frame.at }
+            let ambient = content.ambient
             if let a = ambient.last(where: { $0.frame.at <= elapsed }) ?? ambient.first {
                 let area = a.frame.displayId == nil ? CGRect(x: -crop.minX, y: -crop.minY, width: plan.viewport.width, height: plan.viewport.height) : CGRect(x: 0, y: 0, width: display.width, height: display.height)
                 a.image.draw(in: area, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -121,8 +120,8 @@ import SwiftUI
                 context.fill(CGRect(x: 0, y: 0, width: display.width, height: display.height))
             }
             context.translateBy(x: -crop.minX, y: -crop.minY)
-            for placement in plan.placements where placement.displayId == nil || placement.displayId == display.id {
-                guard let image = frame.images[placement.asset.opaqueId]?.image else { continue }
+            for card in content.cards {
+                let placement = card.placement
                 let value = layer.evaluate(placement)
                 if value.opacity <= 0 { continue }
                 context.saveGState(); context.clip(to: CGRect(x: placement.clip.x, y: placement.clip.y, width: placement.clip.width, height: placement.clip.height))
@@ -132,7 +131,7 @@ import SwiftUI
                     width: placement.width * value.scale, height: placement.height * value.scale)
                 context.addPath(CGPath(roundedRect: rect, cornerWidth: placement.cornerRadius, cornerHeight: placement.cornerRadius, transform: nil)); context.clip()
                 context.translateBy(x: rect.minX, y: rect.maxY); context.scaleBy(x: 1, y: -1)
-                context.draw(image, in: CGRect(origin: .zero, size: rect.size)); context.restoreGState()
+                context.draw(card.image, in: CGRect(origin: .zero, size: rect.size)); context.restoreGState()
             }
             context.endTransparencyLayer(); context.restoreGState()
         }

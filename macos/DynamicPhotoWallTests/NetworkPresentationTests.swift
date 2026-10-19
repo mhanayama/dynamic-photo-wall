@@ -7,6 +7,54 @@ import Testing
 // draw or capture a desktop window.
 @MainActor struct NetworkPresentationTests {
     private let modes = ["gallery", "galleryScroll", "verticalPan", "horizontalPan", "zoom"]
+    @Test func preparedDisplayContentMatchesLegacyLookupWithoutPerFrameIdentityWork() async throws {
+        let f = try await Fixture(); defer { f.close() }
+        var plan = f.plan("gallery", individual: true)
+        let originals = plan.placements
+        plan.placements = (0..<64).map { index in
+            var p = originals[index % originals.count]
+            p.id = index
+            if index % 3 == 0 { p.displayId = nil }
+            p.visibleFrom = Double(index % 8); p.visibleUntil = 10
+            return p
+        }
+        try await f.show(plan)
+        let layers = try #require(f.log.surfaces[1]?.layers)
+        let layer = try #require(layers.last), content = try #require(layer.content)
+        let reference = plan.placements.filter { $0.displayId == nil || $0.displayId == layer.display.id }
+        #expect(content.cards.map { $0.placement.id } == reference.map(\.id))
+        #expect(content.crop == CGRect(x: 400, y: 0, width: 400, height: 300))
+        let image = try #require(layer.frame.images[f.photo.key.opaqueId]?.image)
+        #expect(content.cards.allSatisfy { $0.image === image })
+        var legacyChecksum = 0.0, preparedChecksum = 0.0
+        let clock = ContinuousClock()
+        let legacyTime = clock.measure {
+            for _ in 0..<240 {
+                for p in layer.frame.plan.placements where p.displayId == nil || p.displayId == layer.display.id {
+                    if let image = layer.frame.images[p.asset.opaqueId]?.image {
+                        legacyChecksum += Double(image.width) + layer.evaluate(p).opacity
+                    }
+                }
+            }
+        }
+        let preparedTime = clock.measure {
+            for _ in 0..<240 {
+                for card in content.cards {
+                    preparedChecksum += Double(card.image.width) + layer.evaluate(card.placement).opacity
+                }
+            }
+        }
+        #expect(legacyChecksum == preparedChecksum)
+        print("Prepared display content: legacy lookup \(legacyTime), prepared lookup \(preparedTime), equal checksum \(preparedChecksum)")
+        for second in 0...9 {
+            f.clock.time = 100 + Double(second); f.output.render()
+            let current = try #require(f.log.surfaces[1]?.layers.last)
+            let cards = try #require(current.content).cards
+            #expect(cards.allSatisfy { $0.image === image })
+            #expect(cards.filter { current.evaluate($0.placement).opacity > 0 }.map { $0.placement.id }
+                == reference.filter { current.evaluate($0).opacity > 0 }.map(\.id))
+        }
+    }
     @Test func galleryContinuationKeepsTheSurfaceImagesAndFullOpacity() async throws {
         let f = try await Fixture(); defer { f.close() }
         for mode in ["gallery", "galleryScroll"] {

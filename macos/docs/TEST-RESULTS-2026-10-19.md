@@ -100,3 +100,30 @@ GUI自動操作、実ウィンドウの表示、スクリーンショット、�
 ログは`artifacts/macos/zoom-framing/`の`swift-tests.log`、`dotnet-tests.log`、`windows-parity.log`、`windows-delta.log`、`release-build.log`。最初のsandbox内のXcode実行は環境のプロセス通知制限で停止し、同じ単体テストを通常権限で再実行して成功した。Computer Use・GUI操作・UIテスト・画面撮影は行っていない。Windowsアプリの実行と実画面での構図確認は今回の検証には含めない。Windowsはユーザーが別端末で検証する。ルート直下のファイル一覧は作業前後で不変。
 
 ユーザーのMacビルド依頼に従い、`bash macos/scripts/package.sh`で1.1.0 build 13のアドホック署名付きAPP／ZIP／DMGを`release/macos/arm64/`へ生成した。archive・署名・arm64・ZIP／DMG・SHA256SUMSと、APP／ZIP内の全6ファイルの一致を確認した。置換前のbuild 12は`artifacts/macos/package/previous-release.W9szkl/`へ退避した。パッケージ作成は自動承認レビューのモデル混雑で実行前に停止していたが、ユーザーが手動承認へ切り替えた後に同じコマンドで成功した。ログは同じ検証ディレクトリの`package-build13.log`、照合結果は`package-build13-check.json`。通常アプリの起動・`/Applications`の置換・GitHub Releaseへのアップロードは行っていない。
+
+## build 14: 同期Galleryの継続とプレリリース更新
+
+GitHub Release更新の依頼に従い、変更のない`d67fd1f`からbuild 14を作成した。公開済みbuild 12以降のZoom構図、同期Galleryの計画更新と写真・配置・交換時計の継続を含む。最初の隔離検証はSwift単体181件・29 suitesと全CLI試験、arm64 Releaseビルドが成功した。
+
+公開準備中に、ユーザーからカーソルの一時停止とCPU約47%の報告があった。稼働中の`/Applications/DynamicPhotoWall.app`はbuild 13で、プロセス一覧ではアプリ45.5〜46.1%、WindowServer34.9〜45.6%だった。5秒間の読み取り専用`sample`で、メインスレッドの1,700サンプル中985が`PNSceneView.draw`を通り、そのうち788が`PNAssetKey.opaqueId`を通っていた。これはCPU全体に対する割合ではなく、採取した呼び出しスタックの内訳である。ユーザーへの確認ではカーソル停止のタイミングはまだ不明で、写真交換や計画更新との相関は確認できていない。
+
+描画ループは表示時刻に関係なく全予定を調べ、写真IDのハッシュ・文字列変換と、画面IDの変換を繰り返していた。`PNPlayback.Frame`の準備時に、画面別の画像参照・配置・背景の整列・切り出し領域を確定するよう修正した。`PNSceneView.draw`は準備済み参照と時刻による位置・不透明度だけを使う。画面別の対象・重なり順・画像の再利用・継続時のフェード規則は保持する。
+
+修正後に`bash macos/scripts/verify.sh --unit-only`を再実行した。
+
+| 検証 | 結果 |
+|---|---|
+| Swift単体 | 182件・29 suites、失敗0。専用bundle ID・設定を使用 |
+| 共通fixture | 704＋472 assertions成功 |
+| Zoom構図 | Windows CoreをMacのCLIで実行し5,120 assertions成功 |
+| 背景色 | 12ケース一致 |
+| .NETネットワーク | 相互TLSを含む26ケース・241 assertions、失敗0 |
+| Mac Release | arm64コンパイル成功 |
+
+`sharedGalleriesRenewAcrossTwoHoursWithoutWindows`は静止／スクロール×スパン／画面別の4条件で各100計画・仮想時計2時間以上を検証し、境目の写真・位置・大きさ・交換間隔、readyと予定commitを確認した。`galleryContinuationKeepsTheSurfaceImagesAndFullOpacity`はfake surfaceと画像参照、不透明度1の保持を確認した。
+
+新規`preparedDisplayContentMatchesLegacyLookupWithoutPerFrameIdentityWork`は64予定の画面別抽出・並び順・切り出し、画像参照の再利用、10時点の表示対象と不透明度を確認した。同じ対象を240回照合する比較は旧0.398824167秒／新0.003635541秒で、結果のチェックサムは一致した。デバッグ単体試験の照合部分の比較であり、アプリ全体のCPU使用率やカーソル応答の改善値ではない。時間の比率をテストの合否条件にしていない。
+
+ログは`artifacts/macos/release-build14/verify.log`と修正後の`verify-performance.log`、プロファイルは`artifacts/macos/performance-2026-10-19/app-sample.txt`。GUI自動操作、画面撮影、通常アプリの置換・再起動、個人設定や写真の変更は行っていない。実画面での負荷とカーソル応答、実Mac↔Windows間のLAN・同期表示と長時間運転は未確認。配布は[build 14プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14)とし、既存正式版とbuild 12は保持する。
+
+修正後の`package.sh`も成功し、同じarm64 Release archiveからAPP／ZIP／DMGを生成した。アドホック署名、CPU構成、build番号、単一起動設定、ZIP／DMG、SHA256SUMS、APPとZIP内の全6ファイルの一致と、ルート直下のファイル一覧が不変であることを確認した。最初の公開候補は修正前なので使用せず、修正後の配布物を使用する。パッケージログは`artifacts/macos/release-build14/package-performance.log`、最終照合結果は`package-check.json`。配布先は`release/macos/arm64/`を維持する。
