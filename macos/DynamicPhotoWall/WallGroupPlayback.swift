@@ -10,7 +10,8 @@ nonisolated struct WallSurfacePlan: Sendable {
 extension WallScenePlanner {
     /// A single mode draw and selector history serve all surfaces in this group.
     func nextGroup(assets: [PhotoAsset], settings: WallSettings, group: WallDisplayGroup,
-                   connected: Set<UInt32>, excluding: Set<URL> = [], allowGalleryRepeat: Bool = false) -> [WallSurfacePlan]? {
+                   connected: Set<UInt32>, excluding: Set<URL> = [], allowGalleryRepeat: Bool = false,
+                   continuation: [WallSurfacePlan]? = nil) -> [WallSurfacePlan]? {
         let displays = group.displays.filter { connected.contains($0.id) }
         guard !displays.isEmpty else { return nil }
         var eligible = settings
@@ -37,6 +38,7 @@ extension WallScenePlanner {
         // Draw on a viewport where eligibility will not discard per-display or mirror
         // candidates. The normal planner still applies weights and repeat suppression.
         guard let mode = chooseGroupMode(settings: eligible, allowGalleryRepeat: allowGalleryRepeat) else { return nil }
+        if continuation?.first?.scene.mode == mode, ModeSelection.isGallery(mode) { return continuation }
         guard let pool = candidates[mode] else { return nil }
         if settings.perDisplay(mode) {
             var used = excluding

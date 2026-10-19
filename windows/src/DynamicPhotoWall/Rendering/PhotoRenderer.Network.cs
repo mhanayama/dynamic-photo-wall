@@ -5,15 +5,49 @@ namespace DynamicPhotoWall.Rendering;
 
 public sealed class SharedVisual
 {
-    public required SceneVisual Scene { get; init; }
+    public required SceneVisual Scene { get; set; }
     public required Net.SharedScenePlan Plan { get; init; }
     public required IReadOnlyDictionary<string, BitmapSource> Images { get; init; }
+    internal bool IsContinuation { get; set; }
     internal List<(Net.ScenePlacement Plan, FrameworkElement Image, ScaleTransform Scale, TranslateTransform Translation)> Photos { get; } = [];
     internal List<AmbientFrameVisual> Backgrounds { get; } = [];
 }
 
 public sealed partial class PhotoRenderer
 {
+    public bool ContinueShared(SharedVisual next, SharedVisual previous)
+    {
+        if (Current != previous.Scene || !next.Plan.Continues(previous.Plan)) return false;
+        // Keep the presented canvases and surviving image elements. Only the
+        // bounded schedule and prepared future replacements are exchanged.
+        var terminal = previous.Photos.Where(p => p.Plan.VisibleUntil == previous.Plan.Duration).ToList();
+        for (var index = 0; index < next.Photos.Count; index++)
+        {
+            var p = next.Photos[index];
+            if (p.Plan.VisibleFrom != 0 || (p.Plan.FadeInSeconds ?? p.Plan.FadeSeconds) > 0) continue;
+            var oldIndex = terminal.FindIndex(old => old.Plan.Asset == p.Plan.Asset && old.Plan.DisplayId == p.Plan.DisplayId
+                && Math.Abs(old.Plan.ToX - p.Plan.FromX) < .001 && Math.Abs(old.Plan.ToY - p.Plan.FromY) < .001);
+            if (oldIndex < 0) continue;
+            var old = terminal[oldIndex]; terminal.RemoveAt(oldIndex);
+            var parent = (Canvas)VisualTreeHelper.GetParent(p.Image);
+            ((Canvas)VisualTreeHelper.GetParent(old.Image)).Children.Remove(old.Image);
+            parent.Children.Remove(p.Image); parent.Children.Add(old.Image);
+            next.Photos[index] = (p.Plan, old.Image, old.Scale, old.Translation);
+        }
+        foreach (var surface in next.Scene.Surfaces)
+        {
+            var held = previous.Scene.Surfaces.Single(s => s.DisplayId == surface.DisplayId);
+            var foreground = surface.Foreground.Children.Cast<UIElement>().ToArray();
+            surface.Foreground.Children.Clear(); held.Foreground.Children.Clear();
+            foreach (var child in foreground) held.Foreground.Children.Add(child);
+            var background = surface.Canvas.Children.Cast<UIElement>().Where(c => c != surface.Foreground).ToArray();
+            surface.Canvas.Children.Clear(); held.Canvas.Children.Clear();
+            foreach (var child in background) held.Canvas.Children.Add(child);
+            held.Canvas.Children.Add(held.Foreground); held.Seconds = next.Plan.Duration;
+        }
+        next.Scene = previous.Scene; next.Scene.Seconds = next.Plan.Duration; next.IsContinuation = true;
+        return true;
+    }
     public SharedVisual BuildShared(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images,
         IReadOnlyCollection<string> localDisplayIds) => SharedSceneBuilder.Build(plan, images, localDisplayIds);
     public void ShowShared(SharedVisual visual, SharedVisual? previous = null)
@@ -49,6 +83,6 @@ public sealed partial class PhotoRenderer
             translation.X = value.X - p.Clip.X; translation.Y = value.Y - p.Clip.Y; image.Opacity = value.Opacity;
         }
         foreach (var background in visual.Backgrounds) background.Present(elapsed);
-        visual.Scene.Canvas.Opacity = visual.Plan.FadeSeconds <= 0 ? 1 : Math.Clamp(elapsed / visual.Plan.FadeSeconds, 0, 1);
+        visual.Scene.Canvas.Opacity = visual.IsContinuation || visual.Plan.FadeSeconds <= 0 ? 1 : Math.Clamp(elapsed / visual.Plan.FadeSeconds, 0, 1);
     }
 }

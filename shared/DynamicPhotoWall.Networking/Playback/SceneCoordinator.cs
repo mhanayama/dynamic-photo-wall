@@ -37,7 +37,7 @@ public sealed class SceneCoordinator(IScenePlanner planner, IPlaybackOutput outp
             if (current.TryGetValue(group.Key, out var active) && active.Plan.SettingsRevision == state.Revision
                 && clock.Now - active.Started - (totalPaused - active.PausedBaseline) < active.Plan.Duration - 4) continue;
             if (retryAt.TryGetValue(group.Key, out var retry) && clock.Elapsed < retry) continue;
-            var plan = await planner.PrepareAsync(state, group.Key, photos, token);
+            var plan = await planner.PrepareAsync(state, group.Key, photos, token, active.Plan);
             if (plan == null) { retryAt[group.Key] = clock.Elapsed + 5; continue; }
             retryAt.Remove(group.Key);
             plan.Validate();
@@ -68,7 +68,10 @@ public sealed class SceneCoordinator(IScenePlanner planner, IPlaybackOutput outp
     private async Task TryCommit(Guid group)
     {
         if (!pending.TryGetValue(group, out var item) || item.Waiting.Count != 0) return;
-        var commit = new SceneCommit(item.Plan.Id, group, clock.Now + 2);
+        var start = clock.Now + 2;
+        if (current.TryGetValue(group, out var active) && item.Plan.Continues(active.Plan))
+            start = Math.Max(start, active.Started + active.Plan.Duration + totalPaused - active.PausedBaseline);
+        var commit = new SceneCommit(item.Plan.Id, group, start);
         current[group] = (item.Plan, commit.StartAt, totalPaused); pending.Remove(group);
         if (Broadcast != null) await Broadcast(PeerPacket.Create("sceneCommit", commit));
         output.Commit(commit);

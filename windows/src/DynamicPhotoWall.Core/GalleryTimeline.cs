@@ -4,22 +4,30 @@ namespace DynamicPhotoWall.Core;
 // Geometry and event generation are independent of networking and WPF.
 public static class GalleryTimeline
 {
-    public sealed record Surface(IReadOnlyList<PhotoInfo> Photos, Viewport Viewport, IReadOnlyList<FrameRect> Displays);
+    public sealed record Surface(IReadOnlyList<PhotoInfo> Photos, Viewport Viewport, IReadOnlyList<FrameRect> Displays,
+        IReadOnlyList<FrameRect>? Frames = null);
     public sealed record Segment(int SurfaceIndex, PhotoInfo Photo, FrameRect From, FrameRect To,
         double At, double Until, double MotionSeconds, double FadeIn, double FadeOut);
-    private sealed record Track(PhotoInfo Photo, FrameRect From, FrameRect To, double At, double FadeIn);
+    public sealed record Timeline(IReadOnlyList<Segment> Segments, double Duration, double NextChangeSeconds, IReadOnlyList<string> Updated);
+    private sealed record Track(PhotoInfo Photo, FrameRect From, FrameRect To, double At, double FadeIn, double MotionSeconds);
     public static IReadOnlyList<Segment> Build(IReadOnlyList<Surface> surfaces, double duration, WallSettings settings,
         Func<IReadOnlyList<PhotoInfo>, PhotoInfo?> replacement, Random random, IReadOnlyList<PhotoInfo>? candidates = null)
+        => BuildPlan(surfaces, duration, settings, replacement, random, candidates, preserveTiming: false).Segments;
+    public static Timeline BuildPlan(IReadOnlyList<Surface> surfaces, double duration, WallSettings settings,
+        Func<IReadOnlyList<PhotoInfo>, PhotoInfo?> replacement, Random random, IReadOnlyList<PhotoInfo>? candidates = null,
+        double? nextChangeSeconds = null, IEnumerable<string>? updated = null, bool preserveTiming = true)
     {
         var result = new List<Segment>();
-        var rotation = new GalleryRotation();
-        var state = surfaces.Select(s => FixedGalleryLayout.Arrange(s.Photos, s.Viewport, settings.Gap, s.Displays)
-            .Select(i => new Track(s.Photos[i.Index], i.Frame, i.Frame, 0, 0)).ToList()).ToArray();
+        var rotation = new GalleryRotation(updated);
+        var state = surfaces.Select(s => (s.Frames == null ? FixedGalleryLayout.Arrange(s.Photos, s.Viewport, settings.Gap, s.Displays)
+            : s.Frames.Select((frame, index) => new FixedGalleryLayout.Item(index, frame)).ToArray())
+            .Select(i => new Track(s.Photos[i.Index], i.Frame, i.Frame, 0, 0, .1)).ToList()).ToArray();
         double Interval() => settings.GalleryMinSeconds + random.NextDouble() * (settings.GalleryMaxSeconds - settings.GalleryMinSeconds);
         void End(int surface, Track track, double until, double fadeOut)
             => result.Add(new(surface, track.Photo, track.From, track.To, track.At, until,
-                track.At == 0 ? .1 : Math.Max(.1, settings.FadeSeconds), track.FadeIn, fadeOut));
-        for (var at = Interval(); at + settings.FadeSeconds < duration; at += settings.FadeSeconds + Interval())
+                track.MotionSeconds, track.FadeIn, fadeOut));
+        var at = nextChangeSeconds ?? Interval();
+        for (; at + settings.FadeSeconds < duration; at += settings.FadeSeconds + Interval())
         {
             if (result.Count + state.Sum(s => s.Count) * 2 > 1000) break;
             var slots = state.SelectMany((s, surface) => s.Select((_, index) => (Surface: surface, Index: index))).ToArray();
@@ -46,10 +54,14 @@ public static class GalleryTimeline
                 survivors.Contains(i) ? 0 : settings.FadeSeconds);
             state[selected.Surface] = arranged.Select(item => new Track(proposed[item.Index],
                 item.Index == incoming ? item.Frame : old[Original(item.Index)].To, item.Frame, at,
-                item.Index == incoming ? settings.FadeSeconds : 0)).ToList();
+                item.Index == incoming ? settings.FadeSeconds : 0, Math.Max(.1, settings.FadeSeconds))).ToList();
             rotation.Inserted(photo);
         }
-        for (var i = 0; i < state.Length; i++) foreach (var track in state[i]) End(i, track, duration, 0);
-        return result;
+        // Never split a replacement across a planning boundary. Carry its due
+        // time and rotation into the next chunk rather than drawing a new scene.
+        var end = preserveTiming ? Math.Min(duration, at) : duration;
+        for (var i = 0; i < state.Length; i++) foreach (var track in state[i]) End(i, track, end, 0);
+        var activePaths = state.SelectMany(s => s.Select(t => t.Photo.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new(result.Where(s => s.Until > s.At).ToArray(), end, Math.Max(0, at - end), rotation.Updated.Where(activePaths.Contains).ToArray());
     }
 }

@@ -13,8 +13,12 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
     private readonly Random random = new();
     public Task<Net.SharedScenePlan?> PrepareAsync(Net.WallSnapshot wall, Guid groupId,
         IReadOnlyList<Net.SharedPhoto> source, CancellationToken cancellation)
-        => Task.Run(() => Prepare(wall, groupId, source, cancellation), cancellation);
-    private Net.SharedScenePlan? Prepare(Net.WallSnapshot wall, Guid groupId, IReadOnlyList<Net.SharedPhoto> source, CancellationToken token)
+        => PrepareAsync(wall, groupId, source, cancellation, null);
+    public Task<Net.SharedScenePlan?> PrepareAsync(Net.WallSnapshot wall, Guid groupId,
+        IReadOnlyList<Net.SharedPhoto> source, CancellationToken cancellation, Net.SharedScenePlan? previousPlan)
+        => Task.Run(() => Prepare(wall, groupId, source, cancellation, previousPlan), cancellation);
+    private Net.SharedScenePlan? Prepare(Net.WallSnapshot wall, Guid groupId, IReadOnlyList<Net.SharedPhoto> source, CancellationToken token,
+        Net.SharedScenePlan? previousPlan)
     {
         var displays = wall.Displays.Where(d => d.Selected && (d.GroupId ?? Net.SceneCoordinator.StandaloneId(d.Key)) == groupId).ToArray();
         if (displays.Length == 0) return null;
@@ -33,10 +37,17 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
         var picking = selectors[groupId];
         var views = displays.Select(d => new DynamicPhotoWall.Core.Viewport(d.Width, d.Height)).ToArray();
         var regions = displays.Select(d => new DynamicPhotoWall.Core.FrameRect(d.X - left, d.Y - top, d.Width, d.Height)).ToArray();
-        // Shared galleries have finite timelines. Renew them even when the same
-        // mode wins again; unlike local galleries, they have no live update loop.
-        var composition = engine.Next(photos, viewport, settings, displayViewports: views, displayRegions: regions, allowGalleryRepeat: true);
+        var previousGallery = previousPlan != null && previousPlan.GroupId == groupId && previousPlan.SessionId == wall.SessionId
+            && previousPlan.SettingsRevision == wall.Revision && previousPlan.Displays.SequenceEqual(displays)
+            && previousPlan.Mode is Net.SceneMode.Gallery or Net.SceneMode.GalleryScroll
+            && previousPlan.Placements.Where(p => p.VisibleUntil == previousPlan.Duration).All(p => usable.ContainsKey(p.Asset.OpaqueId))
+            ? previousPlan : null;
+        // A repeated draw extends the committed gallery from its endpoint. It
+        // must not pick a new set of initial photographs or fade the wall again.
+        var composition = engine.Next(photos, viewport, settings, displayViewports: views, displayRegions: regions, allowGalleryRepeat: true,
+            continuation: previousGallery == null ? null : new(Enum.Parse<CompositionMode>(previousGallery.Mode.ToString()), []));
         if (composition == null) return null;
+        var continuing = previousGallery != null && previousGallery.Mode.ToString() == composition.Mode.ToString();
         var perDisplay = settings.IsPerDisplay(composition.Mode) || composition.MirrorPerDisplay;
         var placements = new List<Net.ScenePlacement>(); var duration = 0d;
         for (var surface = 0; surface < (perDisplay ? displays.Length : 1); surface++)
@@ -44,7 +55,7 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             token.ThrowIfCancellationRequested();
             var offsetX = perDisplay ? regions[surface].X : 0; var offsetY = perDisplay ? regions[surface].Y : 0;
             var v = perDisplay ? views[surface] : viewport;
-            var plan = perDisplay && !composition.MirrorPerDisplay
+            var plan = continuing ? composition : perDisplay && !composition.MirrorPerDisplay
                 ? engine.ForMode(photos, v, settings, composition.Mode) : composition;
             if (plan == null) return null;
             var displayId = perDisplay ? displays[surface].Key.LayoutId : null;
@@ -60,6 +71,16 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             {
                 seconds = Math.Max(120, settings.GalleryMaxSeconds * 3);
                 var h = Math.Max(1, v.Height - 2 * settings.Gap); var x = settings.Gap; var index = 0;
+                if (continuing)
+                {
+                    foreach (var p in previousGallery!.Placements.Where(p => p.DisplayId == displayId && p.ToX + p.Width > clip.X))
+                    {
+                        placements.Add(p with { Id = placements.Count, FromX = p.ToX, FromY = p.ToY,
+                            ToX = p.ToX - seconds * settings.GalleryScrollPixelsPerSecond, StartSeconds = 0, MotionSeconds = seconds,
+                            VisibleFrom = 0, VisibleUntil = seconds });
+                        x = Math.Max(x, p.ToX - offsetX + p.Width + settings.Gap);
+                    }
+                }
                 while (x < v.Width + seconds * settings.GalleryScrollPixelsPerSecond)
                 {
                     var chosen = index < plan.Photos.Count ? plan.Photos[index] : picking.Pick(photos, settings) ?? photos[0];
@@ -88,19 +109,29 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             }
             duration = Math.Max(duration, seconds);
         }
+        Net.GallerySchedule? gallerySchedule = null;
         if (composition.Mode == CompositionMode.Gallery)
         {
             var gallerySurfaces = new List<GalleryTimeline.Surface>();
             for (var i = 0; i < (perDisplay ? displays.Length : 1); i++)
             {
                 var v = perDisplay ? views[i] : viewport;
-                var selected = perDisplay ? engine.ForMode(photos, v, settings, CompositionMode.Gallery) : composition;
+                var selected = continuing ? composition : perDisplay ? engine.ForMode(photos, v, settings, CompositionMode.Gallery) : composition;
                 if (selected == null) return null;
-                gallerySurfaces.Add(new(selected.Photos, v, !perDisplay && settings.AvoidFaceDisplayBoundaries ? regions : []));
+                var terminal = continuing ? previousGallery!.Placements.Where(p => p.VisibleUntil == previousGallery.Duration
+                    && p.DisplayId == (perDisplay ? displays[i].Key.LayoutId : null)).ToArray() : [];
+                var ox = perDisplay ? regions[i].X : 0; var oy = perDisplay ? regions[i].Y : 0;
+                gallerySurfaces.Add(new(continuing ? terminal.Select(p => photos.First(photo => photo.Path == p.Asset.OpaqueId)).ToArray() : selected.Photos,
+                    v, !perDisplay && settings.AvoidFaceDisplayBoundaries ? regions : [],
+                    continuing ? terminal.Select(p => new DynamicPhotoWall.Core.FrameRect(p.ToX - ox, p.ToY - oy, p.Width, p.Height)).ToArray() : null));
             }
-            var segments = GalleryTimeline.Build(gallerySurfaces, duration, settings,
-                active => picking.Pick(photos, settings, active.Select(p => p.Path).ToHashSet()), random, photos);
-            foreach (var segment in segments)
+            var timeline = GalleryTimeline.BuildPlan(gallerySurfaces, duration, settings,
+                active => picking.Pick(photos, settings, active.Select(p => p.Path).ToHashSet()), random, photos,
+                continuing ? previousGallery!.GallerySchedule?.NextChangeSeconds : null,
+                continuing ? previousGallery!.GallerySchedule?.UpdatedAssets : null);
+            duration = timeline.Duration;
+            gallerySchedule = new(timeline.NextChangeSeconds, timeline.Updated.ToArray());
+            foreach (var segment in timeline.Segments)
             {
                 var i = segment.SurfaceIndex;
                 var x = perDisplay ? regions[i].X : 0; var y = perDisplay ? regions[i].Y : 0;
@@ -118,7 +149,8 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
             ? p with { VisibleUntil = duration } : p).ToList();
         var result = new Net.SharedScenePlan(Guid.NewGuid(), groupId, wall.SessionId, wall.Revision,
             Enum.Parse<Net.SceneMode>(composition.Mode.ToString()), new(width, height), displays, duration,
-            settings.FadeSeconds, settings.Background, placements.ToArray(), []);
+            settings.FadeSeconds, settings.Background, placements.ToArray(), [])
+            { ContinuationOf = continuing ? previousGallery!.Id : null, GallerySchedule = gallerySchedule };
         if (settings.GlassBackground) result = result with { Ambient = WindowsAmbientBuilder.Build(result, usable, readImage, token) };
         return result;
     }

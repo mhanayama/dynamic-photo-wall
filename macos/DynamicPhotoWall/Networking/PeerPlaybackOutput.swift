@@ -48,7 +48,9 @@ import AppKit
         let keys = Set(scene.placements.filter { $0.displayId == nil || own.contains($0.displayId!) }.map(\.asset))
         let pixels = min(16_000_000, max(65536, budget() * 1024 * 1024 / 8 / max(1, keys.count)))
         var images: [String: DecodedPhoto] = [:]
+        let held = presentations.values.first { scene.continues($0.frame.plan) }?.frame.images ?? [:]
         for key in keys {
+            if let image = held[key.opaqueId] { images[key.opaqueId] = image; continue }
             guard let bytes = try await photos?.readOriginal(key), let photo = photos?.available[key.opaqueId] else { throw PNError.invalid("写真キャッシュを準備中です。") }
             let maximum = min(4096, max(64, Int(sqrt(Double(pixels) * Double(max(photo.pixelWidth, photo.pixelHeight)) / Double(min(photo.pixelWidth, photo.pixelHeight))))))
             guard let image = await Task.detached(priority: .utility, operation: { PNImageDecode.decode(bytes, maximum: maximum) }).value else { throw PNError.invalid("原寸画像をデコードできません。") }

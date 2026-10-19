@@ -9,6 +9,9 @@ import SwiftUI
     private var configurations: [UUID: (session: UUID, revision: Int64)] = [:]
     init(cache: PNPhotoCache) { self.cache = cache }
     func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? {
+        try await prepare(wall: wall, group: group, photos: photos, previous: nil)
+    }
+    func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto], previous: PNScene?) async throws -> PNScene? {
         let displays = wall.displays.filter { $0.selected && $0.unit == group }; guard !displays.isEmpty else { return nil }
         let settings = try wall.playback.applying()
         let left = displays.map(\.x).min()!, top = displays.map(\.y).min()!
@@ -23,10 +26,27 @@ import SwiftUI
         if configurations[group]?.session != wall.sessionId || configurations[group]?.revision != wall.revision {
             planner.resetModeHistory(); configurations[group] = (wall.sessionId, wall.revision)
         }
-        // Shared galleries have finite timelines and must renew even when the
-        // same mode wins again. Only local playback has a live update loop.
+        let byID = Dictionary(uniqueKeysWithValues: zip(usable.map { $0.key.opaqueId }, assets))
+        let previousGallery = previous.flatMap { p -> PNScene? in
+            guard p.groupId == group, p.sessionId == wall.sessionId, p.settingsRevision == wall.revision, p.displays == displays,
+                  ["gallery", "galleryScroll"].contains(p.mode),
+                  p.placements.filter({ $0.visibleUntil == p.duration }).allSatisfy({ byID[$0.asset.opaqueId] != nil }) else { return nil }
+            return p
+        }
+        let carried: [WallSurfacePlan]? = previousGallery.map { p in
+            let mode: WallMode = p.mode == "gallery" ? .gallery : .horizontalGallery
+            return (settings.perDisplay(mode) ? nativeDisplays.indices.map { Optional($0) } : [nil]).map { index in
+                let display = index.map { displays[$0] }, native = index.map { nativeDisplays[$0] }
+                let terminal = p.placements.filter { $0.visibleUntil == p.duration && $0.displayId == display?.id }
+                var scene = WallScene(id: 0, mode: mode, assets: terminal.compactMap { byID[$0.asset.opaqueId] })
+                scene.displayRegions = native == nil ? nativeDisplays.map { nativeGroup.region($0) } : []
+                return WallSurfacePlan(displayID: native?.id, viewport: native?.rect.size ?? nativeGroup.viewport, scene: scene)
+            }
+        }
+        // Repeated Gallery draws extend the committed photographs and positions.
         guard let surfaces = planner.nextGroup(assets: assets, settings: settings, group: nativeGroup,
-            connected: Set(nativeDisplays.map(\.id)), allowGalleryRepeat: true), let first = surfaces.first else { return nil }
+            connected: Set(nativeDisplays.map(\.id)), allowGalleryRepeat: true, continuation: carried), let first = surfaces.first else { return nil }
+        let continuing = previousGallery?.mode == (first.scene.mode == .horizontalGallery ? "galleryScroll" : first.scene.mode.rawValue)
         var placements: [PNPlacement] = []; var duration = 0.0
         for surface in surfaces {
             try Task.checkCancellation()
@@ -49,8 +69,16 @@ import SwiftUI
             case .horizontalGallery:
                 seconds = max(120, settings.galleryMaxSeconds * 3)
                 let h = max(1, v.height - 2 * settings.gap); var x = settings.gap; var index = 0
+                if continuing, let previousGallery {
+                    for old in previousGallery.placements where old.displayId == display?.id && old.toX + old.width > clip.x {
+                        var p = old; p.id = placements.count; p.fromX = old.toX; p.fromY = old.toY
+                        p.toX = old.toX - seconds * settings.galleryScrollPixelsPerSecond
+                        p.startSeconds = 0; p.motionSeconds = seconds; p.visibleFrom = 0; p.visibleUntil = seconds
+                        placements.append(p); x = max(x, old.toX - ox + old.width + settings.gap)
+                    }
+                }
                 while x < v.width + seconds * settings.galleryScrollPixelsPerSecond && index < 128 {
-                    let chosen = index < scene.assets.count ? scene.assets[index] : planner.replacement(assets: assets, settings: settings, excluding: []) ?? scene.assets[0]
+                    let chosen = !continuing && index < scene.assets.count ? scene.assets[index] : planner.replacement(assets: assets, settings: settings, excluding: []) ?? scene.assets[0]
                     let w = h * chosen.aspectRatio
                     add(chosen, width: w, height: h, fromX: x, fromY: (v.height - h) / 2, toX: x - seconds * settings.galleryScrollPixelsPerSecond, toY: (v.height - h) / 2, motion: seconds, visibleUntil: seconds, corner: settings.cornerRadius)
                     x += w + settings.gap; index += 1
@@ -65,13 +93,23 @@ import SwiftUI
             }
             duration = max(duration, seconds)
         }
+        var gallerySchedule: PNGallerySchedule?
         if first.scene.mode == .gallery {
-            let inputs = surfaces.map { GalleryTimeline.Surface(assets: $0.scene.assets, viewport: $0.viewport,
-                displays: settings.avoidFaceDisplayBoundaries ? $0.scene.displayRegions : []) }
-            let segments = GalleryTimeline.build(inputs, duration: duration, settings: settings, replacement: { active in
+            let inputs = surfaces.map { surface in
+                let display = surface.displayID.map { displays[Int($0) - 1] }
+                let ox = Double(display.map { $0.x - left } ?? 0), oy = Double(display.map { $0.y - top } ?? 0)
+                let terminal = continuing ? previousGallery?.placements.filter { $0.visibleUntil == previousGallery!.duration && $0.displayId == display?.id } : nil
+                return GalleryTimeline.Surface(assets: surface.scene.assets, viewport: surface.viewport,
+                    displays: settings.avoidFaceDisplayBoundaries ? surface.scene.displayRegions : [],
+                    frames: terminal?.map { CGRect(x: $0.toX - ox, y: $0.toY - oy, width: $0.width, height: $0.height) })
+            }
+            let timeline = GalleryTimeline.buildPlan(inputs, duration: duration, settings: settings, replacement: { active in
                 planner.replacement(assets: assets, settings: settings, excluding: Set(active.map(\.url)))
-            }, candidates: assets)
-            for s in segments {
+            }, candidates: assets, nextChangeSeconds: continuing ? previousGallery?.gallerySchedule?.nextChangeSeconds : nil,
+                updated: continuing ? Set((previousGallery?.gallerySchedule?.updatedAssets ?? []).compactMap { byID[$0]?.url }) : [])
+            duration = timeline.duration
+            gallerySchedule = PNGallerySchedule(nextChangeSeconds: timeline.nextChangeSeconds, updatedAssets: timeline.updated.map(\.lastPathComponent))
+            for s in timeline.segments {
                 let surface = surfaces[s.surface]
                 let display = surface.displayID.flatMap { id in displays.indices.contains(Int(id) - 1) ? displays[Int(id) - 1] : nil }
                 let x = Double(display.map { $0.x - left } ?? 0), y = Double(display.map { $0.y - top } ?? 0)
@@ -88,6 +126,7 @@ import SwiftUI
         if first.scene.mode != .gallery { for index in placements.indices { placements[index].visibleUntil = duration } }
         let mode = first.scene.mode == .horizontalGallery ? "galleryScroll" : first.scene.mode.rawValue
         var plan = PNScene(id: UUID(), groupId: group, sessionId: wall.sessionId, settingsRevision: wall.revision, mode: mode, viewport: PNSize(width: width, height: height), displays: displays, duration: duration, fadeSeconds: min(settings.fadeSeconds, duration), background: settings.backgroundHex, placements: placements, ambient: [])
+        plan.continuationOf = continuing ? previousGallery?.id : nil; plan.gallerySchedule = gallerySchedule
         if settings.glassBackground { plan.ambient = try await ambient(plan) }
         try plan.validate(); return plan
     }

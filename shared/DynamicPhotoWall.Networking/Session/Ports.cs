@@ -39,6 +39,9 @@ public interface IScenePlanner
 {
     Task<SharedScenePlan?> PrepareAsync(WallSnapshot wall, Guid groupId, IReadOnlyList<SharedPhoto> photos,
         CancellationToken cancellation);
+    Task<SharedScenePlan?> PrepareAsync(WallSnapshot wall, Guid groupId, IReadOnlyList<SharedPhoto> photos,
+        CancellationToken cancellation, SharedScenePlan? previous)
+        => PrepareAsync(wall, groupId, photos, cancellation);
 }
 public interface IPlaybackOutput
 {

@@ -102,21 +102,43 @@ import Testing
                 var wall = v.wall; wall.playback = PNOptions(settings)
                 let planner = PNScenePlanner(cache: cache), clock = Clock(), output = Output()
                 let coordinator = PNSceneCoordinator(planner: planner, output: output, clock: clock)
-                var previousID: UUID?, previousEnd = 0.0
+                var previous: PNScene?, previousEnd = 0.0, lastReplacement: Double?
                 for round in 0..<100 {
                     try await coordinator.pump(local: wall.leaderId, wall: wall, live: live, photos: photos)
                     try #require(output.plans.count == round + 1)
                     let plan = try #require(output.plans.last); try plan.validate()
-                    #expect(plan.id != previousID && plan.mode == (scroll ? "galleryScroll" : "gallery"))
+                    #expect(plan.id != previous?.id && plan.mode == (scroll ? "galleryScroll" : "gallery"))
                     #expect(plan.placements.contains { scroll ? $0.fromX != $0.toX : $0.visibleFrom > 0 })
                     #expect(Set(plan.placements.map(\.displayId)).count == (perDisplay ? 2 : 1))
                     #expect(output.commits.count == round)
                     try await coordinator.ready(remote, PNReady(planId: plan.id, groupId: plan.groupId))
                     try #require(output.commits.count == round + 1)
                     let commit = try #require(output.commits.last)
-                    if round > 0 { #expect(commit.startAt < previousEnd) }
-                    previousID = plan.id; previousEnd = commit.startAt + plan.duration
-                    clock.time = previousEnd - 4 - 1000
+                    if let previous {
+                        #expect(plan.continues(previous)); #expect(abs(commit.startAt - previousEnd) < 0.000001)
+                        let endpoint = previous.placements.filter { $0.visibleUntil == previous.duration && $0.toX + $0.width > $0.clip.x && $0.toX < $0.clip.x + $0.clip.width }
+                        let initial = plan.placements.filter { $0.evaluate(0).opacity > 0 && $0.fromX + $0.width > $0.clip.x && $0.fromX < $0.clip.x + $0.clip.width }
+                        #expect(endpoint.count == initial.count)
+                        for old in endpoint {
+                            #expect(initial.contains { $0.asset == old.asset && $0.displayId == old.displayId
+                                && abs($0.fromX - old.toX) < 0.000001 && abs($0.fromY - old.toY) < 0.000001
+                                && $0.width == old.width && $0.height == old.height })
+                        }
+                    }
+                    if !scroll {
+                        for at in Set(plan.placements.filter { ($0.fadeInSeconds ?? 0) > 0 }.map(\.visibleFrom)).sorted() {
+                            let time = commit.startAt + at
+                            if let lastReplacement {
+                                #expect(time - lastReplacement >= settings.fadeSeconds + settings.galleryMinSeconds - 0.00001)
+                                #expect(time - lastReplacement <= settings.fadeSeconds + settings.galleryMaxSeconds + 0.00001)
+                            }
+                            lastReplacement = time
+                        }
+                    }
+                    let roundtrip = try PNWire.decode(PNScene.self, PNWire.encode(plan)); try roundtrip.validate()
+                    #expect(roundtrip.continuationOf == plan.continuationOf)
+                    previous = plan; previousEnd = commit.startAt + plan.duration
+                    clock.time = previousEnd - 4 - 1000 + 0.001
                 }
                 #expect(clock.time >= 2 * 60 * 60)
             }

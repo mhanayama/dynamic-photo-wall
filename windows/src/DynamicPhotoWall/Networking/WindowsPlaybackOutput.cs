@@ -58,12 +58,16 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         if (photos == null) throw new InvalidOperationException("写真キャッシュが接続されていません。");
         var own = plan.Displays.Where(d => d.Key.PeerId == localPeer).Select(d => d.Key.LayoutId).ToArray();
         var required = plan.Placements.Where(p => p.DisplayId == null || own.Contains(p.DisplayId)).Select(p => p.Asset).Distinct().ToArray();
+        var held = await dispatcher.InvokeAsync(() => current.TryGetValue(plan.GroupId, out var group) && plan.Continues(group.Visual.Plan)
+            ? group.Visual.Images : null);
         var bitmaps = await Task.Run(() =>
         {
             var result = new Dictionary<string, System.Windows.Media.Imaging.BitmapSource>();
             foreach (var key in required)
             {
-                cancellation.ThrowIfCancellationRequested(); var data = photos.ReadImage(key);
+                cancellation.ThrowIfCancellationRequested();
+                if (held?.TryGetValue(key.OpaqueId, out var retained) == true) { result[key.OpaqueId] = retained; continue; }
+                var data = photos.ReadImage(key);
                 try
                 {
                     var metadata = photos.Available.First(p => p.Key == key);
@@ -155,6 +159,7 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 }
             }
             current[commit.GroupId] = group; commits.Remove(commit.GroupId);
+            if (reuse && group.Previous != null && group.Renderer.ContinueShared(visual, group.Previous)) group.Previous = null;
             // Initialize images, ambient frames and opacity before exposing a tree.
             if (group.Previous != null) group.Renderer.PresentShared(group.Previous, Math.Max(0, now - group.PreviousStarted - group.PreviousPaused));
             group.Renderer.PresentShared(visual, Math.Max(0, now - group.Started));

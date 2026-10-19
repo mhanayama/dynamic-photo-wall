@@ -203,10 +203,23 @@ nonisolated struct PNPlacement: Codable, Identifiable, Sendable {
     }
 }
 nonisolated struct PNAmbient: Codable, Sendable { var at: Double; var png: Data; var displayId: String? }
+nonisolated struct PNGallerySchedule: Codable, Sendable { var nextChangeSeconds: Double; var updatedAssets: [String] }
 nonisolated struct PNScene: Codable, Identifiable, Sendable {
     var id: UUID; var groupId: UUID; var sessionId: UUID; var settingsRevision: Int64; var mode: String
     var viewport: PNSize; var displays: [PNDisplay]; var duration: Double; var fadeSeconds: Double; var background: String; var placements: [PNPlacement]; var ambient: [PNAmbient]
+    var continuationOf: UUID? = nil
+    var gallerySchedule: PNGallerySchedule? = nil
+    func continues(_ previous: PNScene) -> Bool {
+        continuationOf == previous.id && mode == previous.mode && groupId == previous.groupId && sessionId == previous.sessionId
+            && settingsRevision == previous.settingsRevision && viewport.width == previous.viewport.width && viewport.height == previous.viewport.height
+            && displays == previous.displays
+    }
     func validate() throws {
+        try PNWire.require(continuationOf == nil || (continuationOf != .pnZero && continuationOf != id && ["gallery", "galleryScroll"].contains(mode)), "Invalid gallery continuation")
+        if let schedule = gallerySchedule {
+            try PNWire.require(mode == "gallery" && schedule.nextChangeSeconds.isFinite && schedule.nextChangeSeconds >= 0 && schedule.nextChangeSeconds <= 3600
+                && schedule.updatedAssets.count <= 1024 && schedule.updatedAssets.allSatisfy { $0.count == 64 && $0.allSatisfy { $0.isHexDigit } }, "Invalid gallery schedule")
+        }
         try PNWire.require(id != .pnZero && groupId != .pnZero && sessionId != .pnZero && settingsRevision >= 0, "Invalid scene identity")
         try PNWire.require(duration.isFinite && duration > 0 && duration <= 3600 && fadeSeconds >= 0 && fadeSeconds <= duration
             && viewport.width > 0 && viewport.width <= 32768 && viewport.height > 0 && viewport.height <= 32768

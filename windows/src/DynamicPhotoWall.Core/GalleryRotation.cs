@@ -4,6 +4,8 @@ namespace DynamicPhotoWall.Core;
 public sealed class GalleryRotation
 {
     private readonly HashSet<string> updated = new(StringComparer.OrdinalIgnoreCase);
+    public GalleryRotation(IEnumerable<string>? previous = null) { if (previous != null) updated.UnionWith(previous); }
+    public IReadOnlyList<string> Updated => updated.ToArray();
     public int Choose(IReadOnlyList<PhotoInfo> active, Random random)
     {
         updated.IntersectWith(active.Select(p => p.Path));

@@ -34,7 +34,15 @@ nonisolated struct PNRecovery: Sendable {
         else if let isolatedAt, elapsed - isolatedAt >= 60 { state = .standalone }
     }
 }
-@MainActor protocol PNScenePlanning { func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? }
+@MainActor protocol PNScenePlanning {
+    func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene?
+    func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto], previous: PNScene?) async throws -> PNScene?
+}
+extension PNScenePlanning {
+    func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto], previous: PNScene?) async throws -> PNScene? {
+        try await prepare(wall: wall, group: group, photos: photos)
+    }
+}
 @MainActor protocol PNPlaybackOutput: AnyObject {
     func prepare(_ scene: PNScene) async throws
     func commit(_ commit: PNCommit)
@@ -70,7 +78,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             if participants.isEmpty || pending[group] != nil { continue }
             if let active = current[group], active.plan.settingsRevision == wall.revision && clock.now - active.started - (pausedSeconds - active.paused) < active.plan.duration - 4 { continue }
             if let retry = retryAt[group], clock.elapsed < retry { continue }
-            guard let plan = try await planner.prepare(wall: wall, group: group, photos: photos) else { retryAt[group] = clock.elapsed + 5; continue }
+            guard let plan = try await planner.prepare(wall: wall, group: group, photos: photos, previous: current[group]?.plan) else { retryAt[group] = clock.elapsed + 5; continue }
             retryAt.removeValue(forKey: group)
             try plan.validate(); pending[group] = Pending(plan: plan, waiting: participants, created: clock.elapsed)
             try await broadcast?(PNPacket("scenePrepare", plan))
@@ -85,7 +93,9 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     func lost(_ peer: UUID) async throws { for group in Array(pending.keys) { pending[group]?.waiting.remove(peer); try await tryCommit(group) } }
     private func tryCommit(_ group: UUID) async throws {
         guard let item = pending[group], item.waiting.isEmpty else { return }
-        let commit = PNCommit(planId: item.plan.id, groupId: group, startAt: clock.now + 2)
+        var start = clock.now + 2
+        if let active = current[group], item.plan.continues(active.plan) { start = max(start, active.started + active.plan.duration + pausedSeconds - active.paused) }
+        let commit = PNCommit(planId: item.plan.id, groupId: group, startAt: start)
         observe(item.plan, commit); pending.removeValue(forKey: group)
         try await broadcast?(PNPacket("sceneCommit", commit)); output.commit(commit); committed?(commit)
     }

@@ -14,7 +14,7 @@ import SwiftUI
         var value = placement.evaluate(elapsed)
         // Scene opacity owns the first fade. Honor independent Gallery fades,
         // including zero for surviving cards that only change position.
-        let fadeInSeconds = placement.visibleFrom == 0 ? 0 : placement.fadeInSeconds ?? placement.fadeSeconds
+        let fadeInSeconds = placement.fadeInSeconds ?? (placement.visibleFrom == 0 ? 0 : placement.fadeSeconds)
         let fadeOutSeconds = placement.visibleUntil == frame.plan.duration ? 0 : placement.fadeOutSeconds ?? placement.fadeSeconds
         let fadeIn = fadeInSeconds <= 0 ? 1 : min(1, max(0, (elapsed - placement.visibleFrom) / fadeInSeconds))
         let fadeOut = fadeOutSeconds <= 0 ? 1 : min(1, max(0, (placement.visibleUntil - elapsed) / fadeOutSeconds))
@@ -29,13 +29,16 @@ import SwiftUI
     struct Held { var frame: PNPlayback.Frame; var opacity: Double }
     var frame: PNPlayback.Frame
     private(set) var previous: [Held] = []
+    private(set) var isContinuation = false
     func age(at time: Double) -> Double { max(0, time - frame.start - frame.paused) }
     private func visible(at time: Double) -> [Held] {
-        let opacity = previous.isEmpty || frame.plan.fadeSeconds <= 0 ? 1 : min(1, age(at: time) / frame.plan.fadeSeconds)
+        let opacity = isContinuation || previous.isEmpty || frame.plan.fadeSeconds <= 0 ? 1 : min(1, age(at: time) / frame.plan.fadeSeconds)
         return (opacity >= 1 ? [] : previous) + [Held(frame: frame, opacity: opacity)]
     }
     mutating func replace(with next: PNPlayback.Frame, at time: Double) {
-        previous = visible(at: time).filter { $0.opacity > 0 }
+        let continuing = next.plan.continues(frame.plan)
+        previous = continuing ? [] : visible(at: time).filter { $0.opacity > 0 }
+        isContinuation = continuing
         frame = next
     }
     mutating func advance(at time: Double, repeating: Bool) {

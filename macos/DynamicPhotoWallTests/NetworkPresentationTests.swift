@@ -7,6 +7,22 @@ import Testing
 // draw or capture a desktop window.
 @MainActor struct NetworkPresentationTests {
     private let modes = ["gallery", "galleryScroll", "verticalPan", "horizontalPan", "zoom"]
+    @Test func galleryContinuationKeepsTheSurfaceImagesAndFullOpacity() async throws {
+        let f = try await Fixture(); defer { f.close() }
+        for mode in ["gallery", "galleryScroll"] {
+            let old = f.plan(mode)
+            try await f.show(old); f.clock.time += 2; f.output.render()
+            let surface = try #require(f.log.surfaces[1])
+            let image = try #require(surface.layers.last?.frame.images[f.photo.key.opaqueId]?.image)
+            var next = old; next.id = UUID(); next.continuationOf = old.id
+            try await f.output.prepare(next)
+            f.output.commit(PNCommit(planId: next.id, groupId: next.groupId, startAt: f.clock.time))
+            f.output.render()
+            #expect(f.log.surfaces[1] === surface && surface.closed == 0)
+            #expect(surface.layers.count == 1 && surface.layers[0].opacity == 1)
+            #expect(surface.layers[0].frame.images[f.photo.key.opaqueId]?.image === image)
+        }
+    }
     @Test func allModeHandoffsKeepSurfacesAndEachPlansOwnCrop() async throws {
         let f = try await Fixture(); defer { f.close() }
         for from in modes {

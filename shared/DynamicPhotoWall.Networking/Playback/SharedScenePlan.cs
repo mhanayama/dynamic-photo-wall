@@ -13,14 +13,28 @@ public sealed record ScenePlacement(int Id, SharedAssetKey Asset, string? Displa
     public double? FadeOutSeconds { get; init; }
 }
 public sealed record AmbientFrame(double At, byte[] Png) { public string? DisplayId { get; init; } }
+public sealed record GallerySchedule(double NextChangeSeconds, string[] UpdatedAssets);
 public sealed record SharedScenePlan(Guid Id, Guid GroupId, Guid SessionId, long SettingsRevision,
     SceneMode Mode, Viewport Viewport, PeerDisplay[] Displays, double Duration, double FadeSeconds,
     string Background, ScenePlacement[] Placements, AmbientFrame[] Ambient)
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ContinuationOf { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public GallerySchedule? GallerySchedule { get; init; }
+    public bool Continues(SharedScenePlan previous) => ContinuationOf == previous.Id && Mode == previous.Mode
+        && GroupId == previous.GroupId && SessionId == previous.SessionId && SettingsRevision == previous.SettingsRevision
+        && Viewport == previous.Viewport && Displays.SequenceEqual(previous.Displays);
     public void Validate()
     {
         PeerProtocol.Require(Id != Guid.Empty && GroupId != Guid.Empty && SessionId != Guid.Empty && SettingsRevision >= 0,
             "Invalid scene identity.");
+        PeerProtocol.Require(ContinuationOf == null || ContinuationOf != Guid.Empty && ContinuationOf != Id
+            && Mode is SceneMode.Gallery or SceneMode.GalleryScroll, "Invalid gallery continuation.");
+        if (GallerySchedule is { } schedule) PeerProtocol.Require(Mode == SceneMode.Gallery
+            && double.IsFinite(schedule.NextChangeSeconds) && schedule.NextChangeSeconds >= 0 && schedule.NextChangeSeconds <= 3600
+            && schedule.UpdatedAssets != null && schedule.UpdatedAssets.Length <= 1024
+            && schedule.UpdatedAssets.All(id => id != null && id.Length == 64 && id.All(Uri.IsHexDigit)), "Invalid gallery schedule.");
         PeerProtocol.Require(Viewport != null && double.IsFinite(Viewport.Width + Viewport.Height)
             && Viewport.Width > 0 && Viewport.Height > 0 && Viewport.Width <= 32768 && Viewport.Height <= 32768,
             "Invalid scene canvas.");

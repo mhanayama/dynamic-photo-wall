@@ -30,7 +30,8 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
     public bool LastDrawSkipped { get; private set; }
     public void ResetModeHistory() { previous = null; repeats = 0; LastDrawSkipped = false; }
     public CompositionPlan? Next(IReadOnlyList<PhotoInfo> photos, Viewport viewport, WallSettings s, ISet<string>? excluded = null,
-        IReadOnlyList<Viewport>? displayViewports = null, IReadOnlyList<FrameRect>? displayRegions = null, bool allowGalleryRepeat = false)
+        IReadOnlyList<Viewport>? displayViewports = null, IReadOnlyList<FrameRect>? displayRegions = null, bool allowGalleryRepeat = false,
+        CompositionPlan? continuation = null)
     {
         LastDrawSkipped = false;
         var modes = new List<(CompositionMode Mode, PhotoInfo[] Photos)>();
@@ -65,6 +66,11 @@ public sealed class CompositionEngine(PhotoSelector selector, Random? random = n
         var selectedMode = ModeSelection.Pick(modes.Select(m => m.Mode).ToArray(), weights.Gallery, weights.Motion, previous, repeats, random, allowGalleryRepeat);
         if (selectedMode == null) { LastDrawSkipped = modes.Count > 0; return null; }
         var chosen = modes.First(m => m.Mode == selectedMode);
+        if (continuation?.Mode == chosen.Mode && ModeSelection.IsGallery(chosen.Mode))
+        {
+            repeats = previous == chosen.Mode ? repeats + 1 : 1; previous = chosen.Mode;
+            return continuation;
+        }
         var target = s.IsPerDisplay(chosen.Mode) && displayViewports?.Count > 0 ? displayViewports[0] : viewport;
         var plan = SelectPhotos(chosen.Mode, chosen.Photos, target, s, excluded,
             !s.IsPerDisplay(chosen.Mode) && s.AvoidFaceDisplayBoundaries ? displayRegions : null);

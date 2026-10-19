@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-19 — Gallery全体の再表示をやめ、個別交換を継続
+
+`919e4fd`の修正は90／120秒ごとに写真を選び直して別Galleryへ切り替えるため、ユーザーの期待する「同じGalleryのまま画像の差し替えを続ける」動作に訂正した。確定済み計画の終端の写真・位置・大きさを次の予定へ渡し、静止Galleryは更新済みフラグと次の交換までの残り時間、スクロールは列の位置と速度を引き継ぐ。静止Galleryの計画境界は交換途中を避け、全端末ready後のcommitを前計画の終端に合わせる。表示中のCanvas・残る画像要素・デコード済み画像を保持し、全体フェードを行わない。Next・設定変更・別モードの切替は通常の新構成を維持する。
+
+GUIなし回帰テストを強化。静止／スクロール×スパン／画面別の4条件で各100計画・仮想時計で各2時間以上、境目の写真・位置・大きさの一致、Canvasと残る画像要素の同一性、全体不透明度1、設定どおりの交換間隔、pause/resumeで境界時刻をずらして継続すること、明示的Nextと設定変更では新構成となること、追加した省略可能なwire項目の往復を確認した。
+
+ReleaseコンパイルとGUIなし43ケースが警告・エラー0で成功（`artifacts/windows/gallery-continuous-slots/full/test-results.json`）。相互TLSを含むネットワーク26ケース／241 assertionsも成功（`artifacts/windows/gallery-continuous-slots/network-core/test-results.json`）。Swift側も同じ計画継続と表示面・デコード済み画像の保持へ修正しテストを追加したが、Macでのコンパイル・実行確認は未実施。GUI操作・画面撮影・実端末間の長時間表示は未実施。
+
+Windowsの配布用単一EXEを`artifacts/windows/gallery-continuous-slots/publish/`へ発行し、`release/windows/win-x64/DynamicPhotoWall.exe`へ反映。発行元とのSHA-256一致を確認し、旧EXEは同検証ディレクトリ内の`previous-*/`へ退避した。起動中のアプリは保持しており、修正の適用には再起動が必要。起動先の変更・ルート直下への生成物追加はない。
+
 ## 2026-10-19 — 同期Galleryが一定時間後に停止する問題
 
 同期再生の有限タイムラインにも同種Galleryの再当選抑止を適用していたため、静止Galleryのみ有効なら既定90秒、Scrolling Galleryのみなら120秒の後に更新が止まっていた。ネットワークの計画生成に限って`allowGalleryRepeat`を有効にし、同じモードでも次の共有計画を準備する。ローカルの再当選スキップと写真交換、Pan・Zoomの連続回避と80／20の系統ウェイトは維持する。Swift側にも同じ修正と回帰テストを追加した。
