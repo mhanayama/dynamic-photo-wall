@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Mac Issue #1の実測（2026-10-19）:** 稼働build 14のCPU平均35.07%、同期描画とCore Animation/Metal関連のスタックを確認。固定fixtureの静止Galleryは変更前22.28%→PR版12.05%、背景生成80→0回/10秒。同期fixtureでは差がなく、静止/一時停止相当でも再描画が続く。次の対象は`PNWindowSurface.present`の無条件再描画と16ms進行処理。数値は通常アプリの同条件前後比較ではない。[実測と制約](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照。
+
 **Mac Issue #1の背景生成改善（2026-10-19）:** 静止構成の8Hz再生成をやめ、写真/配置/画像準備の変更と動作区間のサンプリングへ分離。ローカルの色追従は表示側の0.8秒応答へ移した。前景の顔保護計画・Gallery配置をキャッシュし、同一NSImageへの再描画要求も抑える。共有PNG・wire時刻・受信色補正は維持する。Swift単体193件・既存fixture・ネットワーク試験とarm64 Releaseビルドが成功。実CPU/GPU/電力・実画面の滑らかさ・Mac↔Windows表示は未確認。通常アプリ・配布物は更新していない。[監査と計測手順](docs/RENDERING-PERFORMANCE.md)を参照。
 
 **Mac build 14の公開用検証（2026-10-19）:** `d67fd1f`までのGallery継続修正をMacで検証し、build 14へ更新した。さらに、ユーザー報告のCPU約47%・カーソルの一時停止を調べ、稼働中build 13の5秒間のスタック採取で`PNSceneView.draw`からの`PNAssetKey.opaqueId`の反復計算が主要な負荷源と分かった。写真IDと画面IDの照合、画像参照、背景の抽出・整列、画面の切り出しを計画の準備時に確定し、毎フレームの描画から除いた。Swift単体182件・29 suites、共通fixture704＋472 assertions、Zoom構図5120 assertions、色12ケース、.NETネットワーク26ケース・241 assertionsとarm64 Releaseコンパイルが成功。GUI操作なしの64予定×240回の照合比較は旧約399ms／新約3.6msで結果が一致した。実アプリのCPU低下やカーソル停止の解消は未検証。通常アプリの置換・再起動は行っていない。[検証記録](docs/TEST-RESULTS-2026-10-19.md#build-14-同期galleryの継続とプレリリース更新)と[リリースノート](docs/RELEASE-NOTES-v1.1.0-build14.md)を参照。以下のMac未実行という記述は取り込み前の記録として保持する。

@@ -1,5 +1,9 @@
 # Windows差分確認とMac build 10・11
 
+## Issue #1: CPU/GPU採取と同一fixtureによる比較
+
+稼働build 14の平均CPUは30秒で35.07%。Time ProfilerとMetal System Traceを採取し、同期表示の16ms更新とCore Animation/Metal関連処理を確認した。同一fixtureの静止Galleryは変更前22.28%→PR版12.05%（各3回、準備5秒＋測定10秒）、背景生成80回→0回/10秒。同期側は5.65%→5.49%で同程度、10秒に約560回の再描画が続く。探索測定のPan/Zoom/scroll、一時停止、制約と生データの場所は[実測記録](RENDERING-MEASUREMENTS-2026-10-19.md)を参照。通常アプリは継続稼働し、個人設定・配布物は変更していない。電力・提示フレーム時間・実Windows同期の前後比較は未測定。
+
 ## Issue #1: 背景生成の抑制と描画計算のキャッシュ
 
 専用ブランチで`verify.sh`（GUI操作なし）を実行。Swift単体193件/30 suites、共通fixture704＋472 assertions、色12ケース、Zoom構図5120 assertions、ネットワーク26ケース/241 assertionsとarm64 Releaseコンパイルが成功。静止Galleryの仮想60秒・3,600更新、共有グループの2タイルからの重複更新で背景生成1回を確認した。処理回数の検証であり、実アプリのCPU/GPU・電力の前後比較は未実施。変更理由・追加11回帰・実機残件は[描画負荷の監査](RENDERING-PERFORMANCE.md)を参照。通常アプリの置換、配布物の更新、GUI自動操作は行っていない。

@@ -1,6 +1,6 @@
 # macOS描画負荷の監査と計測
 
-2026-10-19 / [Issue #1](https://github.com/mhanayama/dynamic-photo-wall/issues/1)。ソース基準はbuild 14の`7a711db`。今回は不要な背景生成と幾何計算・再描画要求を減らす段階の実装。実画面でのCPU/GPU・電力・フレーム時間の前後比較は未実施で、Issue全体の完了判定は残す。
+2026-10-19 / [Issue #1](https://github.com/mhanayama/dynamic-photo-wall/issues/1)。ソース基準はbuild 14の`7a711db`。今回は不要な背景生成と幾何計算・再描画要求を減らす段階の実装。その後、稼働build 14のCPU/GPU採取と、同一fixtureによる変更前後の比較を実施した。[2026-10-19の測定結果](RENDERING-MEASUREMENTS-2026-10-19.md)を参照。通常の全画面表示での前後比較、電力、提示フレーム時間は未確認で、Issue全体の完了判定は残す。
 
 ## 確認した経路と変更
 
@@ -56,9 +56,9 @@ bash macos/scripts/verify.sh
 | キャッシュした顔保護の幾何 | 601表示時刻で準備1回。従来の都度計算と座標が一致し、顔/設定/viewport変更で再準備 |
 | 同じ写真ビューへ600回の同一画像更新 | 追加の再描画要求なし。fit/fillとサイズ変更では要求する |
 
-通常アプリの置換・再起動、release配布物の更新、GUI操作、スクリーンショット、実端末間の表示試験は実施していない。Xcode sandbox内ではSwift macro/test通知が制限されたため通常権限で再実行。テスト時にCoreSimulatorのバージョン警告とCore Imageの`MDB_MAP_FULL`ログが出たが、macOS単体・画素回帰とReleaseビルドは成功した。これらのログを性能測定値として使わない。
+初回の実装検証では、通常アプリの置換・再起動、release配布物の更新、GUI操作、スクリーンショット、実端末間の表示試験は実施していない。後続の独立ウィンドウでの実描画計測は[別記録](RENDERING-MEASUREMENTS-2026-10-19.md)へ分ける。Xcode sandbox内ではSwift macro/test通知が制限されたため通常権限で再実行。テスト時にCoreSimulatorのバージョン警告とCore Imageの`MDB_MAP_FULL`ログが出たが、macOS単体・画素回帰とReleaseビルドは成功した。これらのログを性能測定値として使わない。
 
-## 実機での前後比較手順（未実施）
+## 通常の全画面表示での前後比較手順（未実施）
 
 専用設定・同一fixture写真・同じ表示配置/倍率/更新周波数を使用する。通常の個人設定・写真ライブラリを比較用に変更しない。比較元は`7a711db`、比較先はこのIssueのPR。Release設定・同じ署名条件で別々に起動し、両版を同時に動かさない。GUI操作を伴う自動試験は別途明示依頼がある場合だけ行う。
 
