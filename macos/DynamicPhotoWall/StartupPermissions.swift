@@ -116,7 +116,7 @@ nonisolated enum WallPermissionStatus: Equatable {
                 let browser = NWBrowser(for: .bonjour(type: "_photowall._tcp", domain: "local."), using: .tcp)
                 self.browser = browser
                 browser.stateUpdateHandler = { [weak self] state in
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         guard self?.generation == token else { return }
                         self?.changed(state)
                     }

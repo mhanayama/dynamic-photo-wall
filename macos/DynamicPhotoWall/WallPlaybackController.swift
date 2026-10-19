@@ -220,6 +220,8 @@ final class WallPlaybackController {
         }
         let versions = Set(assets.map(PhotoImageKey.init))
         if currentScene.map({ $0.assets.contains(where: { !versions.contains(PhotoImageKey($0)) }) }) ?? true {
+            // Replacing an invalid visible asset must bypass duplicate-mode suppression.
+            planner.resetModeHistory(); nextModeDrawAt = 0
             moveToNext(at: clock.elapsed(at: now))
             return
         }
@@ -242,6 +244,7 @@ final class WallPlaybackController {
         guard hasSession else { return }
         failedVersions.removeAll()
         imageStore?.clearFailures()
+        planner.resetModeHistory(); nextModeDrawAt = 0
         moveToNext(at: clock.elapsed(at: now))
     }
 

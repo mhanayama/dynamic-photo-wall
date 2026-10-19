@@ -55,4 +55,39 @@ import Testing
         #expect(playback.currentScene?.id == first.id && !playback.isWaiting)
         #expect(playback.currentScene?.assets != first.assets)
     }
+    @Test func initialGalleryRetainsSequentialPhotoOrder() throws {
+        var settings = WallSettings(); settings.randomOrder = false
+        let assets = (0..<5).map { photo($0) }
+        let scene = try #require(WallScenePlanner(seed: 7).next(assets: assets, settings: settings,
+            viewport: CGSize(width: 4000, height: 1080), forcedMode: .gallery))
+        #expect(scene.assets == assets)
+    }
+    @Test func libraryReplacementBypassesSkippedDrawAndRetainsPause() throws {
+        for mode in [WallMode.gallery, .horizontalGallery] {
+            var settings = WallSettings()
+            for other in WallMode.allCases where other != mode { settings.disable(other) }
+            settings.galleryPerDisplay = true; settings.galleryScrollPerDisplay = true
+            let assets = (0..<4).map { photo($0) }, replacements = (10..<14).map { photo($0) }
+            for grouped in [false, true] {
+                let displays = (1...(grouped ? 2 : 1)).map { WallDisplay(id: UInt32($0), name: "test", x: Double($0 - 1) * 1920,
+                    y: 0, width: 1920, height: 1080, groupID: "test") }
+                let group = try #require(DisplayLayout.groups(displays).first)
+                let session = WallGroupPlayback(group: group, connected: Set(displays.map(\.id)), assets: assets,
+                    settings: settings, imageStore: nil, seed: 7, now: 0)
+                session.update(now: 0)
+                let first = try #require(session.current?.surfaces.first?.playback.currentScene)
+                session.next(now: 2) // A repeated Gallery draw starts the five-second hold.
+                #expect(session.current?.surfaces.first?.playback.currentScene?.id == first.id)
+                session.setPaused(true, now: 2)
+                session.updateLibrary(replacements, now: 3)
+                #expect(!session.isWaiting && session.paused)
+                let surfaces = try #require(session.current).surfaces
+                #expect(surfaces.allSatisfy { $0.playback.isPaused })
+                #expect(surfaces.allSatisfy { surface in
+                    surface.playback.currentScene?.assets.allSatisfy { replacements.contains($0) } == true
+                })
+                session.stop()
+            }
+        }
+    }
 }

@@ -55,3 +55,31 @@ bash macos/scripts/package.sh
 最終コードの1.1.0 build 11をAPP／ZIP／DMGへ更新した。署名・arm64・DMG・SHA256SUMS・ZIP内の全ファイルと展開済みAPPの一致、ルート直下のファイル一覧が不変であることを確認した。実行ファイルの未定義シンボルに`SecItem*`／`SecKeychain*`の参照がなく、配布APPに秘密ファイルが含まれていないことも確認した。API参照の確認は、すべてのOSダイアログが出ないというGUI実機検証の代わりではない。
 
 検証ログ・シンボル一覧・照合結果は`artifacts/macos/file-secrets-2026-10-19/`。置換前のbuild 10は`artifacts/macos/package/previous-release.YC6D0V/`へ退避した。`/Applications`の置換とGitHub Releaseへの公開は行っていない。実アプリの更新後の操作と、旧環境から新しい接続情報でのMac↔Windows再接続は手動確認の残件。
+
+## build 12: 最新リモートの取り込みとGallery復旧
+
+同日、変更のない`61033f3`から`origin/main`の`1ffc189`まで3コミットをfast-forwardで取り込んだ。写真ソースの接続表示・ピア解除、Panの中央配置、Galleryの空きへの追加、5〜10秒の交換待機、一巡フラグ、同種Gallery再当選の破棄はSwiftにも追加済みだった。Macでの未実行部分を検証し、次を修正した。
+
+- 初期Galleryの構成時に写真を毎回先頭へ挿入していたため、選択順が逆転していた。構成時は選択順に末尾へ追加して収容可否を評価する。名前順と、先頭画面が原点以外でも正しい画像を切り出す動作を維持する。再生中の空きへの追加は既存の配置部品を使う。
+- 同種Galleryを破棄した後の5秒待機とモード履歴が、写真の削除・更新・読込失敗後の復旧も阻んでいた。単画面・グループの表示写真が無効になったとき、および明示的な再試行で履歴と待ち時間を解除する。写真追加だけでは現在の表示と時計を維持する。
+- 旧テストの「Nextで必ず新Galleryになる」「空きがあっても既存写真を交換する」という期待値を、新しい表示保持・追加フェードへ更新した。追加前の写真をすべて維持し、新規写真だけが入場することも確認する。
+- 画面取得クロージャーのMainActor指定と、LAN許可コールバックの弱参照キャプチャーを明示し、Swiftの並行処理警告を解消した。
+
+`bash macos/scripts/verify.sh --unit-only`の結果:
+
+| 検証 | 結果 |
+|---|---|
+| Swift単体 | 174件・29 suites、失敗0 |
+| Windows共通fixture | 704＋472 assertions、成功 |
+| 背景色fixture | 12ケース一致 |
+| .NETネットワーク基盤 | 相互TLSを含む26ケース・241 assertions、失敗0 |
+| Mac Release | arm64コンパイル・build 12 archive成功 |
+| ローカル配布物 | 1.1.0 build 12のAPP／ZIP／DMGを生成。署名・arm64・DMG・SHA256SUMS、APPとZIP内の全6ファイルの一致を確認 |
+
+`GalleryBehaviorTests`の追加回帰では初期写真順、Gallery／Scrolling Galleryの単画面・画面別グループで、再当選後の待機中に写真を差し替えてもpauseを保持したまま復旧することを確認した。既存の削除・全読込失敗からの再試行・画面切り出し・Gallery追加・共有交換時計の回帰も成功。`NetworkDisconnectTests`で未接続ソースの非表示、保存済み選択の保持、手動切断後の再接続抑止と明示接続による再開を確認した。旧共通fixtureの期待値は変更していない。
+
+ログは`artifacts/macos/verification/verify-complete.log`、各fixtureログと`artifacts/macos/network-core/test-results.json`。最初のsandbox内実行はXcodeのプロセス通知が拒否され停止したため、以降は通常権限で実行した。CoreSimulatorの版差、AppIntents未使用のメタデータ通知、XCTestホストのlinkd・描画キャッシュの`MDB_MAP_FULL`通知は出るが、最終の単体・ビルドは成功し、Swiftソースのコンパイル警告はない。
+
+`bash macos/scripts/package.sh`で`release/macos/arm64/`のローカル候補を更新した。パッケージログは`artifacts/macos/verification/package-build12.log`、照合結果は`release-build12-check.json`。置換前のbuild 11は`artifacts/macos/package/previous-release.fjtxQc/`へ退避した。ルート直下のファイル一覧が作業前後で不変であることも確認した。`/Applications`の置換とGitHub Releaseへの公開は行っていない。
+
+GUI自動操作、実ウィンドウの表示、スクリーンショット、通常の壁・個人設定・OS権限の変更は行っていない。単体の画面切り出しは既存のオフスクリーン描画で検証した。実Mac↔Windows間のLANと表示、顔を守った構図、ちらつき・背景追従の知覚確認、混在倍率・抜差し・長時間運転は引き続き実機の残件とする。

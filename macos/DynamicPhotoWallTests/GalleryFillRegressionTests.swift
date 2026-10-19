@@ -142,10 +142,12 @@ struct GalleryFillRegressionTests {
         #expect(controller.shuffleGallery(now: 20))
         for _ in 0..<2000 {
             controller.update(now: 20)
-            if controller.slots.contains(where: { $0.previousAsset != nil }) { break }
+            if controller.slots.contains(where: { $0.appearing }) { break }
             try await Task.sleep(for: .milliseconds(1))
         }
-        #expect(controller.slots.filter { $0.previousAsset != nil }.count == 1)
+        #expect(controller.slots.count == initial.count + 1)
+        #expect(initial.allSatisfy { asset in controller.slots.contains { $0.asset.url == asset.url } })
+        #expect(controller.slots.filter { $0.appearing && $0.previousAsset == nil }.count == 1)
         #expect(!controller.shuffleGallery(now: 20.1))
         let p = try #require(controller.presentation(now: 20.1))
         #expect(p.galleryLayout?.to.allSatisfy { $0.height == viewport.height - 2 * settings.gap } == true)

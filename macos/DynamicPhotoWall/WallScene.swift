@@ -78,17 +78,14 @@ final class WallScenePlanner {
         var stripWidth = settings.gap
         for _ in 0..<count {
             let fitting = chosen.mode == .gallery ? chosen.assets.filter { p in
-                !used.contains(p.url) && FixedGalleryLayout.update(selected, incoming: p, viewport: viewport, gap: settings.gap,
-                    displays: settings.avoidFaceDisplayBoundaries ? displayRegions : [], replacement: -1, maximum: settings.galleryMax)?.isAddition == true
+                !used.contains(p.url) && FixedGalleryLayout.arrange(selected + [p], viewport: viewport, gap: settings.gap,
+                    displays: settings.avoidFaceDisplayBoundaries ? displayRegions : []).count == selected.count + 1
             } : chosen.assets
             let preferredFits = fitting.filter { p in portraits.contains { $0.url == p.url } }
             let pool = (chosen.mode == .gallery || chosen.mode == .horizontalGallery)
                 && preferredFits.contains(where: { !used.contains($0.url) }) ? preferredFits : fitting
             guard let photo = selector.pick(from: pool, settings: settings, excluding: used) else { break }
-            if chosen.mode == .gallery {
-                selected = FixedGalleryLayout.update(selected, incoming: photo, viewport: viewport, gap: settings.gap,
-                    displays: settings.avoidFaceDisplayBoundaries ? displayRegions : [], replacement: -1, maximum: settings.galleryMax)!.assets
-            } else { selected.append(photo) }
+            selected.append(photo)
             used.insert(photo.url)
             stripWidth += max(1, viewport.height - 2 * settings.gap) * photo.aspectRatio + settings.gap
             if chosen.mode == .horizontalGallery, selected.count >= 2,

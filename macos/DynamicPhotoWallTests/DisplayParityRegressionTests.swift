@@ -196,7 +196,11 @@ struct DisplayParityRegressionTests {
         session.update(now: 100)
         #expect(batch.surfaces.map { $0.playback.presentation(now: 100)?.elapsed } == times)
         session.next(now: 100)
-        #expect(session.current?.id != batch.id)
+        if ModeSelection.isGallery(mode) {
+            #expect(session.current?.id == batch.id && !session.isWaiting)
+        } else {
+            #expect(session.current?.id != batch.id)
+        }
         #expect(session.current?.surfaces.allSatisfy { $0.playback.isPaused } == true)
         session.setPaused(false, now: 101)
     }

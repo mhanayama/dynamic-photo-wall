@@ -4,6 +4,8 @@
 
 ## 表示・ギャラリーの追加調整（2026-10-19）
 
+**Mac build 12の追試:** `1ffc189`までを取り込み、Swift単体174件・29 suites（`GalleryBehaviorTests`・`NetworkDisconnectTests`を含む）、共通fixture704＋472 assertions、背景色12ケース、Mac上の.NETネットワーク26ケース・241 assertionsが成功した。Swiftの初期Galleryの写真順と、写真削除・差し替え・読込失敗後の復旧が同種Gallery抑止に阻まれる不具合を修正した。[Macの検証記録](../macos/docs/TEST-RESULTS-2026-10-19.md#build-12-最新リモートの取り込みとgallery復旧)を参照。以下のMac未実行という記述は追試前の記録である。実際のMac↔Windows端末間のLAN・画面表示は未確認。
+
 **最新の検証:** 承認機能の復旧後、TLSを含むネットワーク26ケース／241 assertionsがすべて成功した。結果は`artifacts/windows/gallery-peer-build/network-core-unrestricted/test-results.json`。WindowsのGUIなし17ケースも成功済み。以下のTLS失敗の記述は通常権限による追試前の記録である。Mac build 11の保存方式・背景改善を取り込んだが、今回追加したSwift部分のMacでの実行確認は引き続き未実施。
 
 写真ソース・ピア解除の検証後に追加された依頼をソースへ反映した。縦Panは各表示面の写真全体を中央へ置き、顔の収容に必要な分だけ横へ補正する。ミラーも各画面のviewportで計算する。Galleryは顔が収まる複数の画面区間を保持して列全体の中央に最も近い位置を選び、先頭の画面への偏りを避ける。

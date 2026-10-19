@@ -7,7 +7,7 @@ import AppKit
     private let clock: any PNClock
     private let enter: () -> Void
     private let budget: () -> Int
-    private let screenProvider: () -> [ScreenDescriptor]
+    private let screenProvider: @MainActor () -> [ScreenDescriptor]
     private let makeSurface: (ScreenDescriptor) -> any PNPlaybackSurface
     private let automaticRendering: Bool
     private var prepared: [UUID: Frame] = [:], preparing: [UUID: UUID] = [:]
@@ -31,7 +31,7 @@ import AppKit
     var previewVisible: Bool { layoutPreview.visible }
     var changed: (() -> Void)?
     init(local: UUID, clock: any PNClock, cache: PNPhotoCache, budget: @escaping () -> Int, enter: @escaping () -> Void,
-         screens: @escaping () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
+         screens: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
          makeSurface: ((ScreenDescriptor) -> any PNPlaybackSurface)? = nil, automaticRendering: Bool = true) {
         self.local = local; self.clock = clock; self.budget = budget; self.enter = enter
         screenProvider = screens; self.makeSurface = makeSurface ?? { PNWindowSurface(screen: $0) }

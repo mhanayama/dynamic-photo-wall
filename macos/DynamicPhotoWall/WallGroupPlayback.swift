@@ -265,6 +265,7 @@ final class WallGroupPlayback {
         if let prepared { dispose(prepared); self.prepared = nil }
         let versions = Set(assets.map(PhotoImageKey.init))
         if waiting || current == nil || current?.assets.contains(where: { !versions.contains(PhotoImageKey($0)) }) == true {
+            planner.resetModeHistory(); nextModeDrawAt = 0
             next(now: now)
         } else {
             for s in current?.surfaces ?? [] { s.playback.updateLibrary(assets: assets, retryFailed: false, now: now) }
