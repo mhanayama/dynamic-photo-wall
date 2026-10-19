@@ -102,7 +102,7 @@ bash macos/scripts/package.sh
 
 `release/macos/arm64/` にアドホック署名付きの`DynamicPhotoWall.app`、ZIP／DMG、SHA256SUMSを生成します。APPはそのまま直接起動できます。すべて同じReleaseのAPPから作り、署名・CPU構成・ZIP／DMGの検査後に既存のローカル配布物を置き換えます。旧配布物は`artifacts/macos/package/previous-release.*/`へ退避します。arm64専用archive・DerivedData・ログも `artifacts/macos/package/` へ分け、DMG stagingはOS標準の一時ディレクトリを使います。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
 
-現在のローカル候補は1.1.0 build 12。リモート`1ffc189`までの写真ソース接続表示・ピア解除・Gallery調整を取り込み、Macで初期Galleryの写真順と、写真削除・読込失敗からの復旧を修正しました。[Keychainを使わない保存方式](docs/LOCAL-NETWORK-STORAGE.md)、権限取得と表示面の保持も維持します。[今回の差分と検証](docs/TEST-RESULTS-2026-10-19.md#build-12-最新リモートの取り込みとgallery復旧)を参照してください。
+最新の配布物は1.1.0 build 12で、2026-10-19に[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.12)として公開しました。リモート`1ffc189`までの写真ソース接続表示・ピア解除・Gallery調整を取り込み、Macで初期Galleryの写真順と、写真削除・読込失敗からの復旧を修正しました。[Keychainを使わない保存方式](docs/LOCAL-NETWORK-STORAGE.md)、権限取得と表示面の保持も維持します。ネットワークの実機確認は未完了です。[リリースノート](docs/RELEASE-NOTES-v1.1.0-build12.md)と[今回の差分と検証](docs/TEST-RESULTS-2026-10-19.md#build-12-最新リモートの取り込みとgallery復旧)を参照してください。
 
 DMG用の一時フォルダはプロジェクト外に作成し、終了時に削除します。DMG内の `/Applications` リンクをエディタがたどって大量のファイルを検索することを防ぎます。VS Codeのワークスペース設定でもビルド生成物をファイル一覧・検索・監視から除外しています。
 
@@ -112,7 +112,7 @@ DMG用の一時フォルダはプロジェクト外に作成し、終了時に�
 
 写真ソースは接続中のものを既定で表示し、「未接続の写真ソースも表示」で保存済みの選択を確認できます。接続済みピアの「接続解除」はこのMacとの接続を切り、オンラインモードを終了するかこのMacから手動で接続し直すまで自動再接続を止めます。画面配置・ソース選択・キャッシュは保持します。build 12で`NetworkDisconnectTests`を含むMacの単体・ビルド検証を確認しました。実際のMac↔Windows端末間の接続確認は残ります。
 
-Swiftネイティブの通信・専用ファイル保存・PhotoKit原写真転送・同期表示を`DynamicPhotoWall/Networking/`へ分割して追加しました。既存の単体表示と、Dock／メニューバーをOS設定に従わせる方針を保持します。2026-10-18にMacのコンパイル修正と隔離検証を実施しました。[結果と実機残件](docs/NETWORK-TEST-RESULTS-2026-10-18.md)を参照してください。公開済みv1.1.0の検証結果に含めないでください。
+Swiftネイティブの通信・専用ファイル保存・PhotoKit原写真転送・同期表示を`DynamicPhotoWall/Networking/`へ分割して追加しました。既存の単体表示と、Dock／メニューバーをOS設定に従わせる方針を保持します。2026-10-18にMacのコンパイル修正と隔離検証を実施しました。[結果と実機残件](docs/NETWORK-TEST-RESULTS-2026-10-18.md)を参照してください。ネットワークはbuild 12プレリリースの試験用機能で、正式版v1.1.0（build 4）の検証結果に含めないでください。
 
 「ネットワーク」のオンラインモードを有効にすると待受と自動検出を開始します。候補の「接続」から参加し、受信側の確認操作は不要です。「使用ディスプレイ」「画面グルーピング」は全ピアの共通一覧へ切り替わり、共有する写真ソースは選択後に「保存して適用」で確定します。オンライン切替は即時の端末操作で、共有設定のドラフトとは独立します。
 
