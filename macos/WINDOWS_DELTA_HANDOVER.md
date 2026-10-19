@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Windows候補の長時間表示確認（2026-10-20）:** `ca71363`のRelease EXEを更新し、ユーザーは起動後約6時間に違和感なしと報告。同じプロセスの稼働も確認した。観測設定はオンラインGalleryのためローカル背景最適化の実機検証とは区別する。共有計画検証の`Invalid ambient frame`再試行が11件あり、原因・影響は未確定。PR #4はドラフトを維持する。[Windowsの記録](../windows/docs/RENDERING-PERFORMANCE.md)を参照。
+
 **Windows Issue #2の背景生成（2026-10-19）:** ローカル背景を前景の変更と動作区間に応じて更新し、静止時は生成タイマーも停止する。0.8秒の色応答は保持画像の不透明度補間へ分離。動作中は最大8Hzの幾何照合で約0.5背景px未満の変化をまとめ、開始／終了と写真交換・再配置の確定を取得する。pauseと世代取消、画面別の購読解除を扱う。Windowsの同期PNG／wire時刻／受信補正、Mac側コードと配布物は変更しない。[Windowsの監査・回帰・計測手順](../windows/docs/RENDERING-PERFORMANCE.md)を参照。専用ブランチで検証し、実画面・GPU・電力・端末間表示の受け入れは別に残す。
 
 **README・ライセンスと配布整備（2026-10-19）:** 本体はルート`LICENSE`のMITライセンス。依存通知はルートとWindows側の`THIRD-PARTY-NOTICES.md`へ分けた。Windowsは`Package.ps1 -Test`で最新EXE・配布README・実際の依存パッケージのライセンス・ビルド情報をZIP化し、SHA-256を確認する。Macの`package.sh`は次回作成時から、署名を維持したAPPの外側にMITと共通通知を置き、ZIP／DMGにも含める。出力先は引き続き`release/macos/arm64/`。この同梱差分のMac実行確認は残っており、今回のWindows作業ではMacの公開済みbuild 14を更新していない。
