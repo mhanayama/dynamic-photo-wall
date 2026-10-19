@@ -1,5 +1,13 @@
 # 実施した検証
 
+## 2026-10-19 — ピアの手動解除とギャラリーの更新
+
+ReleaseコンパイルとGUIなし17ケースが成功。各画面でのPan中央配置、Gallery列の中央寄せ、初期待機5〜10秒、写真とgapが収まる空きへの追加、既存写真を保持するWPFスロット追加、更新・選択フラグによる一巡、同種Gallery再当選のスキップを検証した。既存の表示継続・Zoom・背景補間・応答性・トレイコマンドも含む。結果は`artifacts/windows/gallery-peer-build/test-results.json`。
+
+ネットワーク試験は25ケース／237 assertions成功。送信停止中の手動解除、自動再接続・着信の抑止、ソース選択の保持、手動再接続を確認した。初期inventory送信に失敗した仮接続の除去漏れも修正し、ハートビート期限を待たずに除去される回帰試験を追加した。相互TLSの1ケースはWindowsの秘密鍵インポートで実行環境の制限により失敗。結果は`artifacts/windows/gallery-peer-build/network-core/test-results.json`。GUI操作・画面撮影は実施していない。
+
+NuGetの脆弱性情報に接続できないNU1900の警告が3件。コンパイルエラーはない。Macの追加分のビルドと実機間の同期表示は未確認。
+
 ## 2026-10-19 — Windows通知領域の右クリックで終了する問題
 
 00:22のWindowsイベントログと保存済みダンプを解析。`NotifyIcon.ShowContextMenu` → `ContextMenuStrip`のウィンドウ作成中にWinFormsの例外ダイアログへ入り、その`PictureBox`初期化が`FileNotFoundException`で失敗してプロセスが終了していた。最初にメニュー作成を失敗させた例外の詳細はダンプから取得できていない。

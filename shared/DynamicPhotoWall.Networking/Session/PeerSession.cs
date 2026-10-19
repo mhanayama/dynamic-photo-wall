@@ -145,29 +145,29 @@ public sealed partial class PeerSession : IAsyncDisposable
     private async Task Attach(IPeerLink link)
     {
         var peer = link.Remote.PeerId;
-        await operations.WaitAsync(lifetime.Token);
         try
         {
-            if (disconnectedPeers.ContainsKey(peer)) { await link.DisposeAsync(); return; }
-            if (links.TryGetValue(peer, out var old))
+            await operations.WaitAsync(lifetime.Token);
+            try
             {
-                var preferOutbound = string.CompareOrdinal(local.PeerId.ToString("N"), peer.ToString("N")) < 0;
-                if (old.Link.Outbound == preferOutbound || link.Outbound != preferOutbound) { await link.DisposeAsync(); return; }
-                links.TryRemove(peer, out _); await old.Link.DisposeAsync();
+                if (disconnectedPeers.ContainsKey(peer)) return;
+                if (links.TryGetValue(peer, out var old))
+                {
+                    var preferOutbound = string.CompareOrdinal(local.PeerId.ToString("N"), peer.ToString("N")) < 0;
+                    if (old.Link.Outbound == preferOutbound || link.Outbound != preferOutbound) return;
+                    links.TryRemove(peer, out _); await old.Link.DisposeAsync();
+                }
+                displayInventories.TryRemove(peer, out _);
+                links[peer] = new(link, clock.Elapsed);
+                if (notices.Remove(peer)) notifications.Reconnected(link.Remote.Name);
+                recovery.BeginConnection(clock.Elapsed); recovery.ConnectionRestored(clock.Elapsed);
+                await link.SendAsync(PeerPacket.Create("inventory", new PeerInventory(Self, localDisplays, provider.Sources.ToArray())), lifetime.Token);
+                if (!link.Outbound) await link.SendAsync(PeerPacket.Create("welcome", new SnapshotNotice(Snapshot, LivePeers())), lifetime.Token);
+                if (Snapshot.LeaderId == local.PeerId) await link.SendAsync(PeerPacket.Create("playbackStatus", scenes.Status), lifetime.Token);
+                foreach (var batch in photos.Catalog.Where(p => p.Key.ProviderId == local.PeerId).Chunk(64))
+                    await link.SendAsync(PeerPacket.Create("catalog", new CatalogBatch(batch)), lifetime.Token);
             }
-            displayInventories.TryRemove(peer, out _);
-            links[peer] = new(link, clock.Elapsed);
-            if (notices.Remove(peer)) notifications.Reconnected(link.Remote.Name);
-            recovery.BeginConnection(clock.Elapsed); recovery.ConnectionRestored(clock.Elapsed);
-            await link.SendAsync(PeerPacket.Create("inventory", new PeerInventory(Self, localDisplays, provider.Sources.ToArray())), lifetime.Token);
-            if (!link.Outbound) await link.SendAsync(PeerPacket.Create("welcome", new SnapshotNotice(Snapshot, LivePeers())), lifetime.Token);
-            if (Snapshot.LeaderId == local.PeerId) await link.SendAsync(PeerPacket.Create("playbackStatus", scenes.Status), lifetime.Token);
-            foreach (var batch in photos.Catalog.Where(p => p.Key.ProviderId == local.PeerId).Chunk(64))
-                await link.SendAsync(PeerPacket.Create("catalog", new CatalogBatch(batch)), lifetime.Token);
-        }
-        finally { operations.Release(); }
-        try
-        {
+            finally { operations.Release(); }
             await foreach (var packet in link.ReceiveAsync(lifetime.Token))
             {
                 await operations.WaitAsync(lifetime.Token);

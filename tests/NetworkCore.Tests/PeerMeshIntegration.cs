@@ -233,6 +233,15 @@ internal static class PeerMeshIntegration
             await sessions[0].ConnectAsync(Candidate(1));
             await Until(() => sessions[0].ConnectedPeers.Contains(ids[1]) && sessions[0].IsSourceConnected(providers[1].Sources[0]));
             Check(sessions[0].Snapshot.Sources.Contains(selected), "manual reconnect restores availability and keeps selection");
+            await sessions[0].DisconnectAsync(ids[1]);
+            var handshakeFailed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            sessions[0].Error += error => { if (error is IOException { Message: "Link closed" }) handshakeFailed.TrySetResult(); };
+            mesh.CloseBeforeAttach = true;
+            await sessions[0].ConnectAsync(Candidate(1));
+            await handshakeFailed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await Until(() => !sessions[0].ConnectedPeers.Contains(ids[1]));
+            Check(!sessions[0].IsSourceConnected(providers[1].Sources[0]) && sessions[0].ConnectedPeers.Contains(ids[2]),
+                "a failed initial inventory send removes its provisional connection without waiting for a heartbeat timeout or losing other peers");
         }
         finally { foreach (var session in sessions) await session.DisposeAsync(); foreach (var cache in caches) cache.Dispose(); }
         PeerCandidate Candidate(int i) => new(hellos[i], "127.0.0.1", 1);
@@ -273,6 +282,7 @@ internal static class PeerMeshIntegration
     }
     private sealed class Mesh
     {
+        public bool CloseBeforeAttach;
         public readonly ConcurrentDictionary<Guid, Transport> Nodes = new();
         public readonly ConcurrentBag<Link> Links = [];
         public readonly ConcurrentDictionary<Guid, bool> Blocked = new();
@@ -297,7 +307,8 @@ internal static class PeerMeshIntegration
             var outgoing = new Link(hello.PeerId, candidate.Hello, true, a, b);
             var incoming = new Link(candidate.Hello.PeerId, hello, false, b, a);
             mesh.Links.Add(outgoing); mesh.Links.Add(incoming);
-            _ = Task.Run(() => remote.accept!(incoming));
+            if (mesh.CloseBeforeAttach) outgoing.Close();
+            else _ = Task.Run(() => remote.accept!(incoming));
             return Task.FromResult<IPeerLink>(outgoing);
         }
         public ValueTask DisposeAsync() { mesh.Nodes.TryRemove(hello.PeerId, out _); return ValueTask.CompletedTask; }
