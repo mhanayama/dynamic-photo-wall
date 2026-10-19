@@ -401,6 +401,7 @@ struct DisplayParityRegressionTests {
         let images = PhotoImageStore(decode: { _ in DecodedPhoto(image: pixels) })
         #expect(await images.prepare([p]))
         var settings = only(.gallery); settings.glassBackground = true
+        settings.galleryMinSeconds = 3600; settings.galleryMaxSeconds = 3600
         let session = WallGroupPlayback(group: group, connected: [1,2], assets: [p], settings: settings, imageStore: images, now: 0)
         defer { session.stop() }; session.update(now: 0)
         let surface = try #require(session.current?.surfaces.first)
@@ -412,12 +413,19 @@ struct DisplayParityRegressionTests {
         }
         #expect(sampler.updateCount > 0)
         #expect(session.current?.surfaces.count == 1 && surface.ambients.count == 1)
-        session.setPaused(true, now: 1)
+        for tick in 1...3600 {
+            // Two physical tiles can request the same group tick.
+            session.update(now: Double(tick) / 60)
+            session.update(now: Double(tick) / 60)
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(sampler.updateCount == 1)
+        session.setPaused(true, now: 61)
         let count = sampler.updateCount
-        session.update(now: 50)
+        session.update(now: 100)
         try await Task.sleep(for: .milliseconds(20))
         #expect(sampler.updateCount == count)
-        session.next(now: 50); session.stop()
+        session.next(now: 100); session.stop()
         try await Task.sleep(for: .milliseconds(20))
         #expect(sampler.updateCount == count)
         #expect(images.displayedImages.isEmpty)

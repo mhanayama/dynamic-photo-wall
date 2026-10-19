@@ -68,6 +68,8 @@ final class PhotoImageStore {
     typealias Decode = @Sendable (PhotoDecodeRequest) async -> DecodedPhoto?
     private(set) var displayedImages: [PhotoDecodeKey: NSImage] = [:]
     private(set) var failedKeys: Set<PhotoImageKey> = []
+    // Observe decode changes without scanning all variants on each display tick.
+    private(set) var imageRevision = 0
     @ObservationIgnored private let decode: Decode
     @ObservationIgnored private let faceAnalyzer: PhotoFaceAnalyzer?
     private(set) var analyzedFaces: [PhotoImageKey: [FaceRegion]] = [:]
@@ -136,12 +138,14 @@ final class PhotoImageStore {
         if assets.isEmpty { owners.removeValue(forKey: owner) }
         else { owners[owner] = (Set(assets.map(PhotoImageKey.init)), desiredWidths) }
         pinnedPhotos = owners.values.reduce(into: Set<PhotoImageKey>()) { $0.formUnion($1.photos) }
+        let previousWidths = self.desiredWidths
         self.desiredWidths = owners.values.reduce(into: [:]) { all, value in
             for (key, width) in value.widths { all[key] = max(all[key] ?? 0, width) }
         }
         var retained = displayedImages.filter { pinnedPhotos.contains($0.key.photo) }
         for (key, value) in cache where pinnedPhotos.contains(key.photo) { retained[key] = value.image }
-        if Set(displayedImages.keys) != Set(retained.keys) { displayedImages = retained }
+        if Set(displayedImages.keys) != Set(retained.keys) { displayedImages = retained; imageRevision += 1 }
+        if previousWidths != self.desiredWidths { imageRevision += 1 }
         evictIfNeeded()
     }
 
@@ -192,6 +196,7 @@ final class PhotoImageStore {
             if cache[key] == nil {
                 cache[key] = (image, decoded.bytes)
                 cachedBytes += decoded.bytes
+                imageRevision += 1
             }
             touch(key)
             if pinnedPhotos.contains(key.photo) { displayedImages[key] = image }
@@ -230,7 +235,7 @@ final class PhotoImageStore {
     private func evictIfNeeded() {
         while cachedBytes > budgetBytes, let key = recency.first {
             recency.removeFirst()
-            if let entry = cache.removeValue(forKey: key) { cachedBytes -= entry.bytes }
+            if let entry = cache.removeValue(forKey: key) { cachedBytes -= entry.bytes; imageRevision += 1 }
         }
     }
 }

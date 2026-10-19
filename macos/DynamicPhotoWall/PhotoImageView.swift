@@ -29,15 +29,31 @@ private struct AppKitPhotoView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: AspectImageView, context: Context) {
-        view.image = image
-        view.contentMode = contentMode
-        view.needsDisplay = true
+        view.setImage(image, contentMode: contentMode)
     }
 }
 
-private final class AspectImageView: NSView {
-    var image: NSImage?
-    var contentMode: ContentMode = .fit
+final class AspectImageView: NSView {
+    private(set) var image: NSImage?
+    private(set) var contentMode: ContentMode = .fit
+    private(set) var redrawRequestCount = 0
+
+    private func requestRedraw() {
+        redrawRequestCount += 1
+        needsDisplay = true
+    }
+
+    func setImage(_ image: NSImage, contentMode: ContentMode) {
+        guard self.image !== image || self.contentMode != contentMode else { return }
+        self.image = image; self.contentMode = contentMode
+        requestRedraw()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = frame.size != newSize
+        super.setFrameSize(newSize)
+        if changed { requestRedraw() }
+    }
 
     override var isFlipped: Bool { true }
 

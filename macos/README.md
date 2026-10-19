@@ -6,6 +6,8 @@ Apple Silicon搭載Mac、macOS 27.0以降、Xcode 27.0向けです。SwiftUI＋A
 
 **生成物の共通規則:** 配布物は `release/macos/arm64/`、作業・検証ファイルは `artifacts/macos/`。プロジェクトルート直下へAPP・ZIP・DMG・ログ・一時ファイルを置きません。[共通規則](../docs/GENERATED-FILES.md)と[AGENTS.md](../AGENTS.md)に従ってください。
 
+**描画負荷の改善（Issue #1）:** 静止時の背景再生成を抑え、色追従を表示補間へ分離しました。前景の幾何計算をキャッシュし、同じ写真への不要な再描画要求も抑えます。実アプリのCPU/GPU・電力の前後比較は未実施。[監査・回帰結果・実機計測手順](docs/RENDERING-PERFORMANCE.md)を参照してください。
+
 ## 起動と設定
 
 ```sh

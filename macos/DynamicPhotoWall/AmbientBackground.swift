@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import Observation
+import os
 
 nonisolated struct ForegroundPlacement: Sendable {
     let asset: PhotoAsset
@@ -12,42 +13,76 @@ nonisolated struct ForegroundPlacement: Sendable {
 /// One geometry source drives both visible cards and the small ambient sample.
 nonisolated enum ForegroundGeometry {
     static func placements(_ p: WallScenePresentation, settings s: WallSettings, viewport v: CGSize) -> [ForegroundPlacement] {
-        switch p.scene.mode {
-        case .gallery:
-            let frames = p.galleryLayout?.frames(elapsed: p.elapsed, duration: s.fadeSeconds)
-                ?? FixedGalleryLayout.arrange(p.slots.map(\.asset), viewport: v, gap: s.gap, displays: s.avoidFaceDisplayBoundaries ? p.scene.displayRegions : []).map(\.frame)
-            var placements = p.galleryRemoved.map { item in ForegroundPlacement(asset: item.asset, frame: item.frame,
-                opacity: 1 - WallAnimation.ease((p.elapsed - item.at) / s.fadeSeconds), cornerRadius: s.cornerRadius) }
-            placements += p.slots.enumerated().flatMap { index, slot -> [ForegroundPlacement] in
-                guard frames.indices.contains(index) else { return [] }
-                let frame = frames[index]
-                var result: [ForegroundPlacement] = []
-                if let previous = slot.previousAsset { result.append(.init(asset: previous, frame: slot.previousFrame ?? frame, cornerRadius: s.cornerRadius)) }
-                let fade = slot.previousAsset == nil && !slot.appearing ? 1 : WallAnimation.ease((p.elapsed - slot.changedAt) / s.fadeSeconds)
-                result.append(.init(asset: slot.asset, frame: frame, opacity: fade, cornerRadius: s.cornerRadius))
-                return result
+        Prepared(p, settings: s, viewport: v).placements(p)
+    }
+
+    struct Prepared {
+        let settings: WallSettings
+        let viewport: CGSize
+        let motion: WallMotionPlan?
+        let galleryFrames: [CGRect]
+
+        init(_ p: WallScenePresentation, settings: WallSettings, viewport: CGSize) {
+            self.settings = settings; self.viewport = viewport
+            motion = [.verticalPan, .horizontalPan, .zoom].contains(p.scene.mode)
+                ? p.scene.assets.first.flatMap {
+                    FaceMotionSafety.plan(for: p.scene.mode, asset: $0, viewport: viewport, settings: settings,
+                        reverse: p.scene.reverse, center: p.scene.zoomCenter, displayRegions: p.scene.displayRegions)
+                } : nil
+            galleryFrames = p.scene.mode == .gallery && p.galleryLayout == nil
+                ? FixedGalleryLayout.arrange(p.slots.map(\.asset), viewport: viewport, gap: settings.gap,
+                    displays: settings.avoidFaceDisplayBoundaries ? p.scene.displayRegions : []).map(\.frame) : []
+        }
+
+        func isMoving(_ p: WallScenePresentation) -> Bool {
+            switch p.scene.mode {
+            case .gallery:
+                p.galleryLayout.map { p.elapsed < $0.startedAt + settings.fadeSeconds && $0.from != $0.to } == true
+                    || p.slots.contains { ($0.appearing || $0.previousAsset != nil) && p.elapsed < $0.changedAt + settings.fadeSeconds }
+                    || p.galleryRemoved.contains { p.elapsed < $0.at + settings.fadeSeconds }
+            case .horizontalGallery: true
+            case .verticalPan, .horizontalPan, .zoom: motion.map { p.elapsed < $0.seconds } ?? false
             }
-            return placements
-        case .horizontalGallery:
-            let height = max(1, v.height - 2 * s.gap)
-            var x = s.gap - p.scrollDistance
-            return p.scene.assets.map { asset in
-                let width = height * asset.aspectRatio
-                defer { x += width + s.gap }
-                return .init(asset: asset, frame: CGRect(x: x, y: s.gap, width: width, height: height), cornerRadius: s.cornerRadius)
+        }
+
+        func placements(_ p: WallScenePresentation) -> [ForegroundPlacement] {
+            let s = settings, v = viewport
+            switch p.scene.mode {
+            case .gallery:
+                let frames = p.galleryLayout?.frames(elapsed: p.elapsed, duration: s.fadeSeconds)
+                    ?? galleryFrames
+                var placements = p.galleryRemoved.map { item in ForegroundPlacement(asset: item.asset, frame: item.frame,
+                    opacity: 1 - WallAnimation.ease((p.elapsed - item.at) / s.fadeSeconds), cornerRadius: s.cornerRadius) }
+                placements += p.slots.enumerated().flatMap { index, slot -> [ForegroundPlacement] in
+                    guard frames.indices.contains(index) else { return [] }
+                    let frame = frames[index]
+                    var result: [ForegroundPlacement] = []
+                    if let previous = slot.previousAsset { result.append(.init(asset: previous, frame: slot.previousFrame ?? frame, cornerRadius: s.cornerRadius)) }
+                    let fade = slot.previousAsset == nil && !slot.appearing ? 1 : WallAnimation.ease((p.elapsed - slot.changedAt) / s.fadeSeconds)
+                    result.append(.init(asset: slot.asset, frame: frame, opacity: fade, cornerRadius: s.cornerRadius))
+                    return result
+                }
+                return placements
+            case .horizontalGallery:
+                let height = max(1, v.height - 2 * s.gap)
+                var x = s.gap - p.scrollDistance
+                return p.scene.assets.map { asset in
+                    let width = height * asset.aspectRatio
+                    defer { x += width + s.gap }
+                    return .init(asset: asset, frame: CGRect(x: x, y: s.gap, width: width, height: height), cornerRadius: s.cornerRadius)
+                }
+            case .verticalPan, .horizontalPan, .zoom:
+                guard let asset = p.scene.assets.first else { return [] }
+                guard let plan = motion else { return [] }
+                let progress = min(1, max(0, p.elapsed / plan.seconds))
+                var frame = plan.frame(at: progress)
+                if p.scene.mode == .verticalPan || p.scene.mode == .horizontalPan { frame.origin.y += plan.frameTop }
+                let scale = plan.fromScale + (plan.toScale - plan.fromScale) * WallAnimation.ease(progress)
+                frame.origin.x -= frame.width * (scale - 1) * plan.center.x
+                frame.origin.y -= frame.height * (scale - 1) * plan.center.y
+                frame.size.width *= scale; frame.size.height *= scale
+                return [.init(asset: asset, frame: frame)]
             }
-        case .verticalPan, .horizontalPan, .zoom:
-            guard let asset = p.scene.assets.first else { return [] }
-            guard let plan = FaceMotionSafety.plan(for: p.scene.mode, asset: asset, viewport: v, settings: s,
-                                               reverse: p.scene.reverse, center: p.scene.zoomCenter, displayRegions: p.scene.displayRegions) else { return [] }
-            let progress = min(1, max(0, p.elapsed / plan.seconds))
-            var frame = plan.frame(at: progress)
-            if p.scene.mode == .verticalPan || p.scene.mode == .horizontalPan { frame.origin.y += plan.frameTop }
-            let scale = plan.fromScale + (plan.toScale - plan.fromScale) * WallAnimation.ease(progress)
-            frame.origin.x -= frame.width * (scale - 1) * plan.center.x
-            frame.origin.y -= frame.height * (scale - 1) * plan.center.y
-            frame.size.width *= scale; frame.size.height *= scale
-            return [.init(asset: asset, frame: frame)]
         }
     }
 }
@@ -61,11 +96,14 @@ nonisolated struct AmbientCard: @unchecked Sendable {
 
 actor AmbientProcessor {
     private let context = CIContext(options: [.useSoftwareRenderer: true])
+    private let signposter = OSSignposter(subsystem: "asia.dix.mhanayama.DynamicPhotoWall", category: "Ambient")
     private var transition = AmbientTransition()
     private var previousSize = CGSize.zero
     private var previousEnhanced = true
 
-    func render(cards: [AmbientCard], viewport: CGSize, at: Double = 0, enhanceColors: Bool = true) -> DecodedPhoto? {
+    func render(cards: [AmbientCard], viewport: CGSize, at: Double = 0, enhanceColors: Bool = true, smoothColors: Bool = true) -> DecodedPhoto? {
+        let interval = signposter.beginInterval("Generate", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("Generate", interval) }
         guard !Task.isCancelled, viewport.width > 0, viewport.height > 0 else { return nil }
         let scale = 160 / max(viewport.width, viewport.height)
         let width = max(1, Int(ceil(viewport.width * scale))), height = max(1, Int(ceil(viewport.height * scale)))
@@ -106,7 +144,7 @@ actor AmbientProcessor {
         if previousEnhanced != enhanceColors || previousSize != CGSize(width: width, height: height) {
             transition = AmbientTransition()
         }
-        result = transition.push(result, at: at)
+        if smoothColors { result = transition.push(result, at: at) }
         previousSize = CGSize(width: width, height: height); previousEnhanced = enhanceColors
         return Self.image(result, width: width, height: height).map { DecodedPhoto(image: $0) }
     }
@@ -157,32 +195,77 @@ final class AmbientSampler {
     private(set) var image: NSImage?
     private(set) var textures = AmbientTextureTransition()
     private(set) var updateCount = 0
-    private let processor = AmbientProcessor()
+    typealias Render = @Sendable ([AmbientCard], CGSize, Double) async -> DecodedPhoto?
+    @ObservationIgnored private let render: Render
     private var task: Task<Void, Never>?
-    private var busy = false
     private var generation = 0
     private var latestElapsed = 0.0
+    @ObservationIgnored private let geometry = ForegroundGeometryCache()
+    @ObservationIgnored private var token: AmbientRefreshToken?
+    @ObservationIgnored private var completed: AmbientCompositionKey?
+    private struct Request {
+        let key: AmbientCompositionKey
+        let cards: [AmbientCard]
+        let viewport: CGSize
+        let elapsed: Double
+    }
+    @ObservationIgnored private var pending: Request?
 
-    func update(_ presentation: WallScenePresentation, settings: WallSettings, viewport: CGSize, images: PhotoImageStore, paused: Bool) {
-        latestElapsed = presentation.elapsed
-        guard !paused, !busy else { return }
-        let cards = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport).compactMap { item -> AmbientCard? in
-            guard let image = images.image(for: item.asset)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-            return AmbientCard(image: image, frame: item.frame, opacity: item.opacity, radius: item.cornerRadius)
-        }
-        busy = true
-        let generation = self.generation
-        task = Task { [weak self, processor] in
-            let result = await processor.render(cards: cards, viewport: viewport, at: presentation.elapsed)
-            guard let self, !Task.isCancelled, generation == self.generation else { return }
-            self.busy = false
-            if let result {
-                self.textures.push(result.image, at: self.latestElapsed)
-                self.image = NSImage(cgImage: result.image, size: NSSize(width: result.image.width, height: result.image.height))
-                self.updateCount += 1
+    init(render: Render? = nil) {
+        if let render { self.render = render }
+        else {
+            let processor = AmbientProcessor()
+            self.render = { cards, viewport, elapsed in
+                await processor.render(cards: cards, viewport: viewport, at: elapsed, smoothColors: false)
             }
         }
     }
 
-    func stop() { generation += 1; task?.cancel(); task = nil; busy = false }
+    var isRendering: Bool { task != nil }
+
+    func update(_ presentation: WallScenePresentation, settings: WallSettings, viewport: CGSize, images: PhotoImageStore, paused: Bool) {
+        latestElapsed = presentation.elapsed
+        guard !paused, settings.glassBackground else { stop(); return }
+        let prepared = geometry.prepare(presentation, settings: settings, viewport: viewport)
+        let token = AmbientRefreshToken(presentation, prepared: prepared, images: images)
+        guard self.token != token else { return }
+        let placements = prepared.placements(presentation)
+            .filter { $0.opacity > 0 && $0.frame.intersects(CGRect(origin: .zero, size: viewport)) }
+        let decoded = placements.compactMap { images.image(for: $0.asset) }
+        // Do not consume invalidation while a required image is still decoding.
+        guard !placements.isEmpty, decoded.count == placements.count else { return }
+        let key = AmbientCompositionKey(placements: placements, images: decoded, viewport: viewport)
+        if task == nil, key == completed { self.token = token; return }
+        let cards = zip(placements, decoded).compactMap { item, image -> AmbientCard? in
+            guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+            return AmbientCard(image: cgImage, frame: item.frame, opacity: item.opacity, radius: item.cornerRadius)
+        }
+        guard cards.count == placements.count else { return }
+        self.token = token
+        pending = Request(key: key, cards: cards, viewport: viewport, elapsed: presentation.elapsed)
+        guard task == nil else { return } // Keep the latest event, including a final static frame.
+        let generation = self.generation
+        task = Task { [weak self, render] in
+            while let self, let request = self.pending {
+                self.pending = nil
+                if request.key == self.completed { continue }
+                let result = await render(request.cards, request.viewport, request.elapsed)
+                guard !Task.isCancelled, generation == self.generation else { return }
+                if let result {
+                    // Color response now lives in the compositor. A static target
+                    // reaches its final color without repeatedly generating pixels.
+                    self.textures.push(result.image, at: self.latestElapsed, responseSeconds: 0.8)
+                    self.image = NSImage(cgImage: result.image, size: NSSize(width: result.image.width, height: result.image.height))
+                    self.completed = request.key
+                    self.updateCount += 1
+                } else { self.token = nil }
+            }
+            guard let self, generation == self.generation else { return }
+            self.task = nil
+        }
+    }
+
+    func stop() {
+        generation += 1; task?.cancel(); task = nil; pending = nil; token = nil
+    }
 }

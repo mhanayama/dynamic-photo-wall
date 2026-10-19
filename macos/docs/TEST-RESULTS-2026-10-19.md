@@ -1,5 +1,9 @@
 # Windows差分確認とMac build 10・11
 
+## Issue #1: 背景生成の抑制と描画計算のキャッシュ
+
+専用ブランチで`verify.sh`（GUI操作なし）を実行。Swift単体193件/30 suites、共通fixture704＋472 assertions、色12ケース、Zoom構図5120 assertions、ネットワーク26ケース/241 assertionsとarm64 Releaseコンパイルが成功。静止Galleryの仮想60秒・3,600更新、共有グループの2タイルからの重複更新で背景生成1回を確認した。処理回数の検証であり、実アプリのCPU/GPU・電力の前後比較は未実施。変更理由・追加11回帰・実機残件は[描画負荷の監査](RENDERING-PERFORMANCE.md)を参照。通常アプリの置換、配布物の更新、GUI自動操作は行っていない。
+
 2026-10-19（日本時間）。作業前は`855d899`で変更なし。`git pull --ff-only origin main`で`39bbdb9`（Galleryの配置・交換時計と顔を守る動き）を取得した。Windowsの追加実装・共通契約・Macへの移植を比較し、Macで残っていた背景処理とコンパイル・回帰検証を補った。
 
 ## 差分と対応
