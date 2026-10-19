@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-19 — Mac版Zoom修正の取り込みとWindows配布ビルド
+
+remoteをfetchし、`1ad7078`・`f69936e`・`38eac2e`をmainへfast-forwardで取り込んだ。`38eac2e`に含まれるWindowsの`FaceMotionSafety`は、写真の中央配置を基準に顔保護に必要な分だけ補正し、顔を画面中央へ強制移動しない。ローカル描画とネットワーク共有計画が同じ修正を使う。
+
+`Build.ps1 -Test`へ`ParityVerifier --zoom-framing`を追加。縦Panの旧テストは初期値0.96の余白を前提にしていたため、現行の初期値1.0による全幅表示と、明示した0.96の中央配置を別々に確認するよう修正した。製品のPan動作は変更していない。
+
+最終の`windows/scripts/Build.ps1 -Test`は警告・エラー0で成功。Windowsの42ケース、ネットワーク26ケース／241 assertions（相互TLSを含む）、Zoom構図5120 assertionsがすべて成功した。追加のCLI照合も共通fixture704 assertions、OS差分fixture472 assertions、背景色12ケースが成功。ログは`artifacts/windows/mac-zoom-integration/`、単体結果は`artifacts/windows/smoke-data/test-results.json`と`artifacts/windows/network-core/test-results.json`。初回の発行ではNU1900警告と起動中EXEの置換拒否があったが、旧EXEを退避した最終実行では解消した。
+
+配布EXEは`release/windows/win-x64/DynamicPhotoWall.exe`（87,447,690 bytes、SHA-256 `4024BCE26009C2DE4B44CF8A992BCBACF4E3134A16365AC7C2FCD78FB28C98B5`）。旧EXEは`artifacts/windows/mac-zoom-integration/previous/`へ退避し、起動中のプロセスは停止していない。新動作の反映にはアプリの再起動が必要。起動先・ショートカットは従来の配布パスを維持し、既存ZIPは再作成していない。ルート直下への生成物追加なし。GUI操作を伴う自動テストと実画面での知覚確認は実施していない。
+
 ## 2026-10-19 — オンライン中の継続的な細かい点滅
 
 オンライン再生と配置プレビューが毎フレーム呼ぶ`EnsureZOrder`は、正しい配置でも各出力をアイコンの直後へ`SetWindowPos`で挿入していた。複数出力があるとフレームごとに兄弟HWNDの順序を入れ替える。`DesktopZOrder`で「アイコンより後、壁紙より前」を確認し、その範囲にある間はネイティブの順序変更を行わない。範囲から外れた出力だけを戻し、Explorerやほかの写真ウィンドウの相対順序は維持する。

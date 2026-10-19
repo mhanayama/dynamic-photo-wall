@@ -351,6 +351,9 @@ internal static class Program
         {
             var photo = Photo("person", 1200, 1800) with { Faces = [new FaceRegion(.3, .2, .3, .15)] };
             var viewport = new Viewport(3840, 1100); var settings = new WallSettings();
+            var fullWidth = MotionEngine.Plan(CompositionMode.VerticalPan, photo, viewport, settings);
+            Check(fullWidth.Width == viewport.Width && fullWidth.FromX == 0, "default pan fills the screen width when the face fits");
+            settings.PanWidthFraction = .96;
             var plan = MotionEngine.Plan(CompositionMode.VerticalPan, photo, viewport, settings);
             var faceCenter = (.2 + .15 / 2) * plan.Height + plan.ToY;
             Check(plan.Width < viewport.Width && plan.FromX == (viewport.Width - plan.Width) / 2, "centered padding");

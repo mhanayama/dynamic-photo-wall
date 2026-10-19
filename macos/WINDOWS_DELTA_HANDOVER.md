@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**WindowsでZoom修正を検証（2026-10-19）:** `38eac2e`までを取り込み、`Build.ps1 -Test`にZoom構図のCLI検証を追加した。Windows Release発行、GUIなし42ケース、ネットワーク26ケース／241 assertions（相互TLSを含む）、Zoom構図5120 assertions、既存fixture704＋472 assertions、背景色12ケースが成功。縦Panの旧テストは現行初期値1.0と明示値0.96を区別するよう修正し、製品動作は変更していない。配布先は`release/windows/win-x64/`、旧EXEは`artifacts/windows/mac-zoom-integration/previous/`。起動中のアプリを保持したため新EXEの反映には再起動が必要。GUI操作・実端末間表示は未実施。[Windows検証記録](../windows/docs/TEST-RESULTS.md)を参照。
+
 **Zoomの強制中央配置を修正（2026-10-19）:** 両OSの`FaceMotionSafety`で、顔を実画面中央へ置き直す処理を廃止。最小倍率で写真を中央配置する構図から、全顔を収めるための最小限の移動だけを行う。顔を支点にするズーム・倍率の同率縮小・実画面1枚への顔保護は維持する。画面の被覆と顔保護を両立できる場合は背景を露出させず、候補画面の同率時も写真の構図からの移動量で選ぶ。`ZoomMotionTests`とMacでも実行できるC#の`ParityVerifier --zoom-framing`で確認し、後者を`verify.sh`へ追加した。旧raw motionのfixtureは変更しない。Swift単体178件、C#の位置補正5120 assertions、既存fixture704＋472 assertions、Mac Releaseコンパイルが成功。1.1.0 build 13のローカルAPP／ZIP／DMGを更新し、署名・arm64・チェックサム・APP／ZIPの一致を確認した。[Mac検証記録](docs/TEST-RESULTS-2026-10-19.md#zoomの強制中央配置の修正)を参照。GUI操作・Computer Useは実施していない。
 
 Windowsアプリの検証はユーザーが別端末で実施する。pull後に`dotnet run --project tests/ParityVerifier -- --zoom-framing`で新しい位置補正をCLI検証できる。Windowsのビルド・既存試験は`.\windows\scripts\Build.ps1 -Test`を使用する。GUI操作を伴う検証は、この引き継ぎだけを実行許可とみなさない。

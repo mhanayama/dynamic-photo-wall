@@ -30,6 +30,9 @@ $skiaRoot = Join-Path $packagesRoot 'skiasharp.nativeassets.win32\3.119.4'
 Copy-Item -LiteralPath (Join-Path $skiaRoot 'LICENSE.txt') -Destination (Join-Path $release 'SkiaSharp-LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $skiaRoot 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $release 'SkiaSharp-THIRD-PARTY-NOTICES.txt') -Force
 if ($Test -or $DesktopTest) {
+    $parityProject = Join-Path $projectRoot 'tests\ParityVerifier\ParityVerifier.csproj'
+    & $sdk run --project $parityProject -c Release -- --zoom-framing
+    if ($LASTEXITCODE -ne 0) { throw 'Zoom framing tests failed.' }
     & $sdk run --project (Join-Path $projectRoot 'tests\NetworkCore.Tests\NetworkCore.Tests.csproj') -c Release -- (Join-Path $projectRoot 'artifacts\windows\network-core')
     if ($LASTEXITCODE -ne 0) { throw 'Network core tests failed.' }
     & $sdk build 'tests\DynamicPhotoWall.Tests\DynamicPhotoWall.Tests.csproj' -c Release --nologo
