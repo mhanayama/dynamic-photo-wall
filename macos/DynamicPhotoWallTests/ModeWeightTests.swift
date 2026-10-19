@@ -3,6 +3,20 @@ import Testing
 @testable import DynamicPhotoWall
 
 @MainActor struct ModeWeightTests {
+    @Test func onlyFiniteSharedTimelinesAllowRepeatedGalleryDraws() {
+        for scroll in [false, true] {
+            var settings = WallSettings()
+            settings.galleryEnabled = !scroll; settings.galleryScrollEnabled = scroll
+            settings.verticalPanEnabled = false; settings.horizontalPanEnabled = false; settings.zoomEnabled = false
+            let planner = WallScenePlanner(seed: 1234)
+            let mode: WallMode = scroll ? .horizontalGallery : .gallery
+            #expect(planner.chooseGroupMode(settings: settings) == mode)
+            #expect(planner.chooseGroupMode(settings: settings) == nil)
+            #expect(planner.lastDrawSkipped)
+            #expect(planner.chooseGroupMode(settings: settings, allowGalleryRepeat: true) == mode)
+            #expect(!planner.lastDrawSkipped)
+        }
+    }
     @Test func legacyDefaultsAndSharedCategoriesMigrate() throws {
         var settings = try JSONDecoder().decode(WallSettings.self, from: Data("{\"galleryWeight\":45,\"panWeight\":35,\"zoomWeight\":20}".utf8))
         settings.normalize()

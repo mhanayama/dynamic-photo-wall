@@ -60,6 +60,7 @@ internal static class Program
             if (args.Contains("--scan-only") && args.Contains("--scene-transitions")) await SceneTransitions();
             if (args.Contains("--scan-only") && args.Contains("--zoom-motion")) await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--mode-weights")) await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
+            if (args.Contains("--scan-only") && args.Contains("--gallery-continuation")) await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
             if (args.Contains("--scan-only") && args.Contains("--gallery-face")) await GalleryFaces();
             if (args.Contains("--scan-only") && args.Contains("--tray-menu")) await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
@@ -137,6 +138,7 @@ internal static class Program
         await GalleryFaces();
         await AmbientTransitions();
         await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
+        await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
         await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);
         await SceneTransitions();
         await Test("long-axis resolution mirrors all three motion modes locally and across peers", MirrorAmbientTests.MotionMirrors);

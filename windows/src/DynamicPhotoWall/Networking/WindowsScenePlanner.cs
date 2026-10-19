@@ -33,7 +33,9 @@ public sealed class WindowsScenePlanner(Func<Net.SharedAssetKey, byte[]> readIma
         var picking = selectors[groupId];
         var views = displays.Select(d => new DynamicPhotoWall.Core.Viewport(d.Width, d.Height)).ToArray();
         var regions = displays.Select(d => new DynamicPhotoWall.Core.FrameRect(d.X - left, d.Y - top, d.Width, d.Height)).ToArray();
-        var composition = engine.Next(photos, viewport, settings, displayViewports: views, displayRegions: regions);
+        // Shared galleries have finite timelines. Renew them even when the same
+        // mode wins again; unlike local galleries, they have no live update loop.
+        var composition = engine.Next(photos, viewport, settings, displayViewports: views, displayRegions: regions, allowGalleryRepeat: true);
         if (composition == null) return null;
         var perDisplay = settings.IsPerDisplay(composition.Mode) || composition.MirrorPerDisplay;
         var placements = new List<Net.ScenePlacement>(); var duration = 0d;

@@ -24,6 +24,12 @@ internal static class ModeWeightTests
             "the two different gallery modes may follow each other");
         Check(ModeSelection.Pick([CompositionMode.GalleryScroll], 80, 20, CompositionMode.GalleryScroll, 1, new Ticket(.5)) == null,
             "a scrolling gallery cannot start another scrolling gallery");
+        Check(ModeSelection.Pick([CompositionMode.Gallery, CompositionMode.Zoom], 80, 20, CompositionMode.Gallery, 1, new Ticket(.5), allowGalleryRepeat: true) == CompositionMode.Gallery,
+            "finite shared timelines accept a repeated gallery draw without changing categories");
+        Check(ModeSelection.Pick([CompositionMode.GalleryScroll], 80, 20, CompositionMode.GalleryScroll, 1, new Ticket(.5), allowGalleryRepeat: true) == CompositionMode.GalleryScroll,
+            "finite scrolling timelines also renew");
+        Check(ModeSelection.Pick([CompositionMode.Zoom, CompositionMode.VerticalPan], 80, 20, CompositionMode.Zoom, 2, new Ticket(.5), allowGalleryRepeat: true) == CompositionMode.VerticalPan,
+            "shared gallery renewal preserves motion repeat suppression");
         Check(ModeSelection.Pick([CompositionMode.Zoom], 80, 20, null, 0, new Ticket(.01)) == CompositionMode.Zoom, "an unavailable family cannot leave the draw empty");
         Check(ModeSelection.Pick(all, 0, 0, null, 0, new Ticket(.5)) == null, "zero category weights disable the draw");
         var legacy = JsonSerializer.Deserialize<WallSettings>("{\"GalleryWeight\":45,\"PanWeight\":35,\"ZoomWeight\":20}")!;

@@ -79,6 +79,49 @@ import Testing
         try await coordinator.ready(other, PNReady(planId: v.scene.id, groupId: v.scene.groupId))
         #expect(output.commits.count == 1); #expect(output.commits[0].startAt == 1012)
     }
+    @Test func sharedGalleriesRenewAcrossTwoHoursWithoutWindows() async throws {
+        let v = try vector()
+        let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Gallery.\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = try PNPhotoCache(root: root, key: SymmetricKey(size: .bits256))
+        let photos = (0..<12).map { index in
+            var photo = v.photo
+            photo.key.imageId = PNWire.digest(Data("gallery-\(index)".utf8))
+            photo.pixelWidth = 600; photo.pixelHeight = 1800
+            photo.faceMetadata = PNFaces(pixelWidth: 600, pixelHeight: 1800, detector: "fixture", state: "complete", faces: [])
+            return photo
+        }
+        let live = Set(v.wall.displays.map { $0.key.peerId })
+        let remote = try #require(live.first { $0 != v.wall.leaderId })
+        for scroll in [false, true] {
+            for perDisplay in [false, true] {
+                var settings = WallSettings()
+                settings.galleryEnabled = !scroll; settings.galleryScrollEnabled = scroll
+                settings.verticalPanEnabled = false; settings.horizontalPanEnabled = false; settings.zoomEnabled = false
+                settings.galleryPerDisplay = perDisplay; settings.galleryScrollPerDisplay = perDisplay; settings.glassBackground = false
+                var wall = v.wall; wall.playback = PNOptions(settings)
+                let planner = PNScenePlanner(cache: cache), clock = Clock(), output = Output()
+                let coordinator = PNSceneCoordinator(planner: planner, output: output, clock: clock)
+                var previousID: UUID?, previousEnd = 0.0
+                for round in 0..<100 {
+                    try await coordinator.pump(local: wall.leaderId, wall: wall, live: live, photos: photos)
+                    try #require(output.plans.count == round + 1)
+                    let plan = try #require(output.plans.last); try plan.validate()
+                    #expect(plan.id != previousID && plan.mode == (scroll ? "galleryScroll" : "gallery"))
+                    #expect(plan.placements.contains { scroll ? $0.fromX != $0.toX : $0.visibleFrom > 0 })
+                    #expect(Set(plan.placements.map(\.displayId)).count == (perDisplay ? 2 : 1))
+                    #expect(output.commits.count == round)
+                    try await coordinator.ready(remote, PNReady(planId: plan.id, groupId: plan.groupId))
+                    try #require(output.commits.count == round + 1)
+                    let commit = try #require(output.commits.last)
+                    if round > 0 { #expect(commit.startAt < previousEnd) }
+                    previousID = plan.id; previousEnd = commit.startAt + plan.duration
+                    clock.time = previousEnd - 4 - 1000
+                }
+                #expect(clock.time >= 2 * 60 * 60)
+            }
+        }
+    }
     @Test func nativeWallMergePreservesBothGroupsAndTheDestinationAuthority() throws {
         let v = try vector(); var previous = v.wall
         previous.wallId = UUID(); previous.sessionId = UUID(); previous.leaderId = UUID()
@@ -114,7 +157,8 @@ import Testing
     }
     private final class Output: PNPlaybackOutput {
         var prepared = 0; var commits: [PNCommit] = []
-        func prepare(_ scene: PNScene) async throws { prepared += 1 }
+        var plans: [PNScene] = []
+        func prepare(_ scene: PNScene) async throws { prepared += 1; plans.append(scene) }
         func commit(_ commit: PNCommit) { commits.append(commit) }
         func control(_ control: PNControl) {}
         func recover(_ state: PNRecoveryState, wall: PNSnapshot) {}

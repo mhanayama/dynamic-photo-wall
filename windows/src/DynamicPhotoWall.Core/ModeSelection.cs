@@ -9,7 +9,7 @@ public static class ModeSelection
         => (gallery, pan, zoom) == (45, 35, 20) ? (80, 20) : (gallery, pan + zoom);
 
     public static CompositionMode? Pick(IReadOnlyList<CompositionMode> available, int galleryWeight, int motionWeight,
-        CompositionMode? previous, int repeats, Random random)
+        CompositionMode? previous, int repeats, Random random, bool allowGalleryRepeat = false)
     {
         var gallery = available.Where(IsGallery).Distinct().ToArray();
         var motion = available.Where(m => !IsGallery(m)).Distinct().ToArray();
@@ -19,6 +19,6 @@ public static class ModeSelection
         var pool = random.NextDouble() * (g + m) < g ? gallery : motion;
         if (!IsGallery(pool[0]) && repeats >= 2 && pool.Length > 1) pool = pool.Where(mode => mode != previous).ToArray();
         var result = pool[random.Next(pool.Length)];
-        return IsGallery(result) && result == previous ? null : result;
+        return !allowGalleryRepeat && IsGallery(result) && result == previous ? null : result;
     }
 }

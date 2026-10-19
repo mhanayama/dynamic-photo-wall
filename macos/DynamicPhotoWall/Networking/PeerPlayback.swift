@@ -23,7 +23,10 @@ import SwiftUI
         if configurations[group]?.session != wall.sessionId || configurations[group]?.revision != wall.revision {
             planner.resetModeHistory(); configurations[group] = (wall.sessionId, wall.revision)
         }
-        guard let surfaces = planner.nextGroup(assets: assets, settings: settings, group: nativeGroup, connected: Set(nativeDisplays.map(\.id))), let first = surfaces.first else { return nil }
+        // Shared galleries have finite timelines and must renew even when the
+        // same mode wins again. Only local playback has a live update loop.
+        guard let surfaces = planner.nextGroup(assets: assets, settings: settings, group: nativeGroup,
+            connected: Set(nativeDisplays.map(\.id)), allowGalleryRepeat: true), let first = surfaces.first else { return nil }
         var placements: [PNPlacement] = []; var duration = 0.0
         for surface in surfaces {
             try Task.checkCancellation()

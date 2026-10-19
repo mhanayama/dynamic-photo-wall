@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-19 — 同期Galleryが一定時間後に停止する問題
+
+同期再生の有限タイムラインにも同種Galleryの再当選抑止を適用していたため、静止Galleryのみ有効なら既定90秒、Scrolling Galleryのみなら120秒の後に更新が止まっていた。ネットワークの計画生成に限って`allowGalleryRepeat`を有効にし、同じモードでも次の共有計画を準備する。ローカルの再当選スキップと写真交換、Pan・Zoomの連続回避と80／20の系統ウェイトは維持する。Swift側にも同じ修正と回帰テストを追加した。
+
+実際の`WindowsScenePlanner`と`SceneCoordinator`を使ったGUIなし回帰テストを追加。静止／スクロール×スパン／画面別の4条件で各100計画、仮想時計で各2時間以上を進め、毎回の写真交換・移動、画面別ルーティング、全端末ready前のcommit抑止と前計画の期限前の引き継ぎを検証した。修正前は2計画目で失敗（`artifacts/windows/gallery-continuation/baseline/test-results.json`）、修正後は成功。既存のモード抽選テストでローカルのスキップとPan・Zoomの連続回避も確認した。
+
+ReleaseコンパイルとGUIなし43ケースが警告・エラー0で成功（`artifacts/windows/gallery-continuation/full/test-results.json`）。ネットワークは26ケース／241 assertions成功（`artifacts/windows/gallery-continuation/network-core-unrestricted/test-results.json`）。通常の制限環境ではTLS証明書の秘密鍵インポートが失敗したが、制限外での追試で相互TLSを含め全件成功した。Mac上の追加Swiftコードのコンパイル・テスト、実端末間の長時間表示、GUI自動操作は未実施。
+
+Windowsの単一EXEを`artifacts/windows/gallery-continuation/publish/`へ発行し、`release/windows/win-x64/DynamicPhotoWall.exe`へ反映した。旧EXEは同検証ディレクトリ内の`previous-*/`へ退避し、発行元と反映先のSHA-256一致を確認。起動中のアプリの終了・再起動は行っていないため、新動作には再起動が必要。配布先・起動先は維持し、Macの配布物は更新していない。
+
 ## 2026-10-19 — Mac版Zoom修正の取り込みとWindows配布ビルド
 
 remoteをfetchし、`1ad7078`・`f69936e`・`38eac2e`をmainへfast-forwardで取り込んだ。`38eac2e`に含まれるWindowsの`FaceMotionSafety`は、写真の中央配置を基準に顔保護に必要な分だけ補正し、顔を画面中央へ強制移動しない。ローカル描画とネットワーク共有計画が同じ修正を使う。

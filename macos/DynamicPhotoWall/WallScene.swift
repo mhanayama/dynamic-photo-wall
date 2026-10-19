@@ -105,7 +105,7 @@ final class WallScenePlanner {
                                              y: Double.random(in: 0.35...0.65, using: &generator)))
     }
 
-    func chooseGroupMode(settings: WallSettings) -> WallMode? {
+    func chooseGroupMode(settings: WallSettings, allowGalleryRepeat: Bool = false) -> WallMode? {
         lastDrawSkipped = false
         let weights = ModeSelection.weights(gallery: settings.galleryWeight, pan: settings.panWeight, zoom: settings.zoomWeight)
         let definitions: [(WallMode, Bool, Double)] = [
@@ -117,7 +117,7 @@ final class WallScenePlanner {
         ]
         let choices = definitions.filter { $0.1 && $0.2 > 0 }
         guard let mode = ModeSelection.pick(choices.map { $0.0 }, galleryWeight: weights.gallery, motionWeight: weights.motion,
-            previous: previous, repeats: repeats, using: &generator) else { lastDrawSkipped = !choices.isEmpty; return nil }
+            previous: previous, repeats: repeats, using: &generator, allowGalleryRepeat: allowGalleryRepeat) else { lastDrawSkipped = !choices.isEmpty; return nil }
         repeats = mode == previous ? repeats + 1 : 1; previous = mode
         return mode
     }
