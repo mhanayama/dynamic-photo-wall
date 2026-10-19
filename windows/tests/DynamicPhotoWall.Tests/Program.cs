@@ -126,6 +126,7 @@ internal static class Program
     }
     private static async Task SceneTransitions()
     {
+        await Test("online frames preserve native sibling order and repair only misplaced outputs without GUI operations", DesktopZOrderTests.StableOutputsAndRepair);
         await Test("physical outputs survive mode changes, peer loss and reconnection", SharedSceneTransitionTests.PhysicalOutputsSurviveLogicalCanvasChanges);
         await Test("all mode handoffs retain outgoing trees and independent canvas regions without captures", SharedSceneTransitionTests.HandoffsRetainTreesAndMapEachScenesOwnCanvas);
         await Test("Gallery endpoints and isolation repeats keep opaque coverage", SharedSceneTransitionTests.GalleryEndpointAndIsolationRepeatKeepCoverage);

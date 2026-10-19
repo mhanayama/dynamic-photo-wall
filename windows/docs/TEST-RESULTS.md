@@ -1,5 +1,15 @@
 # 実施した検証
 
+## 2026-10-19 — オンライン中の継続的な細かい点滅
+
+オンライン再生と配置プレビューが毎フレーム呼ぶ`EnsureZOrder`は、正しい配置でも各出力をアイコンの直後へ`SetWindowPos`で挿入していた。複数出力があるとフレームごとに兄弟HWNDの順序を入れ替える。`DesktopZOrder`で「アイコンより後、壁紙より前」を確認し、その範囲にある間はネイティブの順序変更を行わない。範囲から外れた出力だけを戻し、Explorerやほかの写真ウィンドウの相対順序は維持する。
+
+実HWNDを使わない兄弟順序モデルで、4出力とプレビューの600フレーム中の順序変更が0回であること、壁紙の後ろ／アイコンの前への移動は各1回の修復で安定すること、壁紙ハンドル欠落と修復失敗を検証した。修正の条件分岐を外して旧動作に戻すと新規テストだけが失敗し、回帰を検出できることも確認した（`artifacts/windows/online-flicker/baseline/`）。
+
+ReleaseコンパイルとGUIなし9ケースが成功。既存のモード切替・遠隔ピア離脱時の表示面保持、Gallery終端、背景補間、ネットワーク通知の応答性も含む。結果は`artifacts/windows/online-flicker/test-results.json`。NuGet脆弱性情報へ接続できないNU1900の警告が3件あり、コンパイルエラーはない。GUI操作・画面撮影は実施せず、実画面での点滅解消の知覚確認は残す。
+
+単一EXEを`release/windows/win-x64/DynamicPhotoWall.exe`へ反映し、発行元とのSHA-256一致を確認した（`C3D5A8667CA0B3770F0624387BED4684DAF589C5AB13100900A0A7597FDD6B86`）。旧EXEは`artifacts/windows/online-flicker/previous/`へ退避。起動中のアプリは終了しておらず、修正の反映にはアプリの再起動が必要。起動先の変更とルート直下への生成物追加はない。
+
 ## 2026-10-19 — ピアの手動解除とギャラリーの更新
 
 **承認機能復旧後の追試:** 通常権限で失敗したTLS試験を含めて承認済み環境で再実行し、ネットワーク26ケース／241 assertionsがすべて成功した。最新結果は`artifacts/windows/gallery-peer-build/network-core-unrestricted/test-results.json`。以下の25ケース成功・TLS失敗は追試前の記録である。

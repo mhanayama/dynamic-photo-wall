@@ -10,6 +10,11 @@ public sealed class DesktopWindowHost : IDisposable
     private nint hwnd, parent;
     private nint iconLayer, wallpaperLayer;
     private bool raisedDesktop;
+    private readonly DesktopZOrder zOrder = new(h => Native.GetWindow(h, 2), (window, after) =>
+    {
+        var flags = Native.NoMove | Native.NoSize | Native.NoActivatePos;
+        if (!Native.SetWindowPos(window, after, 0, 0, 0, 0, flags)) throw new Win32Exception(Marshal.GetLastWin32Error());
+    });
     public bool IsAlive => Native.IsWindow(hwnd) && Native.IsWindow(parent) && Native.GetParent(hwnd) == parent;
     public nint Handle => hwnd;
     public string Strategy { get; private set; } = "";
@@ -98,17 +103,7 @@ public sealed class DesktopWindowHost : IDisposable
     public void EnsureZOrder()
     {
         if (!IsAlive || iconLayer == 0 || !Native.IsWindow(iconLayer)) return;
-        var flags = Native.NoMove | Native.NoSize | Native.NoActivatePos;
-        if (!Native.SetWindowPos(hwnd, iconLayer, 0, 0, 0, 0, flags)) throw new Win32Exception(Marshal.GetLastWin32Error());
-        // Insert only our HWND, preserving Explorer's sibling order and visibility.
-        if (wallpaperLayer != 0 && Native.IsWindow(wallpaperLayer) && !IsBefore(hwnd, wallpaperLayer))
-            throw new InvalidOperationException("写真ウィンドウが壁紙レイヤーの背後にあります。");
-    }
-
-    private static bool IsBefore(nint first, nint second)
-    {
-        for (var next = Native.GetWindow(first, 2); next != 0; next = Native.GetWindow(next, 2)) if (next == second) return true;
-        return false;
+        zOrder.Ensure(hwnd, iconLayer, Native.IsWindow(wallpaperLayer) ? wallpaperLayer : 0);
     }
 
     private nint Hook(nint h, int msg, nint w, nint l, ref bool handled)
@@ -133,8 +128,8 @@ public sealed class DesktopWindowHost : IDisposable
         ExtendedStyles = $"0x{Native.GetWindowLongPtr(hwnd, Native.GwlExStyle).ToInt64():X}",
         RaisedDesktop = raisedDesktop,
         LayeredOpaque = Native.GetLayeredWindowAttributes(hwnd, out _, out var alpha, out var flags) && alpha == 255 && (flags & 2) != 0,
-        BehindIcons = iconLayer != 0 && IsBefore(iconLayer, hwnd),
-        AheadOfWallpaper = wallpaperLayer != 0 && IsBefore(hwnd, wallpaperLayer),
+        BehindIcons = iconLayer != 0 && zOrder.IsBefore(iconLayer, hwnd),
+        AheadOfWallpaper = wallpaperLayer != 0 && zOrder.IsBefore(hwnd, wallpaperLayer),
         Dpi = Native.GetDpiForWindow(hwnd)
     };
     public void Dispose()
