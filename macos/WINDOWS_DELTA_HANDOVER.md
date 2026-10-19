@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Macローカル配布build 16（2026-10-19 22:40）:** build 15再起動後のPID 81849のsampleでも`PNSceneView.draw`とCore Animationのbacking texture準備が残ったため、同期写真・背景を保持レイヤーへ移した。静止時は同じ属性を再設定せず、動作時は従来時刻の位置・倍率・不透明度を更新する。背景の色補正・PNG・wire時刻、clip/角丸/スパンcrop、写真と場面のフェードを維持。前面化は表示開始/非表示からの復帰時に限る。16ms時計と画面検出は維持した。Swift単体205件/31 suites、既存fixture・ネットワーク・arm64 Releaseが成功し、APP/ZIP/DMGの全6ファイル一致・署名・チェックサムを確認。配布物は22:40:52へ更新、旧build 15は`artifacts/macos/package/previous-release.91v0uU/`。稼働アプリの終了・再起動と`/Applications`へのコピーは行っていない。[build 16のノート](docs/RELEASE-NOTES-v1.1.0-build16.md)、[測定記録](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照。同一合成fixtureの各3回平均CPUは静止5.55%→1.92%、背景補間16.78%→2.20%、Zoom17.51%→2.59%。最大RSSは増え、実画面/色管理/電力/実Windows同期は未確認。計測用の縦の色段差は旧描画にもあり、本番背景生成経路を通す合成画像で旧/新全画素差0を確認した。以下のbuild 15/14の記述は各作業時点の記録。
+
 **Macローカル配布build 15（2026-10-19 22:15）:** ユーザーの配布用ビルド置き換え許可により、Issue #1の修正を含むAPP／ZIP／DMGとSHA256SUMSを`release/macos/arm64/`へ更新した。署名・arm64・ZIP/DMG・チェックサムと3つのAPPの全6ファイル一致を確認。旧配布物は`artifacts/macos/package/previous-release.d22W4u/`へ退避。`/Applications`と稼働中build 14は変更しておらず、GitHub Releaseも未公開。[build 15のノート](docs/RELEASE-NOTES-v1.1.0-build15.md)を参照。
 
 **Mac Issue #1の実測（2026-10-19）:** 稼働build 14のCPU平均35.07%、同期描画とCore Animation/Metal関連のスタックを確認。固定fixtureの静止Galleryは変更前22.28%→PR版12.05%、背景生成80→0回/10秒。同期fixtureでは差がなく、静止/一時停止相当でも再描画が続く。次の対象は`PNWindowSurface.present`の無条件再描画と16ms進行処理。数値は通常アプリの同条件前後比較ではない。[実測と制約](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照。

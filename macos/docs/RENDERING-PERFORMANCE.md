@@ -1,6 +1,6 @@
 # macOS描画負荷の監査と計測
 
-2026-10-19 / [Issue #1](https://github.com/mhanayama/dynamic-photo-wall/issues/1)。ソース基準はbuild 14の`7a711db`。今回は不要な背景生成と幾何計算・再描画要求を減らす段階の実装。その後、稼働build 14のCPU/GPU採取と、同一fixtureによる変更前後の比較を実施した。[2026-10-19の測定結果](RENDERING-MEASUREMENTS-2026-10-19.md)を参照。通常の全画面表示での前後比較、電力、提示フレーム時間は未確認で、Issue全体の完了判定は残す。
+2026-10-19 / [Issue #1](https://github.com/mhanayama/dynamic-photo-wall/issues/1)。ソース基準はbuild 14の`7a711db`。まず不要な背景生成と幾何計算・再描画要求を減らし、稼働build 14のCPU/GPUと同一fixtureの比較を採取した。build 15の再起動後も同期側の負荷が残ったため、同期写真のcontentsを保持するCore Animationの経路を追加した。[2026-10-19の測定結果](RENDERING-MEASUREMENTS-2026-10-19.md)を参照。通常の全画面表示での前後比較、電力、提示フレーム時間は未確認で、Issue全体の完了判定は残す。
 
 ## 確認した経路と変更
 
@@ -14,10 +14,10 @@
 | 前景幾何 | 顔保護を含む`WallMotionPlan`と静止Galleryのpackingをキャッシュ。scene/写真の顔情報/slot/配置/settings/viewportの変更で再計算し、位置・倍率・不透明度は従来と同じ再生時刻で評価する。 |
 | 写真の描画 | `AppKitPhotoView`からの無条件`needsDisplay = true`を廃止。同じ不変NSImageと同じcontentModeなら再要求せず、画像/fit・fill/サイズの変更で再要求する。画像の補間や描画方式は維持。 |
 | 画像ストア | ImageIOの向き補正・16MP上限・幅別LRU/pinを確認。デコード/退避/要求幅変更のrevisionを追加し、背景の変更判定時に毎フレーム全画像variantを検索しない。デコード方式・予算・写真のpin契約は維持する。 |
-| 同期表示 | `PNScenePlanner`の背景は有限計画ごとに最大24サンプル/出力を事前生成する経路で、ローカルの永久8Hzループとは異なる。PNGの基底色・受信時の一度だけの色補正・wire時刻/補間を維持。既存のCPU平滑化はこの有限生成用の既定経路として残す。 |
+| 同期表示 | 写真を`PNLayerCompositor`の不変CGImage contentsへ保持し、座標・倍率・不透明度を更新。同じ属性は代入せず、静止中はbitmap再描画しない。背景の既存PNG間の補間もレイヤーで行う。同一PNGは共有し、不透明なら補間の属性更新も省略する。透明な同一背景はsource-overを維持する。場面全体のgroup opacityと写真ごとのclip/角丸、スパンcropを維持。前面化は初回/非表示からの復帰時のみ。`PNScenePlanner`の背景は有限計画ごとに最大24サンプル/出力を事前生成する経路で、ローカルの永久8Hzループとは異なる。PNGの基底色・受信時の一度だけの色補正・wire時刻/補間を維持。既存のCPU平滑化はこの有限生成用の既定経路として残す。 |
 | アーキテクチャ | Debug/Releaseとも`ARCHS = arm64`、macOS 27.0対象。Intel/Rosetta向けへの変更は不要。 |
 
-`DesktopWallView`/グループの`TimelineView`と、同期出力の16msの進行処理は今回維持する。生成の停止と、進行処理全体の停止は別である。交換期限、画像準備、将来のcommit/control、フェード、ネットワーク復旧を正しく起床させるdeadline設計なしに表示時計を停止しない。静止時のCPUがゼロになったという主張はしない。次の実機プロファイルで、これらの待機中wake-upと同期側`PNSceneView`の再描画を測定し、期限駆動への移行範囲を決める。
+`DesktopWallView`/グループの`TimelineView`と、同期出力の16msの進行処理は今回維持する。生成の停止と、進行処理全体の停止は別である。交換期限、画像準備、将来のcommit/control、フェード、ネットワーク復旧を正しく起床させるdeadline設計なしに表示時計を停止しない。静止時のCPUがゼロになったという主張はしない。同期側は保持レイヤーへ移したが、残る待機中wake-upと画面検出は引き続き測定対象とする。
 
 ## Core Image / Metalの判断
 
@@ -38,7 +38,7 @@ bash macos/scripts/verify.sh
 
 専用bundle IDと`artifacts/macos/verification/`を使用する。`--ui`は使用しない。2026-10-19の結果:
 
-- Swift単体193件 / 30 suites成功（今回11件を追加）。
+- Swift単体205件 / 31 suites成功（ローカル背景の11件と同期合成の12件を追加）。
 - 従来fixture704 assertions、delta fixture472 assertions、背景色12ケース、Zoom構図5120 assertions成功。
 - .NETネットワーク26ケース / 241 assertions成功。
 - arm64 Releaseコンパイル成功。
@@ -55,6 +55,8 @@ bash macos/scripts/verify.sh
 | 遅い生成中の連続変更・キャンセル直後のresume | 最新の静止構図を反映し、古い世代を公開しない |
 | キャッシュした顔保護の幾何 | 601表示時刻で準備1回。従来の都度計算と座標が一致し、顔/設定/viewport変更で再準備 |
 | 同じ写真ビューへ600回の同一画像更新 | 追加の再描画要求なし。fit/fillとサイズ変更では要求する |
+| 同期の静止/一時停止相当の601更新 | 画像contentsとレイヤー属性を再設定せず、動作中は正確な位置・倍率・不透明度だけを更新 |
+| 同期のオフスクリーン画素比較 | 従来描画に対し向き・縮小・背景・角丸・透明度・スパンcrop・group opacityを比較。交換/再開/resize/破棄も検証 |
 
 初回の実装検証では、通常アプリの置換・再起動、release配布物の更新、GUI操作、スクリーンショット、実端末間の表示試験は実施していない。後続の独立ウィンドウでの実描画計測は[別記録](RENDERING-MEASUREMENTS-2026-10-19.md)へ分ける。Xcode sandbox内ではSwift macro/test通知が制限されたため通常権限で再実行。テスト時にCoreSimulatorのバージョン警告とCore Imageの`MDB_MAP_FULL`ログが出たが、macOS単体・画素回帰とReleaseビルドは成功した。これらのログを性能測定値として使わない。
 

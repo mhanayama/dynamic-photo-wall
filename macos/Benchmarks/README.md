@@ -28,7 +28,19 @@ python3 macos/scripts/measure-rendering.py --seconds 60 --warmup 10 --gallery-re
   --output artifacts/macos/rendering-performance/comparison-60s
 ```
 
-`local-*`は本体の`DesktopWallView`、`WallPlaybackController`、`WallSceneLayer`と背景samplerを使用。`pn-*`は本体の`PNSceneView`とprepared frameを使い、現行の`PNWindowSurface.present`と同様に16ms周期でlayersと`needsDisplay`を更新する。同期fixtureは4枚表示＋将来用60 placementと固定背景1枚を持つ。PNPlayback全体、通信、共有計画の生成、実際のデスクトップウィンドウのorderingはこの同期fixtureに含まれない。
+`local-*`は本体の`DesktopWallView`、`WallPlaybackController`、`WallSceneLayer`と背景samplerを使用。`pn-*`は本体の`PNSceneView`とprepared frameを使い、16ms周期でlayersを更新する。旧ソースは毎回`needsDisplay`を要求し、保持レイヤー対応版は初回だけ描画して以降はレイヤーの座標・不透明度を更新する。同期fixtureは4枚表示＋将来用60 placementと固定背景1枚を持つ。`pn-ambient`は余白を残し、異なる背景2枚を120秒で補間する。背景は20行単位の帯で塗った独立グラデーションで、本番の写真由来の余白延長/blurを通していない。写真との縦境界や帯状の段差は合成素材の作り方に起因し、この表示を本番の見え方の判定に使わない。PNPlayback全体、通信、共有計画の生成、実際のデスクトップウィンドウのorderingはこの同期fixtureに含まれない。
+
+同期描画変更の比較は、同じ現在のハーネスで両版をビルドして実行する:
+
+```sh
+python3 macos/scripts/rendering-benchmark.py --ref 378ec0c --name baseline-sync
+python3 macos/scripts/rendering-benchmark.py --ref b491a68 --name candidate-sync-final
+python3 macos/scripts/measure-rendering.py --baseline-name baseline-sync --candidate-name candidate-sync-final \
+  --scenarios pn-gallery pn-ambient pn-paused pn-zoom --repeats 3 \
+  --output artifacts/macos/rendering-performance/comparison-sync-final
+```
+
+保持レイヤー版は`DPW_LAYER_COMPOSITOR`を付けてビルドする。`pn-bitmap-gallery` / `pn-bitmap-ambient`では保持版ソースの従来描画fallbackも比較できる。通常の製品は保持レイヤーを使用する。
 
 一時停止はローカルではplayback clockを止め、同期fixtureではelapsedを固定する。背景OFFはローカルGalleryのみ。Panの速度40px/s、Zoom120秒を指定し、測定中に動きが終わらないようにする。これらは製品の既定値を変更する操作ではない。
 

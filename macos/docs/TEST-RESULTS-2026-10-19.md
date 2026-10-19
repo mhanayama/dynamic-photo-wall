@@ -1,5 +1,22 @@
 # Windows差分確認とMac build 10・11
 
+## build 16: 同期描画の保持レイヤー化
+
+build 15の再起動後もCPU負荷が残るという報告とユーザー提供sampleを受け、同期側の毎フレームのbitmap再描画をCore Animationの不変contentsと座標/不透明度の更新へ移した。`orderFrontRegardless`の反復呼出しも抑制した。共有PNG・色補正・wire時刻と16ms時計は維持する。
+
+`bash macos/scripts/verify.sh`（GUI操作なし）が成功:
+
+- Swift単体205件 / 31 suites。同期合成12件を追加し、静止/一時停止の属性・contents再設定なし、動作、同一PNG、透明な背景のsource-over、旧描画との画素比較、clip/角丸/スパンcrop、フェード、交換/再開/resize/破棄を検証。
+- 共通fixture704＋472 assertions、背景色12ケース、Zoom構図5120 assertions。
+- .NETネットワーク26ケース / 241 assertions。
+- arm64 Releaseコンパイル。
+
+204件時点の全検証ログは`artifacts/macos/issue-1-sync-final-verify.log`。縦境界の追加1件を含む全205件は`artifacts/macos/issue-1-sync-boundary-verify.log`で成功。本番背景の生成経路を使う合成画像を含め、旧描画と保持レイヤーの全画素差0を確認した。XcodeのCoreSimulatorバージョン警告とCore Imageの`MDB_MAP_FULL`ログは従来同様に出たが、対象の全単体試験とReleaseビルドは成功した。
+
+`package.sh`により同じRelease archiveからAPP/ZIP/DMGを生成し、署名strict・arm64・ビルド番号16・LSMultipleInstancesProhibited・DMG・SHA-256を確認。3つのAPPの全6ファイルが一致し、ルート直下のエントリは不変。APPと実行ファイルは22:40:52（日本時間）。`artifacts/macos/package/build16-validation.json`、`build16-package.log`に保存した。旧配布物は`previous-release.91v0uU/`。稼働アプリの終了・再起動、`/Applications`の置換、GitHub公開は行っていない。
+
+独立ウィンドウでの比較測定は[実測記録](RENDERING-MEASUREMENTS-2026-10-19.md)に分離する。実画面の色管理・滑らかさ・カーソル、複数実画面・Windows端末との同期、通常アプリのCPU再測定、電力/提示フレーム時間は未検証。
+
 ## build 15: ローカル配布物の更新
 
 ユーザー許可で`package.sh`を実行し、Issue #1の修正とビルド番号15を含むarm64 Release archiveから`release/macos/arm64/`のAPP／ZIP／DMG／SHA256SUMSを更新。アドホック署名のstrict検証、arm64、LSMultipleInstancesProhibited、ZIP展開、DMG検証、SHA-256が成功。DMGを読み取り専用でマウントし、配布APP・ZIP内APP・DMG内APPの全6ファイルが一致した。APPと実行ファイルの更新時刻は22:15:50（日本時間）。検証結果は`artifacts/macos/package/build15-validation.json`、旧配布物は`artifacts/macos/package/previous-release.d22W4u/`。ルートのエントリに増減なし。製品ソースは前回193件の検証からビルド番号だけを変更しており、単体試験は再実行していない。通常アプリの置換・再起動とGitHub公開は含めない。[リリースノート](RELEASE-NOTES-v1.1.0-build15.md)を参照。

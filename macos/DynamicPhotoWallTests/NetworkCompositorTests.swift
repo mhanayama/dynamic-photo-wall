@@ -159,6 +159,68 @@ import Testing
         }
     }
 
+    @Test func fullSizedFixturePhotoBoundariesMatchTheBitmapPath() async throws {
+        func gradient(_ width: Int, _ height: Int, reverse: Bool = false) throws -> CGImage {
+            let canvas = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            for y in stride(from: 0, to: height, by: 20) {
+                let value = CGFloat(y) / CGFloat(height)
+                canvas.setFillColor(CGColor(red: reverse ? 1 - value : value, green: 0.4, blue: reverse ? value : 1 - value, alpha: 1))
+                canvas.fill(CGRect(x: 0, y: y, width: width, height: 20))
+            }
+            return try #require(canvas.makeImage())
+        }
+        let original = try fixture(), photo = try gradient(2400, 3600)
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("dpw-compositor-boundaries", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        print("Boundary diagnostics: \(output.path)")
+        for mode in ["gallery", "ambient", "zoom", "production"] {
+            let inset = mode == "ambient" || mode == "production"
+            var plan = original.frame.plan, display = original.display
+            display.width = 1920; display.height = 1080
+            plan.viewport = PNSize(width: 1920, height: 1080); plan.displays = [display]; plan.duration = 3600
+            plan.placements = (0..<4).map { i in
+                var p = original.frame.plan.placements[0]
+                p.id = i; p.clip = PNRect(x: 0, y: 0, width: 1920, height: 1080)
+                p.width = inset ? 432 : 480; p.height = inset ? 864 : 1080
+                p.fromX = Double(i) * 480; p.toX = p.fromX
+                p.fromY = inset ? 108 : 0; p.toY = p.fromY
+                p.toScale = mode == "zoom" ? 1.25 : 1; p.centerX = 0.5; p.centerY = 0.5
+                p.motionSeconds = 120; p.visibleUntil = 3600; p.cornerRadius = 8; p.ease = true
+                return p
+            }
+            var backgrounds = try (mode == "ambient" ? [0, 120] : [0]).map { time in
+                let image = try gradient(160, 90, reverse: time > 0)
+                return PNPlayback.PNAmbientImage(frame: PNAmbient(at: Double(time), png: try #require(PNImageDecode.png(image)), displayId: nil),
+                    image: NSImage(cgImage: image, size: CGSize(width: 160, height: 90)))
+            }
+            if mode == "production" {
+                let bytes = try #require(PNImageDecode.png(photo))
+                let tiny = try #require(PNImageDecode.decode(bytes, maximum: 128))
+                let cards = plan.placements.map { p in AmbientCard(image: tiny.image,
+                    frame: CGRect(x: p.fromX, y: p.fromY, width: p.width, height: p.height), opacity: 1, radius: p.cornerRadius) }
+                let rendered = await AmbientProcessor().render(cards: cards, viewport: CGSize(width: 1920, height: 1080), at: 0, enhanceColors: false)
+                let background = try #require(rendered), enhanced = try #require(AmbientColors.enhance(background.image))
+                backgrounds = [PNPlayback.PNAmbientImage(frame: PNAmbient(at: 0, png: try #require(PNImageDecode.png(background.image)), displayId: nil),
+                    image: NSImage(cgImage: enhanced.image, size: CGSize(width: enhanced.image.width, height: enhanced.image.height)))]
+            }
+            let frame = PNPlayback.Frame(plan: plan, images: [plan.placements[0].asset.opaqueId: DecodedPhoto(image: photo)], ambient: backgrounds)
+            let layer = PNPlaybackLayer(frame: frame, display: display, elapsed: 10, opacity: 1), size = CGSize(width: 960, height: 540)
+            let old = try bitmap([layer], composited: false, size: size), new = try bitmap([layer], composited: true, size: size)
+            for (name, pixels) in [("bitmap", old), ("layers", new)] {
+                let image = try #require(AmbientProcessor.image(pixels, width: 960, height: 540))
+                try #require(PNImageDecode.png(image)).write(to: output.appendingPathComponent("\(mode)-\(name).png"))
+            }
+            var maximum = 0, changed = 0
+            for i in stride(from: 0, to: old.count, by: 4) {
+                let difference = (0..<4).map { abs(Int(old[i+$0]) - Int(new[i+$0])) }.max() ?? 0
+                maximum = max(maximum, difference); if difference > 4 { changed += 1 }
+            }
+            print("Boundary difference \(mode): max=\(maximum), pixelsOver4=\(changed)/518400")
+            #expect(maximum < 4, "mode=\(mode), maximum channel difference=\(maximum)")
+        }
+    }
+
     @Test func timelineEntryExitAndIndependentFadesStillUpdateRetainedLayers() throws {
         let original = try fixture()
         var plan = original.frame.plan
