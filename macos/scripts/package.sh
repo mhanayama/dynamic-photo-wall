@@ -25,11 +25,15 @@ codesign --verify --deep --strict "$app"
 ditto "$app" "$candidate/DynamicPhotoWall.app"
 codesign --verify --deep --strict "$candidate/DynamicPhotoWall.app"
 ditto -c -k --sequesterRsrc --keepParent "$candidate/DynamicPhotoWall.app" "$candidate/DynamicPhotoWall-macos-arm64.zip"
+# Keep notices alongside the signed app without changing its sealed bundle.
+cp LICENSE THIRD-PARTY-NOTICES.md "$candidate/"
+zip -j "$candidate/DynamicPhotoWall-macos-arm64.zip" "$candidate/LICENSE" "$candidate/THIRD-PARTY-NOTICES.md"
 unzip -tq "$candidate/DynamicPhotoWall-macos-arm64.zip"
 # Keep the /Applications link outside the workspace so editor searches cannot
 # follow it into installed apps. Remove staging even when DMG creation fails.
 staging=$(mktemp -d "${TMPDIR:-/tmp}/dynamic-photo-wall-dmg.XXXXXX")
 ditto "$candidate/DynamicPhotoWall.app" "$staging/DynamicPhotoWall.app"
+cp "$candidate/LICENSE" "$candidate/THIRD-PARTY-NOTICES.md" "$staging/"
 ln -s /Applications "$staging/Applications"
 hdiutil create -volname "Dynamic Photo Wall" -srcfolder "$staging" -ov -format UDZO \
     "$candidate/DynamicPhotoWall-macos-arm64.dmg"
@@ -39,7 +43,7 @@ shasum -a 256 DynamicPhotoWall-macos-arm64.zip DynamicPhotoWall-macos-arm64.dmg 
 shasum -a 256 -c SHA256SUMS
 popd >/dev/null
 previous=$(mktemp -d "$work/previous-release.XXXXXX")
-for name in DynamicPhotoWall.app DynamicPhotoWall-macos-arm64.zip DynamicPhotoWall-macos-arm64.dmg SHA256SUMS; do
+for name in DynamicPhotoWall.app DynamicPhotoWall-macos-arm64.zip DynamicPhotoWall-macos-arm64.dmg SHA256SUMS LICENSE THIRD-PARTY-NOTICES.md; do
     if [[ -e "$output/$name" || -L "$output/$name" ]]; then mv "$output/$name" "$previous/$name"; fi
     mv "$candidate/$name" "$output/$name"
 done

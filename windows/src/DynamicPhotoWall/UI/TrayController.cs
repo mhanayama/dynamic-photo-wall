@@ -40,9 +40,19 @@ public sealed class TrayController : IDisposable
                 menu.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (disposed || exiting) return;
-                    Update();
-                    menu.Placement = PlacementMode.MousePoint;
-                    menu.IsOpen = true;
+                    try
+                    {
+                        Update();
+                        menu.Placement = PlacementMode.MousePoint;
+                        menu.IsOpen = true;
+                    }
+                    catch (Exception error)
+                    {
+                        // A popup failure must not reach the global UI handler,
+                        // which stops playback. Reset it so another click can retry.
+                        Log.Write("トレイメニューを開けませんでした。", error);
+                        menu.IsOpen = false;
+                    }
                 }));
         };
         icon.DoubleClick += (_, _) => OpenSettings(); controller.Changed += Update;

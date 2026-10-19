@@ -10,6 +10,9 @@
     <ApplicationIcon>../../assets/PhotoWall-apple-style.ico</ApplicationIcon>
     <AssemblyName>DynamicPhotoWall</AssemblyName>
     <Version>0.1.0</Version>
+    <!-- Late-loaded popup/accessibility assemblies must remain available even
+         if the published host is replaced while this process is running. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <!-- WPF owns DPI; WinForms is used only for NotifyIcon and folder selection. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>

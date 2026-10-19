@@ -1,6 +1,8 @@
 # Dynamic Photo Wall — Windows
 
-Windows 11の選択したディスプレイを、写真がゆっくり動くギャラリーにするWPF常駐アプリです。Windowsの壁紙設定を変更せず、Explorerの背面描画階層に接続します。写真はローカルで処理し、アップロードもテレメトリも行いません。
+Windows 11の選択したディスプレイを、写真がゆっくり動くギャラリーにするWPF常駐アプリです。Windowsの壁紙設定を変更せず、Explorerの背面描画階層に接続します。写真と顔検出は端末内で処理し、クラウドへの写真アップロードやテレメトリは行いません。オンラインモードで接続すると、選択した写真と顔データをLAN内の接続ピアへ転送します。
+
+[Windows版のダウンロード](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/windows-v0.1.0) / [2026-10-19の更新内容](docs/RELEASE-NOTES-2026-10-19.md)。ZIPを展開してEXEを起動してください。更新前に旧版をタスクトレイから終了します。配布ZIPには、本体と依存ライブラリのライセンス・ビルド情報も含みます。
 
 ## 起動
 
@@ -10,7 +12,7 @@ Windows 11の選択したディスプレイを、写真がゆっくり動くギ�
 
 リポジトリ直下から `windows\Start-PhotoWall.ps1` を実行しても起動できます。EXEと同じディレクトリの `photos` を初期の写真フォルダーとして検出します。ルートの既存 `photos` を使う場合は「写真」設定から選択してください。保存済みの写真設定は維持します。
 
-EXEとドキュメント・ライセンス類は `release/windows/win-x64/` に保存します。EXEを別のフォルダーへ移しても起動できます。写真はEXEに含めず、「写真」設定で選択します。設定・キャッシュは引き続きユーザーのLocalAppDataへ保存します。初回起動時には、同梱したネイティブライブラリを.NETがユーザーの一時領域へ展開します。
+EXEとドキュメント・ライセンス類は `release/windows/win-x64/` に保存します。EXEを別のフォルダーへ移しても起動できます。写真はEXEに含めず、「写真」設定で選択します。設定・キャッシュは引き続きユーザーのLocalAppDataへ保存します。初回起動時には、同梱したマネージド／ネイティブのライブラリを.NETがユーザーの一時領域へ展開します。起動中のEXE差し替えで、後から開くトレイメニューの依存読み込みが失敗する問題を防ぐためです。更新前には引き続き旧版を終了してください。
 
 1. **使用ディスプレイ**で表示対象を1台以上選びます。つなげたい画面がある場合は、**画面グルーピング**で同じグループを選びます。
 2. **写真**に写真フォルダーを追加します。複数フォルダーと再帰検索に対応しています。
@@ -33,7 +35,7 @@ EXEとドキュメント・ライセンス類は `release/windows/win-x64/` に�
 - グループ内の全画面を同じ前景ウィンドウが覆う場合は、そのグループの時計を一時停止します。ほかのグループは再生を続けます。タスクバーは画面ごとに復元します。
 - 以前の複数画面設定は「グループ1」として連結を維持し、以前のタスクバー設定も引き継ぎます。画面ごとの指定を保存すると個別の設定になります。
 
-キャンバスの幅・高さの上限は32768px。物理サイズが異なる画面の実寸補正、画面の回転設定、Macなど別PCとの同期は今後の対応です。OSの表示倍率によらず各画面の物理ピクセルに合わせて切り出しますが、混在DPIの実機確認は残っています。
+キャンバスの幅・高さの上限は32768px。物理サイズが異なる画面の実寸補正、画面の回転設定は今後の対応です。別PCとの同期は試験用のオンラインモードに実装していますが、Mac↔Windowsの実機確認は残っています。OSの表示倍率によらず各画面の物理ピクセルに合わせて切り出しますが、混在DPIの実機確認も残っています。
 
 初回は自動で表示を始めません。保存後は、起動時の再生とWindowsログオン時の自動起動を設定できます。自動起動は現在ユーザーのRunレジストリに実行ファイルを登録します。移動後は設定し直してください。
 
@@ -110,17 +112,21 @@ Windows 11 x64、.NET 10 SDKが必要です。ソリューションは `windows/
 
 ```powershell
 .\windows\scripts\Build.ps1 -Test
-# 実際のデスクトップへ短時間表示するテストも行う場合
+# ZIP・SHA256SUMS.txtも作成する場合
+.\windows\scripts\Package.ps1 -Test
+# GUI操作の明示的な実行依頼がある場合だけ
 .\windows\scripts\Build.ps1 -DesktopTest
 ```
 
-`-Test`には、顔を考慮したズームの構図・顔保護・画面被覆を調べるGUIなしの`ParityVerifier --zoom-framing`も含みます。
+`-Test`には、顔を考慮したズームの構図・顔保護・画面被覆を調べるGUIなしの`ParityVerifier --zoom-framing`も含みます。`Package.ps1`は配布ファイルを明示的に選び、ローカル写真・設定・絶対パス付きショートカットをZIPへ入れません。ZIP内のEXEと配布EXEのSHA-256一致を確認し、EXEとZIPのチェックサムを生成します。ビルド元コミットと依存バージョンは`BUILD-INFO.txt`へ記録します。パッケージ作業は`artifacts/windows/package/`を使います。
+
+パッケージ時は`Verify-PublishedRuntime.ps1`も実行します。隔離コピーのEXEを起動・待機させ、そのコピーを差し替えた後で`Accessibility`の読み込みとWPF popup bridgeのJITを確認します。`--check-runtime --output <json-path>`はこのGUIなしの診断用で、通常のアプリ・トレイ・写真再生は開始しません。ログと展開先は`artifacts/windows/runtime-check/`です。
 
 コマンドを直接使う場合:
 
 ```powershell
 Set-Location windows
-dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../release/windows/win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PublishTrimmed=false
+dotnet publish src/DynamicPhotoWall/DynamicPhotoWall.csproj -c Release -r win-x64 --self-contained true -o ../release/windows/win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PublishTrimmed=false
 dotnet build tests/DynamicPhotoWall.Tests/DynamicPhotoWall.Tests.csproj -c Release
 dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/windows/smoke-data
 ```
@@ -130,10 +136,10 @@ dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/Dyna
 実写テスト（上記と同じく `windows` ディレクトリから実行。全画像をデコードし、最も横長の画面へGallery・縦パン・Zoomを短時間表示）:
 
 ```powershell
-dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/actual-photos --scan-only --actual=../photos
+dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/DynamicPhotoWall.Tests.dll ../artifacts/windows/actual-photos --scan-only --actual=../photos
 ```
 
-テストはアプリの通常設定を使わず、指定出力フォルダー配下に専用プロファイルを作ります。実写の確認用PNGはローカルの `artifacts/actual-photos` に保存され、Gitから除外されています。ユーザー写真自体もGitから除外しています。
+テストはアプリの通常設定を使わず、指定出力フォルダー配下に専用プロファイルを作ります。実写の確認用PNGはローカルの `artifacts/windows/actual-photos` に保存され、Gitから除外されています。ユーザー写真自体もGitから除外しています。実写表示・`--probe`を含め、GUI操作を伴うテストは明示的な実行依頼がある場合だけ行ってください。
 
 ## 制約
 
@@ -152,3 +158,7 @@ dotnet tests/DynamicPhotoWall.Tests/bin/Release/net10.0-windows10.0.19041.0/Dyna
 [設計と主要リスク](docs/ARCHITECTURE.md) / [テスト結果](docs/TEST-RESULTS.md) / [外部ライブラリ](THIRD-PARTY-NOTICES.md)
 
 macOS版: [Windows版との差分監査と優先度付きTODO](../macos/MACOS_PARITY_TODO.md)（2026-10-14）。
+
+## ライセンス
+
+本体は[MIT License](../LICENSE)です。[依存コンポーネントの通知](THIRD-PARTY-NOTICES.md)も参照してください。ビルド時は本体の`LICENSE`と、実際に復元したランタイム・SkiaSharpパッケージのライセンスを別名で配布先へコピーします。SDKのライセンスを本体のライセンスとして使用しません。

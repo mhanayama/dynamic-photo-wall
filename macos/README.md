@@ -6,6 +6,8 @@ Apple Silicon搭載Mac、macOS 27.0以降、Xcode 27.0向けです。SwiftUI＋A
 
 **生成物の共通規則:** 配布物は `release/macos/arm64/`、作業・検証ファイルは `artifacts/macos/`。プロジェクトルート直下へAPP・ZIP・DMG・ログ・一時ファイルを置きません。[共通規則](../docs/GENERATED-FILES.md)と[AGENTS.md](../AGENTS.md)に従ってください。
 
+本体コードは[MIT License](../LICENSE)です。[外部コンポーネントとテスト画像の通知](../THIRD-PARTY-NOTICES.md)も参照してください。`package.sh`は次回のパッケージ作成から、署名済みAPPの外側に`LICENSE`と`THIRD-PARTY-NOTICES.md`を添え、ZIP／DMGと配布先へ同梱します。この同梱変更はWindows上で行ったもので、Macでのパッケージ実行確認は残っています。このライセンス同梱変更では、公開済みbuild 14のバイナリは変更していません。
+
 **描画負荷の改善（Issue #1）:** 静止時の背景再生成を抑え、色追従を表示補間へ分離しました。前景の幾何計算をキャッシュし、同じ写真への不要な再描画要求も抑えます。稼働build 14のCPU/GPU採取と、同じ合成画像による比較を実施しました。[測定結果](docs/RENDERING-MEASUREMENTS-2026-10-19.md) / [監査・回帰結果・実機計測手順](docs/RENDERING-PERFORMANCE.md)。通常の全画面表示での前後比較と電力は未測定です。
 
 ## 起動と設定

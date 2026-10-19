@@ -23,9 +23,13 @@
 ```powershell
 .\windows\scripts\Build.ps1 -Test
 .\windows\Start-PhotoWall.ps1
+# 配布ZIP・チェックサムも作成
+.\windows\scripts\Package.ps1 -Test
 ```
 
 Windowsは`release/windows/win-x64/DynamicPhotoWall.exe`または同じディレクトリのショートカットからも起動できる。配布先の`photos/`は初期写真フォルダーとして利用できる。写真は設定から別フォルダーを選んでもよい。旧ルートEXEから移動した場合、ログオン自動起動を使用していれば新しいEXEから設定し直す。
+
+Windowsの`Package.ps1`は`artifacts/windows/package/`で明示した配布ファイルだけをZIP化し、ローカル写真・設定・ショートカットを除外する。本体MITの`LICENSE`、依存ライブラリのライセンス、配布用README、`BUILD-INFO.txt`を含める。ZIP内EXEのハッシュを検証し、完成ZIPと`SHA256SUMS.txt`は配布先へ置く。GitHubへの公開は別操作。
 
 ```sh
 bash macos/scripts/verify.sh

@@ -11,6 +11,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Contains("--check-runtime")) return RuntimeDiagnostics.Run(args);
         if (args.FirstOrDefault() == "--taskbar-guard") return TaskbarVisibility.RunGuard(args);
         if (args.FirstOrDefault() == "--taskbar-test-owner")
         {

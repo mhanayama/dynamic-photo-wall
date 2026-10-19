@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**README・ライセンスと配布整備（2026-10-19）:** 本体はルート`LICENSE`のMITライセンス。依存通知はルートとWindows側の`THIRD-PARTY-NOTICES.md`へ分けた。Windowsは`Package.ps1 -Test`で最新EXE・配布README・実際の依存パッケージのライセンス・ビルド情報をZIP化し、SHA-256を確認する。Macの`package.sh`は次回作成時から、署名を維持したAPPの外側にMITと共通通知を置き、ZIP／DMGにも含める。出力先は引き続き`release/macos/arm64/`。この同梱差分のMac実行確認は残っており、今回のWindows作業ではMacの公開済みbuild 14を更新していない。
+
 **build 16の受け入れ確認とmainへの統合（2026-10-19）:** ユーザーが通常表示について「綺麗に反映されてるし動作も軽くなった」と確認し、機能後退がなければIssue #1を関連付けたPRをmainへマージすることを許可した。PR #3の差分と回帰結果を再確認し、既知の機能後退・未解決レビュー・競合はない。通常アプリの定量CPU、GPU/電力/提示フレーム、複数実画面・Windows端末での網羅的な確認は未測定事項として残す。
 
 **Macローカル配布build 16（2026-10-19 22:40）:** build 15再起動後のPID 81849のsampleでも`PNSceneView.draw`とCore Animationのbacking texture準備が残ったため、同期写真・背景を保持レイヤーへ移した。静止時は同じ属性を再設定せず、動作時は従来時刻の位置・倍率・不透明度を更新する。背景の色補正・PNG・wire時刻、clip/角丸/スパンcrop、写真と場面のフェードを維持。前面化は表示開始/非表示からの復帰時に限る。16ms時計と画面検出は維持した。Swift単体205件/31 suites、既存fixture・ネットワーク・arm64 Releaseが成功し、APP/ZIP/DMGの全6ファイル一致・署名・チェックサムを確認。配布物は22:40:52へ更新、旧build 15は`artifacts/macos/package/previous-release.91v0uU/`。稼働アプリの終了・再起動と`/Applications`へのコピーは行っていない。[build 16のノート](docs/RELEASE-NOTES-v1.1.0-build16.md)、[測定記録](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照。同一合成fixtureの各3回平均CPUは静止5.55%→1.92%、背景補間16.78%→2.20%、Zoom17.51%→2.59%。最大RSSは増え、実画面/色管理/電力/実Windows同期は未確認。計測用の縦の色段差は旧描画にもあり、本番背景生成経路を通す合成画像で旧/新全画素差0を確認した。以下のbuild 15/14の記述は各作業時点の記録。
