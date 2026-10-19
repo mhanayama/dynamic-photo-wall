@@ -58,8 +58,10 @@ import Darwin
             let motion = scenario.contains("zoom")
             let placements = (0..<64).map { i in
                 PNPlacement(id: i, asset: key, displayId: nil, clip: PNRect(x: 0, y: 0, width: 1920, height: 1080),
-                    width: i < 4 ? 480 : 1920, height: 1080, fromX: Double(i % 4) * 480, fromY: 0,
-                    toX: Double(i % 4) * 480, toY: 0, fromScale: 1, toScale: motion ? 1.25 : 1,
+                    width: i < 4 ? (scenario.contains("ambient") ? 432 : 480) : 1920,
+                    height: scenario.contains("ambient") ? 864 : 1080,
+                    fromX: Double(i % 4) * 480, fromY: scenario.contains("ambient") ? 108 : 0,
+                    toX: Double(i % 4) * 480, toY: scenario.contains("ambient") ? 108 : 0, fromScale: 1, toScale: motion ? 1.25 : 1,
                     centerX: 0.5, centerY: 0.5, startSeconds: 0, motionSeconds: 120,
                     visibleFrom: i < 4 ? 0 : 1000, visibleUntil: 3600, fadeSeconds: 0, cornerRadius: 8, ease: true)
             }
@@ -69,12 +71,28 @@ import Darwin
             let tiny = fixture(width: 160, height: 90)
             let ambient = PNPlayback.PNAmbientImage(frame: PNAmbient(at: 0, png: PNImageDecode.png(tiny)!, displayId: nil),
                 image: NSImage(cgImage: tiny, size: CGSize(width: 160, height: 90)))
-            let prepared = PNPlayback.Frame(plan: plan, images: [key.opaqueId: DecodedPhoto(image: image)], ambient: [ambient])
-            let view = PNSceneView(); view.wantsLayer = true
+            var backgrounds = [ambient]
+            if scenario.contains("ambient") {
+                let next = fixture(width: 160, height: 90, reverse: true)
+                backgrounds.append(PNPlayback.PNAmbientImage(frame: PNAmbient(at: 120, png: PNImageDecode.png(next)!, displayId: nil),
+                    image: NSImage(cgImage: next, size: CGSize(width: 160, height: 90))))
+            }
+            let prepared = PNPlayback.Frame(plan: plan, images: [key.opaqueId: DecodedPhoto(image: image)], ambient: backgrounds)
+            #if DPW_LAYER_COMPOSITOR
+            let view = PNSceneView(composited: !scenario.contains("bitmap"))
+            #else
+            let view = PNSceneView()
+            #endif
+            view.wantsLayer = true
             window.contentView = view
             render = { elapsed in
                 view.layers = [PNPlaybackLayer(frame: prepared, display: display, elapsed: scenario.contains("paused") ? 10 : elapsed, opacity: 1)]
+                #if DPW_LAYER_COMPOSITOR
+                // The new production view invalidates only its initial draw;
+                // bitmap fallback still invalidates in its layers setter.
+                #else
                 view.needsDisplay = true
+                #endif
             }
         }
         window.orderFrontRegardless()
@@ -113,11 +131,12 @@ import Darwin
         var usage = rusage(); getrusage(RUSAGE_SELF, &usage)
         return Double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1_000_000
     }
-    nonisolated static func fixture(width: Int = 2400, height: Int = 3600) -> CGImage {
+    nonisolated static func fixture(width: Int = 2400, height: Int = 3600, reverse: Bool = false) -> CGImage {
         let canvas = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         for y in stride(from: 0, to: height, by: 20) {
-            canvas.setFillColor(CGColor(red: CGFloat(y) / CGFloat(height), green: 0.4, blue: 1 - CGFloat(y) / CGFloat(height), alpha: 1))
+            let value = CGFloat(y) / CGFloat(height)
+            canvas.setFillColor(CGColor(red: reverse ? 1 - value : value, green: 0.4, blue: reverse ? value : 1 - value, alpha: 1))
             canvas.fill(CGRect(x: 0, y: y, width: width, height: 20))
         }
         return canvas.makeImage()!

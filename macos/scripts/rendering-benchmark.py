@@ -42,11 +42,14 @@ shutil.copyfile(ROOT / 'macos/Benchmarks/RenderingBenchmark.swift', harness)
 metadata = {'ref': args.ref, 'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD' if args.ref == 'WORKTREE' else args.ref], cwd=ROOT, text=True).strip(), 'harness_sha256': hashlib.sha256(harness.read_bytes()).hexdigest(), 'flags': '-O -whole-module-optimization -swift-version 5 -default-isolation MainActor -target arm64-apple-macos27.0'}
 metadata_file = output / 'build-metadata.json'
 metadata_file.unlink(missing_ok=True)
+composited = (app / 'Networking/PeerLayerCompositor.swift').exists()
+metadata['composited_path'] = composited
+if composited: metadata['flags'] += ' -D DPW_LAYER_COMPOSITOR'
 files = sorted(str(p) for p in app.rglob('*.swift') if p.name != 'DynamicPhotoWallApp.swift')
 cmd = ['xcrun', 'swiftc', '-O', '-whole-module-optimization', '-parse-as-library', '-swift-version', '5',
        '-default-isolation', 'MainActor', '-target', 'arm64-apple-macos27.0',
        '-module-cache-path', str(output / 'ModuleCache'), '-module-name', 'DynamicPhotoWallBenchmark',
-       *files, str(harness), '-o', str(output / 'rendering-benchmark.next')]
+       *(['-D', 'DPW_LAYER_COMPOSITOR'] if composited else []), *files, str(harness), '-o', str(output / 'rendering-benchmark.next')]
 with (output / 'build.log').open('w') as log:
     subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
 (output / 'rendering-benchmark.next').replace(output / 'rendering-benchmark')

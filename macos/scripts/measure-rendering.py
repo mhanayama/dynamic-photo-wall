@@ -13,13 +13,15 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / 'artifacts/macos/rendering-performance'
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--scenarios', nargs='+', default=['local-gallery', 'pn-gallery', 'local-gallery-off', 'local-paused', 'local-pan', 'local-zoom', 'local-scroll', 'pn-paused'])
+parser.add_argument('--baseline-name', default='baseline')
+parser.add_argument('--candidate-name', default='candidate')
 parser.add_argument('--seconds', type=float, default=10)
 parser.add_argument('--warmup', type=float, default=5)
 parser.add_argument('--gallery-repeats', type=int, default=3)
 parser.add_argument('--repeats', type=int, help='override repetitions for every selected scenario')
 parser.add_argument('--output', type=Path, default=BASE / 'comparison')
 args = parser.parse_args()
-allowed = {'local-gallery', 'local-gallery-off', 'local-paused', 'local-pan', 'local-zoom', 'local-scroll', 'pn-gallery', 'pn-paused', 'pn-zoom'}
+allowed = {'local-gallery', 'local-gallery-off', 'local-paused', 'local-pan', 'local-zoom', 'local-scroll', 'pn-gallery', 'pn-paused', 'pn-zoom', 'pn-ambient', 'pn-bitmap-gallery', 'pn-bitmap-ambient'}
 if not math.isfinite(args.seconds) or not math.isfinite(args.warmup) or any(s not in allowed for s in args.scenarios) or args.seconds <= 0 or args.warmup < 0 or args.gallery_repeats < 1 or (args.repeats is not None and args.repeats < 1):
     parser.error('invalid scenario, duration, or repeat count')
 output = args.output.resolve()
@@ -28,11 +30,14 @@ if not output.is_relative_to(BASE.resolve()):
 if output.exists() and any(output.iterdir()):
     parser.error('output is not empty; choose a new --output directory to preserve raw measurements')
 output.mkdir(parents=True, exist_ok=True)
-metadata = [json.loads((BASE / name / 'build-metadata.json').read_text()) for name in ['baseline', 'candidate']]
+names = {'baseline': args.baseline_name, 'candidate': args.candidate_name}
+if any(not name.replace('-', '').replace('_', '').isalnum() for name in names.values()):
+    parser.error('invalid build directory name')
+metadata = [json.loads((BASE / name / 'build-metadata.json').read_text()) for name in names.values()]
 if metadata[0]['harness_sha256'] != metadata[1]['harness_sha256']:
     parser.error('baseline and candidate must use identical harnesses')
 for name, build in zip(['baseline', 'candidate'], metadata):
-    digest = hashlib.sha256((BASE / name / 'rendering-benchmark').read_bytes()).hexdigest()
+    digest = hashlib.sha256((BASE / names[name] / 'rendering-benchmark').read_bytes()).hexdigest()
     if build.get('binary_sha256', digest) != digest:
         parser.error(f'{name} executable no longer matches build metadata')
     build['binary_sha256'] = digest
@@ -48,7 +53,7 @@ for scenario in args.scenarios:
             result = output / f'{stem}.json'
             print(f'Measuring {stem} ({args.warmup}s warmup + {args.seconds}s)', flush=True)
             with (output / f'{stem}.log').open('w') as log:
-                subprocess.run([str(BASE / name / 'rendering-benchmark'), '--scenario', scenario,
+                subprocess.run([str(BASE / names[name] / 'rendering-benchmark'), '--scenario', scenario,
                     '--seconds', str(args.seconds), '--warmup', str(args.warmup), '--output', str(result)],
                     env=environment, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
             row = json.loads(result.read_text()); row.update(version=name, repeat=repeat + 1)

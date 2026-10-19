@@ -68,6 +68,7 @@ import SwiftUI
 @MainActor final class PNWindowSurface: PNPlaybackSurface {
     private let window: NSWindow
     private let view = PNSceneView()
+    private var wasVisible = false
     var isReady: Bool { view.hasDrawn }
     init(screen: ScreenDescriptor) {
         window = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -80,21 +81,50 @@ import SwiftUI
     func present(_ layers: [PNPlaybackLayer], on screen: ScreenDescriptor, visible: Bool) {
         view.layers = layers
         if window.frame != screen.frame { window.setFrame(screen.frame, display: false) }
-        view.needsDisplay = true
         // An ordered but transparent window can draw without covering the old
         // host with its empty backing. Reveal it only after actual drawing.
-        if visible { window.orderFrontRegardless() }
+        if visible && (!wasVisible || !window.isVisible) { window.orderFrontRegardless() }
+        wasVisible = visible
         if !view.hasDrawn { view.displayIfNeeded() }
-        if view.hasDrawn { window.alphaValue = 1 }
+        if view.hasDrawn && window.alphaValue != 1 { window.alphaValue = 1 }
     }
     func close() { window.orderOut(nil); window.close() }
 }
 
 @MainActor final class PNSceneView: NSView {
-    var layers: [PNPlaybackLayer] = []
+    let compositor = PNLayerCompositor()
+    private(set) var composited = true
+    var layers: [PNPlaybackLayer] = [] {
+        didSet {
+            if composited {
+                compositor.update(layers, size: bounds.size)
+                if !hasDrawn { needsDisplay = true }
+            } else { needsDisplay = true }
+        }
+    }
     private(set) var hasDrawn = false
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true; layer?.addSublayer(compositor.root)
+    }
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true; layer?.addSublayer(compositor.root)
+    }
+    convenience init(composited: Bool = true) {
+        self.init(frame: .zero)
+        self.composited = composited; compositor.root.isHidden = !composited
+    }
+    override func setFrameSize(_ size: NSSize) {
+        super.setFrameSize(size)
+        if composited { compositor.update(layers, size: bounds.size) }
+    }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
+        if composited {
+            if !layers.isEmpty && bounds.width > 0 && bounds.height > 0 { hasDrawn = true }
+            return
+        }
         guard !layers.isEmpty, let context = NSGraphicsContext.current?.cgContext else { return }
         NSColor.black.setFill(); bounds.fill()
         for layer in layers where layer.opacity > 0 {
