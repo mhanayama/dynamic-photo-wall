@@ -63,6 +63,7 @@ internal static class Program
             if (args.Contains("--scan-only") && args.Contains("--gallery-continuation")) await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
             if (args.Contains("--scan-only") && args.Contains("--ambient-scheduling")) await AmbientScheduling();
+            if (args.Contains("--scan-only") && args.Contains("--ambient-frame-timing")) await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
             var ambientBenchmark = args.FirstOrDefault(a => a.StartsWith("--ambient-benchmark="))?[20..];
             if (args.Contains("--scan-only") && ambientBenchmark != null)
                 await Test("isolated ambient performance fixture", () => AmbientSchedulingTests.Benchmark(root, ambientBenchmark, args.Contains("--ambient-reference"),
@@ -150,6 +151,7 @@ internal static class Program
         await GalleryFaces();
         await AmbientTransitions();
         await AmbientScheduling();
+        await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
         await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
         await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
         await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);
