@@ -36,6 +36,7 @@ public sealed class GlassBackground : IDisposable
     public int GeometryCheckCount { get; private set; }
     public int DiscardedCount { get; private set; }
     public bool IsSampling => timer.IsEnabled;
+    public bool IsRefreshing => busy || queued;
     public double TotalCaptureMilliseconds { get; private set; }
     public double TotalProcessMilliseconds => Interlocked.Read(ref processTicks) * 1000d / Stopwatch.Frequency;
     public double MaximumCaptureMilliseconds { get; private set; }

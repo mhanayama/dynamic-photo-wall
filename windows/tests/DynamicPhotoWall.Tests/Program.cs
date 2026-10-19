@@ -130,6 +130,7 @@ internal static class Program
         await Test("ambient color changes follow time without flashing or losing vividness", AmbientTransitionTests.ColorsFollowTimeWithoutFlashingOrLosingSaturation);
         await Test("live ambient fades retarget from the visible mix without replacing the brush", AmbientTransitionTests.LiveTextureRetargetsFromTheVisibleMix);
         await Test("shared ambient sample boundaries keep stable sources and opaque coverage", AmbientTransitionTests.SharedFrameBoundariesNeverSwapImageSources);
+        await Test("shared equal opaque samples avoid GPU invalidations while preserving alpha composition", SharedAmbientGpuTests.Run);
     }
     private static async Task AmbientScheduling()
     {
