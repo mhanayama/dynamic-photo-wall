@@ -1,5 +1,9 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Zoomの強制中央配置を修正（2026-10-19）:** 両OSの`FaceMotionSafety`で、顔を実画面中央へ置き直す処理を廃止。最小倍率で写真を中央配置する構図から、全顔を収めるための最小限の移動だけを行う。顔を支点にするズーム・倍率の同率縮小・実画面1枚への顔保護は維持する。画面の被覆と顔保護を両立できる場合は背景を露出させず、候補画面の同率時も写真の構図からの移動量で選ぶ。`ZoomMotionTests`とMacでも実行できるC#の`ParityVerifier --zoom-framing`で確認し、後者を`verify.sh`へ追加した。旧raw motionのfixtureは変更しない。Swift単体178件、C#の位置補正5120 assertions、既存fixture704＋472 assertions、Mac Releaseコンパイルが成功。1.1.0 build 13のローカルAPP／ZIP／DMGを更新し、署名・arm64・チェックサム・APP／ZIPの一致を確認した。[Mac検証記録](docs/TEST-RESULTS-2026-10-19.md#zoomの強制中央配置の修正)を参照。GUI操作・Computer Useは実施していない。
+
+Windowsアプリの検証はユーザーが別端末で実施する。pull後に`dotnet run --project tests/ParityVerifier -- --zoom-framing`で新しい位置補正をCLI検証できる。Windowsのビルド・既存試験は`.\windows\scripts\Build.ps1 -Test`を使用する。GUI操作を伴う検証は、この引き継ぎだけを実行許可とみなさない。
+
 **Mac build 12の公開（2026-10-19）:** 既存の1.1.0 build 12配布物を[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.12)へ掲載した。ZIP／DMG／SHA256SUMSを添付し、署名・arm64・ZIP／DMG・チェックサム、APPとZIP内の全6ファイルの一致を再確認した。GitHub側の3添付のサイズとSHA-256もローカルと一致。正式版build 4は保持し、ネットワークは実機確認用と明記した。配布物のソース基準は`6ca7a10`で、`1ad7078`までmacOSソース・共通部品の変更はない。再ビルド・GUI自動操作・通常アプリの置換は行っていない。[リリースノート](docs/RELEASE-NOTES-v1.1.0-build12.md)を参照。
 
 **Mac build 12の確認（2026-10-19）:** `1ffc189`までを取り込み、写真ソースの接続表示・ピア解除・Pan中央配置・Galleryの空きへの追加、一巡フラグと再当選スキップをMacで検証した。初期Galleryの写真順の逆転と、写真削除・差し替え・読込失敗後の再試行まで同種モード抑止が働く不具合をSwift側で修正した。通常の再当選は5秒待ち、表示中の写真が無効になった場合と明示的な再試行はモード履歴と待ち時間を解除する。単体174件・29 suites、共通fixture704＋472 assertions、色12ケース、.NETネットワーク26ケース・241 assertionsが成功。[検証記録](docs/TEST-RESULTS-2026-10-19.md#build-12-最新リモートの取り込みとgallery復旧)を参照。以下のMac未実行という記述は取り込み前の記録として保持する。実端末間の表示・GUI自動操作は今回の検証に含めない。

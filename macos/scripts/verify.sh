@@ -24,6 +24,8 @@ dotnet run --project tests/ParityVerifier -- macos/DynamicPhotoWallTests/Fixture
     2>&1 | tee "$output/windows-delta-fixtures.log"
 dotnet run --project tests/ParityVerifier -- --ambient-colors tests/Fixtures/AmbientColors.v1.json \
     2>&1 | tee "$output/ambient-color-fixtures.log"
+dotnet run --project tests/ParityVerifier -- --zoom-framing \
+    2>&1 | tee "$output/zoom-framing.log"
 dotnet run --project tests/NetworkCore.Tests -c Release -- artifacts/macos/network-core \
     2>&1 | tee "$output/network-core.log"
 xcodebuild build -project macos/DynamicPhotoWall.xcodeproj -scheme DynamicPhotoWall \

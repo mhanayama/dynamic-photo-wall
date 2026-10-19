@@ -25,10 +25,14 @@ public static class FaceMotionSafety
                 var safe = Math.Min(availableW / (face.Width * original.Width), availableH / (face.Height * original.Height));
                 var factor = Math.Min(1, safe / maximum);
                 if (!double.IsFinite(factor) || factor <= 0 || Math.Min(original.Width, original.Height) * factor < 32) continue;
+                var minimumScale = Math.Min(original.FromScale, original.ToScale) * factor;
+                var maximumScale = maximum * factor;
+                var x = ZoomOrigin(original.Width, viewport.Width, target.X, target.X + target.Width,
+                    cx, face.Width, minimumScale, maximumScale, margin);
+                var y = ZoomOrigin(original.Height, viewport.Height, target.Y, target.Y + target.Height,
+                    cy, face.Height, minimumScale, maximumScale, margin);
                 plans.Add(original with { FromScale = original.FromScale * factor, ToScale = original.ToScale * factor,
-                    CenterX = cx, CenterY = cy, FromX = target.X + target.Width / 2 - cx * original.Width,
-                    ToX = target.X + target.Width / 2 - cx * original.Width,
-                    FromY = target.Y + target.Height / 2 - cy * original.Height, ToY = target.Y + target.Height / 2 - cy * original.Height });
+                    CenterX = cx, CenterY = cy, FromX = x, ToX = x, FromY = y, ToY = y });
                 continue;
             }
             var shrink = Math.Min(1, Math.Min(availableW / (face.Width * original.Width), availableH / (face.Height * original.Height)));
@@ -77,8 +81,33 @@ public static class FaceMotionSafety
                     Seconds = Math.Max(.1, distance / settings.PanPixelsPerSecond) });
             }
         }
+        double Displacement(MotionPlan p)
+        {
+            if (mode != CompositionMode.Zoom) return Math.Abs(p.FromX - original.FromX) + Math.Abs(p.FromY - original.FromY);
+            var scale = Math.Min(p.FromScale, p.ToScale);
+            return Math.Abs(p.FromX + (1 - scale) * p.CenterX * p.Width + p.Width * scale / 2 - viewport.Width / 2)
+                + Math.Abs(p.FromY + (1 - scale) * p.CenterY * p.Height + p.Height * scale / 2 - viewport.Height / 2);
+        }
         return plans.OrderByDescending(p => mode == CompositionMode.Zoom ? Math.Max(p.FromScale, p.ToScale) : p.Width)
-            .ThenBy(p => Math.Abs(p.FromX - original.FromX) + Math.Abs(p.FromY - original.FromY)).FirstOrDefault();
+            .ThenBy(Displacement).FirstOrDefault();
+    }
+    private static double ZoomOrigin(double length, double viewport, double targetMin, double targetMax,
+        double faceCenter, double faceLength, double minimumScale, double maximumScale, double margin)
+    {
+        // Center the photograph at its smallest scale; shift only for face safety.
+        // Keeping the face as the zoom anchor does not require centering it on screen.
+        var anchor = faceCenter * length;
+        var preferred = (viewport - length * minimumScale) / 2 + (minimumScale - 1) * anchor;
+        var halfFace = faceLength * length * maximumScale / 2;
+        var low = targetMin + margin + halfFace - anchor;
+        var high = Math.Max(low, targetMax - margin - halfFace - anchor);
+        if (length * minimumScale >= viewport)
+        {
+            var coveredLow = Math.Max(low, viewport - length * minimumScale + (minimumScale - 1) * anchor);
+            var coveredHigh = Math.Min(high, (minimumScale - 1) * anchor);
+            if (coveredLow <= coveredHigh) { low = coveredLow; high = coveredHigh; }
+        }
+        return Math.Clamp(preferred, low, high);
     }
     public static MotionPlan Plan(CompositionMode mode, PhotoInfo photo, Viewport viewport, WallSettings settings,
         bool reverse = false, double centerX = .5, double centerY = .5, IReadOnlyList<FrameRect>? displays = null)

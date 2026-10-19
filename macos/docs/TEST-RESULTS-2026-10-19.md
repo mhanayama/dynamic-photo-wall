@@ -83,3 +83,20 @@ bash macos/scripts/package.sh
 `bash macos/scripts/package.sh`で`release/macos/arm64/`のローカル候補を更新した。パッケージログは`artifacts/macos/verification/package-build12.log`、照合結果は`release-build12-check.json`。置換前のbuild 11は`artifacts/macos/package/previous-release.fjtxQc/`へ退避した。ルート直下のファイル一覧が作業前後で不変であることも確認した。`/Applications`の置換とGitHub Releaseへの公開は行っていない。
 
 GUI自動操作、実ウィンドウの表示、スクリーンショット、通常の壁・個人設定・OS権限の変更は行っていない。単体の画面切り出しは既存のオフスクリーン描画で検証した。実Mac↔Windows間のLANと表示、顔を守った構図、ちらつき・背景追従の知覚確認、混在倍率・抜差し・長時間運転は引き続き実機の残件とする。
+
+## Zoomの強制中央配置の修正
+
+顔を必ず実画面中央に置いていた両OSの`FaceMotionSafety`を修正した。最小倍率で写真を中央配置した構図を基準にし、全顔を収めるために必要な分だけ移動する。顔をズームの支点にするため、拡大・縮小中の顔の表示位置は安定する。被覆と顔保護を両立できる場合は画像の端を画面内へ入れず、顔サイズの縮小と複数画面での顔保護は維持する。同倍率の候補画面は写真の中央配置からの移動量で選ぶ。
+
+| 検証 | 結果 |
+|---|---|
+| Swift単体全体 | 178件・29 suites、失敗0。専用bundle ID・設定で実行 |
+| C# Zoom位置補正 | `dotnet run --project tests/ParityVerifier -- --zoom-framing`で5120 assertions成功。Windows CoreをMac上のCLIで実行 |
+| 旧Windows共通fixture | 704＋472 assertions成功。raw motionの期待値は変更なし |
+| Mac Release | arm64コンパイル成功 |
+
+追加回帰では左右上下の端にある顔、1.25／1.5倍、拡大／縮小、横長写真で切れていた顔の最小移動、顔サイズによる縮小、複数画面で元の構図を維持できる配置を確認した。各ズームを101時点で評価し、顔が収まり、被覆できるケースでは背景を露出しないことを検証する。C#側では顔なしの既存計画との一致、縦横スパンで全顔が実画面1枚へ収まることも確認した。C#の回帰コマンドを`verify.sh`へ追加した。
+
+ログは`artifacts/macos/zoom-framing/`の`swift-tests.log`、`dotnet-tests.log`、`windows-parity.log`、`windows-delta.log`、`release-build.log`。最初のsandbox内のXcode実行は環境のプロセス通知制限で停止し、同じ単体テストを通常権限で再実行して成功した。Computer Use・GUI操作・UIテスト・画面撮影は行っていない。Windowsアプリの実行と実画面での構図確認は今回の検証には含めない。Windowsはユーザーが別端末で検証する。ルート直下のファイル一覧は作業前後で不変。
+
+ユーザーのMacビルド依頼に従い、`bash macos/scripts/package.sh`で1.1.0 build 13のアドホック署名付きAPP／ZIP／DMGを`release/macos/arm64/`へ生成した。archive・署名・arm64・ZIP／DMG・SHA256SUMSと、APP／ZIP内の全6ファイルの一致を確認した。置換前のbuild 12は`artifacts/macos/package/previous-release.W9szkl/`へ退避した。パッケージ作成は自動承認レビューのモデル混雑で実行前に停止していたが、ユーザーが手動承認へ切り替えた後に同じコマンドで成功した。ログは同じ検証ディレクトリの`package-build13.log`、照合結果は`package-build13-check.json`。通常アプリの起動・`/Applications`の置換・GitHub Releaseへのアップロードは行っていない。

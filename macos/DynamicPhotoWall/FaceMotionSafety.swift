@@ -19,8 +19,13 @@ nonisolated enum FaceMotionSafety {
                 let factor = min(1, safe / maximum)
                 guard factor.isFinite, factor > 0, min(original.width, original.height) * factor >= 32 else { continue }
                 p.fromScale *= Double(factor); p.toScale *= Double(factor); p.center = CGPoint(x: cx, y: cy)
-                p.fromX = d.midX - cx * p.width; p.toX = p.fromX
-                p.fromY = d.midY - cy * p.height; p.toY = p.fromY; plans.append(p); continue
+                let minimumScale = CGFloat(min(p.fromScale, p.toScale)), maximumScale = CGFloat(max(p.fromScale, p.toScale))
+                p.fromX = zoomOrigin(length: p.width, viewport: v.width, targetMin: d.minX, targetMax: d.maxX,
+                    faceCenter: cx, faceLength: face.width, minimumScale: minimumScale, maximumScale: maximumScale, margin: margin)
+                p.toX = p.fromX
+                p.fromY = zoomOrigin(length: p.height, viewport: v.height, targetMin: d.minY, targetMax: d.maxY,
+                    faceCenter: cy, faceLength: face.height, minimumScale: minimumScale, maximumScale: maximumScale, margin: margin)
+                p.toY = p.fromY; plans.append(p); continue
             }
             let shrink = min(1, min(aw / (face.width * original.width), ah / (face.height * original.height)))
             p.width *= shrink; p.height *= shrink
@@ -63,7 +68,35 @@ nonisolated enum FaceMotionSafety {
             let a = mode == .zoom ? max($0.fromScale, $0.toScale) : Double($0.width)
             let b = mode == .zoom ? max($1.fromScale, $1.toScale) : Double($1.width)
             if a != b { return a > b }
-            return abs($0.fromX - original.fromX) + abs($0.fromY - original.fromY) < abs($1.fromX - original.fromX) + abs($1.fromY - original.fromY)
+            func displacement(_ p: WallMotionPlan) -> CGFloat {
+                if mode == .zoom {
+                    let scale = CGFloat(min(p.fromScale, p.toScale))
+                    return abs(p.fromX + (1 - scale) * p.center.x * p.width + p.width * scale / 2 - v.width / 2)
+                        + abs(p.fromY + (1 - scale) * p.center.y * p.height + p.height * scale / 2 - v.height / 2)
+                }
+                return abs(p.fromX - original.fromX) + abs(p.fromY - original.fromY)
+            }
+            return displacement($0) < displacement($1)
         }.first
+    }
+
+    private static func zoomOrigin(length: CGFloat, viewport: CGFloat, targetMin: CGFloat, targetMax: CGFloat,
+                                   faceCenter: CGFloat, faceLength: CGFloat, minimumScale: CGFloat,
+                                   maximumScale: CGFloat, margin: CGFloat) -> CGFloat {
+        // Center the photograph at its smallest scale, then move only enough to
+        // protect every face. The face remains the zoom anchor, not the screen center.
+        let anchor = faceCenter * length
+        let preferred = (viewport - length * minimumScale) / 2 + (minimumScale - 1) * anchor
+        let halfFace = faceLength * length * maximumScale / 2
+        var low = targetMin + margin + halfFace - anchor
+        var high = max(low, targetMax - margin - halfFace - anchor)
+        // Avoid exposing the background whenever coverage and face protection
+        // can both be satisfied. Coverage at the smallest scale covers all scales.
+        if length * minimumScale >= viewport {
+            let coveredLow = max(low, viewport - length * minimumScale + (minimumScale - 1) * anchor)
+            let coveredHigh = min(high, (minimumScale - 1) * anchor)
+            if coveredLow <= coveredHigh { low = coveredLow; high = coveredHigh }
+        }
+        return min(high, max(low, preferred))
     }
 }
