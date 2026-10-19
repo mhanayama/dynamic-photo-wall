@@ -40,7 +40,10 @@ internal static class WindowsAmbientBuilder
                 var h = Math.Max(1, (int)Math.Round(256 * height / width));
                 for (var index = 0; index < count; index++)
                 {
-                    token.ThrowIfCancellationRequested(); var at = plan.Duration * index / (count - 1);
+                    // Form the unit interval first, as the Swift planner does.
+                    // Multiplying before dividing can round the final timestamp
+                    // one ULP beyond Duration and fail strict peer validation.
+                    token.ThrowIfCancellationRequested(); var at = (double)index / (count - 1) * plan.Duration;
                     using var bitmap = new SKBitmap(256, Math.Min(256, h)); using var canvas = new SKCanvas(bitmap);
                     canvas.Clear(SKColors.Transparent); canvas.Scale((float)(256 / width), (float)(bitmap.Height / height));
                     foreach (var p in plan.Placements.Where(p => p.DisplayId == surface))

@@ -59,7 +59,8 @@ public sealed record SharedScenePlan(Guid Id, Guid GroupId, Guid SessionId, long
         }
         PeerProtocol.Require(Placements.Select(p => p.Id).Distinct().Count() == Placements.Length, "Duplicate placement ID.");
         foreach (var frame in Ambient!) PeerProtocol.Require(double.IsFinite(frame.At) && frame.At >= 0
-            && frame.At <= Duration && frame.Png.Length <= 131072, "Invalid ambient frame.");
+            && frame.At <= Duration && frame.Png.Length <= 131072,
+            FormattableString.Invariant($"Invalid ambient frame. at={frame.At:R}, duration={Duration:R}, pngBytes={frame.Png.Length}."));
     }
 }
 public sealed record SceneCommit(Guid PlanId, Guid GroupId, double StartAt);

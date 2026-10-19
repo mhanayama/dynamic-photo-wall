@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using DynamicPhotoWall.Motion;
 using DynamicPhotoWall.Rendering;
@@ -43,11 +44,18 @@ internal static class AmbientTransitionTests
     }
     public static Task LiveTextureRetargetsFromTheVisibleMix()
     {
+        var easing = new ExponentialEase { Exponent = 6.25, EasingMode = EasingMode.EaseOut };
+        for (var i = 0; i <= 120; i++)
+            Check(Math.Abs(easing.Ease(i / 120d) - AmbientTexturePresenter.ResponseProgress(5 * i / 120d)) < 1e-12,
+                "CPU retargeting must match the compositor's exact response at every point");
+        Check(AmbientTexturePresenter.ResponseProgress(0) == 0 && AmbientTexturePresenter.ResponseProgress(5) == 1,
+            "color response starts continuously and converges to the full target without more textures");
         var brush = new ImageBrush(); var root = new Canvas(); var transitions = new TransitionController();
         using var presenter = new AmbientTexturePresenter(brush, root, transitions);
         presenter.SetFrame([0, 0, 255, 255], 1, 1, 0); var image = brush.ImageSource;
         presenter.SetFrame([255, 0, 0, 255], 1, 1, 1);
-        presenter.SetFrame([0, 255, 0, 255], 1, 1, 1.0625);
+        var halfway = -.8 * Math.Log((1 + Math.Exp(-6.25)) / 2);
+        presenter.SetFrame([0, 255, 0, 255], 1, 1, 1 + halfway);
         Check(ReferenceEquals(image, brush.ImageSource), "live updates must preserve the brush's drawing image");
         var drawing = (DrawingGroup)((DrawingImage)image).Drawing;
         var under = (BitmapSource)((ImageDrawing)drawing.Children[0]).ImageSource;

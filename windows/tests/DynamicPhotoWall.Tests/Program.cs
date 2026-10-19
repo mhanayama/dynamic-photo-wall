@@ -62,6 +62,12 @@ internal static class Program
             if (args.Contains("--scan-only") && args.Contains("--mode-weights")) await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--gallery-continuation")) await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
+            if (args.Contains("--scan-only") && args.Contains("--ambient-scheduling")) await AmbientScheduling();
+            if (args.Contains("--scan-only") && args.Contains("--ambient-frame-timing")) await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
+            var ambientBenchmark = args.FirstOrDefault(a => a.StartsWith("--ambient-benchmark="))?[20..];
+            if (args.Contains("--scan-only") && ambientBenchmark != null)
+                await Test("isolated ambient performance fixture", () => AmbientSchedulingTests.Benchmark(root, ambientBenchmark, args.Contains("--ambient-reference"),
+                    double.Parse(args.FirstOrDefault(a => a.StartsWith("--measure-seconds="))?[18..] ?? "5", System.Globalization.CultureInfo.InvariantCulture)));
             if (args.Contains("--scan-only") && args.Contains("--gallery-face")) await GalleryFaces();
             if (args.Contains("--scan-only") && args.Contains("--tray-menu")) await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
             var output = Path.Combine(root, "test-results.json");
@@ -125,6 +131,13 @@ internal static class Program
         await Test("live ambient fades retarget from the visible mix without replacing the brush", AmbientTransitionTests.LiveTextureRetargetsFromTheVisibleMix);
         await Test("shared ambient sample boundaries keep stable sources and opaque coverage", AmbientTransitionTests.SharedFrameBoundariesNeverSwapImageSources);
     }
+    private static async Task AmbientScheduling()
+    {
+        await Test("static ambient stops all generation and preserves original pixels", AmbientSchedulingTests.StaticAndReference);
+        await Test("motion-aware ambient sampling pauses, deduplicates and settles", AmbientSchedulingTests.MotionPauseAndEndpoints);
+        await Test("ambient invalidation rejects stale work, cancellation and disposal", AmbientSchedulingTests.InFlightChangesAndDisposal);
+        await Test("real Gallery and scroll changes refresh only their own display", AmbientSchedulingTests.RendererReplacementAndDisplayIsolation);
+    }
     private static async Task SceneTransitions()
     {
         await Test("online frames preserve native sibling order and repair only misplaced outputs without GUI operations", DesktopZOrderTests.StableOutputsAndRepair);
@@ -137,6 +150,8 @@ internal static class Program
         await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
         await GalleryFaces();
         await AmbientTransitions();
+        await AmbientScheduling();
+        await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
         await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
         await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
         await Test("visible zoom defaults, saved settings and shared span or mirror timelines", ZoomMotionTests.Run);

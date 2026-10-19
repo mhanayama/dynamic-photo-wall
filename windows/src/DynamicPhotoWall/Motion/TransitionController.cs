@@ -6,6 +6,9 @@ public sealed class TransitionController
 {
     private readonly List<(Storyboard Board, FrameworkElement Root)> clocks = [];
     private bool paused;
+    // Background generation observes only animations targeting its foreground.
+    // Presentation fades (including the background's own fade) are excluded.
+    public event Action<Storyboard, FrameworkElement, bool>? ActivityChanged;
     public Storyboard Create()
     {
         // Let WPF pace its render thread against DWM/display presentation.
@@ -24,6 +27,7 @@ public sealed class TransitionController
     {
         board.Begin(root, HandoffBehavior.SnapshotAndReplace, true); clocks.Add((board, root));
         if (paused) board.Pause(root);
+        ActivityChanged?.Invoke(board, root, true);
     }
     public void SetPaused(bool value)
     {
@@ -32,7 +36,7 @@ public sealed class TransitionController
     }
     public void RemoveRoot(FrameworkElement root)
     {
-        foreach (var item in clocks.Where(c => c.Root == root).ToArray()) { item.Board.Remove(item.Root); clocks.Remove(item); }
+        foreach (var item in clocks.Where(c => c.Root == root).ToArray()) Remove(item);
     }
     public void RemoveTree(FrameworkElement root)
     {
@@ -40,11 +44,16 @@ public sealed class TransitionController
         {
             DependencyObject? current = item.Root;
             while (current != null && current != root) current = VisualTreeHelper.GetParent(current);
-            if (current == root) { item.Board.Remove(item.Root); clocks.Remove(item); }
+            if (current == root) Remove(item);
         }
     }
     public void Clear()
     {
-        foreach (var (board, root) in clocks) board.Remove(root); clocks.Clear();
+        foreach (var item in clocks.ToArray()) Remove(item);
+    }
+    private void Remove((Storyboard Board, FrameworkElement Root) item)
+    {
+        item.Board.Remove(item.Root); clocks.Remove(item);
+        ActivityChanged?.Invoke(item.Board, item.Root, false);
     }
 }
