@@ -2,6 +2,8 @@
 
 ## 2026-10-19 — ピアの手動解除とギャラリーの更新
 
+**承認機能復旧後の追試:** 通常権限で失敗したTLS試験を含めて承認済み環境で再実行し、ネットワーク26ケース／241 assertionsがすべて成功した。最新結果は`artifacts/windows/gallery-peer-build/network-core-unrestricted/test-results.json`。以下の25ケース成功・TLS失敗は追試前の記録である。
+
 ReleaseコンパイルとGUIなし17ケースが成功。各画面でのPan中央配置、Gallery列の中央寄せ、初期待機5〜10秒、写真とgapが収まる空きへの追加、既存写真を保持するWPFスロット追加、更新・選択フラグによる一巡、同種Gallery再当選のスキップを検証した。既存の表示継続・Zoom・背景補間・応答性・トレイコマンドも含む。結果は`artifacts/windows/gallery-peer-build/test-results.json`。
 
 ネットワーク試験は25ケース／237 assertions成功。送信停止中の手動解除、自動再接続・着信の抑止、ソース選択の保持、手動再接続を確認した。初期inventory送信に失敗した仮接続の除去漏れも修正し、ハートビート期限を待たずに除去される回帰試験を追加した。相互TLSの1ケースはWindowsの秘密鍵インポートで実行環境の制限により失敗。結果は`artifacts/windows/gallery-peer-build/network-core/test-results.json`。GUI操作・画面撮影は実施していない。
