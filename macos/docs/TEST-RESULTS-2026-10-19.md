@@ -1,5 +1,9 @@
 # Windows差分確認とMac build 10・11
 
+## build 15: ローカル配布物の更新
+
+ユーザー許可で`package.sh`を実行し、Issue #1の修正とビルド番号15を含むarm64 Release archiveから`release/macos/arm64/`のAPP／ZIP／DMG／SHA256SUMSを更新。アドホック署名のstrict検証、arm64、LSMultipleInstancesProhibited、ZIP展開、DMG検証、SHA-256が成功。DMGを読み取り専用でマウントし、配布APP・ZIP内APP・DMG内APPの全6ファイルが一致した。APPと実行ファイルの更新時刻は22:15:50（日本時間）。検証結果は`artifacts/macos/package/build15-validation.json`、旧配布物は`artifacts/macos/package/previous-release.d22W4u/`。ルートのエントリに増減なし。製品ソースは前回193件の検証からビルド番号だけを変更しており、単体試験は再実行していない。通常アプリの置換・再起動とGitHub公開は含めない。[リリースノート](RELEASE-NOTES-v1.1.0-build15.md)を参照。
+
 ## Issue #1: CPU/GPU採取と同一fixtureによる比較
 
 稼働build 14の平均CPUは30秒で35.07%。Time ProfilerとMetal System Traceを採取し、同期表示の16ms更新とCore Animation/Metal関連処理を確認した。同一fixtureの静止Galleryは変更前22.28%→PR版12.05%（各3回、準備5秒＋測定10秒）、背景生成80回→0回/10秒。同期側は5.65%→5.49%で同程度、10秒に約560回の再描画が続く。探索測定のPan/Zoom/scroll、一時停止、制約と生データの場所は[実測記録](RENDERING-MEASUREMENTS-2026-10-19.md)を参照。通常アプリは継続稼働し、個人設定・配布物は変更していない。電力・提示フレーム時間・実Windows同期の前後比較は未測定。

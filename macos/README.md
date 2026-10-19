@@ -98,7 +98,7 @@ xcodebuild build-for-testing \
 
 ## Release候補のパッケージ化
 
-ローカルRelease候補は1.1.0 build 13です。Zoomの強制中央配置を修正し、`release/macos/arm64/`のAPP／ZIP／DMGを更新しました。署名・arm64・チェックサムとAPP／ZIPの一致を確認済みです。[検証記録](docs/TEST-RESULTS-2026-10-19.md#zoomの強制中央配置の修正)を参照してください。GitHubで公開済みのプレリリースはbuild 12です。
+ローカル配布用ビルドは1.1.0 build 15です。Issue #1の静止背景の再生成抑制、色追従の表示補間、幾何計算のキャッシュを反映し、`release/macos/arm64/`のAPP／ZIP／DMGを更新しました。[build 15のリリースノート](docs/RELEASE-NOTES-v1.1.0-build15.md)と[測定結果](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照してください。GitHubで公開済みのプレリリースはbuild 14です。
 
 ```sh
 bash macos/scripts/package.sh
@@ -106,7 +106,7 @@ bash macos/scripts/package.sh
 
 `release/macos/arm64/` にアドホック署名付きの`DynamicPhotoWall.app`、ZIP／DMG、SHA256SUMSを生成します。APPはそのまま直接起動できます。すべて同じReleaseのAPPから作り、署名・CPU構成・ZIP／DMGの検査後に既存のローカル配布物を置き換えます。旧配布物は`artifacts/macos/package/previous-release.*/`へ退避します。arm64専用archive・DerivedData・ログも `artifacts/macos/package/` へ分け、DMG stagingはOS標準の一時ディレクトリを使います。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
 
-最新の配布物は1.1.0 build 14で、2026-10-19の[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14)です。`d67fd1f`までの修正を取り込み、Zoomの構図を守る最小限の位置補正と、同期Galleryの写真・配置・交換時計を引き継ぐ継続処理を反映しました。静止Galleryは1枚ずつの交換を続け、Scrolling Galleryも終端位置と速度を保持します。[Keychainを使わない保存方式](docs/LOCAL-NETWORK-STORAGE.md)、権限取得と表示面の保持も維持します。ネットワークの実機確認は未完了です。Windows側も`d67fd1f`以降からビルドしてください。[リリースノート](docs/RELEASE-NOTES-v1.1.0-build14.md)と[今回の差分と検証](docs/TEST-RESULTS-2026-10-19.md#build-14-同期galleryの継続とプレリリース更新)を参照してください。
+GitHubで公開済みの配布物は1.1.0 build 14で、2026-10-19の[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14)です。`d67fd1f`までの修正を取り込み、Zoomの構図を守る最小限の位置補正と、同期Galleryの写真・配置・交換時計を引き継ぐ継続処理を反映しました。静止Galleryは1枚ずつの交換を続け、Scrolling Galleryも終端位置と速度を保持します。[Keychainを使わない保存方式](docs/LOCAL-NETWORK-STORAGE.md)、権限取得と表示面の保持も維持します。ネットワークの実機確認は未完了です。Windows側も`d67fd1f`以降からビルドしてください。[リリースノート](docs/RELEASE-NOTES-v1.1.0-build14.md)と[今回の差分と検証](docs/TEST-RESULTS-2026-10-19.md#build-14-同期galleryの継続とプレリリース更新)を参照してください。
 
 DMG用の一時フォルダはプロジェクト外に作成し、終了時に削除します。DMG内の `/Applications` リンクをエディタがたどって大量のファイルを検索することを防ぎます。VS Codeのワークスペース設定でもビルド生成物をファイル一覧・検索・監視から除外しています。
 
