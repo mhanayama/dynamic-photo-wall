@@ -9,10 +9,12 @@ struct WallSceneLayer: View {
     let paused: Bool
     var sharedAmbient: AmbientSampler? = nil
     @State private var ambient = AmbientSampler()
+    @State private var geometry = ForegroundGeometryCache()
 
     private var usesCardCaption: Bool { presentation.scene.mode == .gallery || presentation.scene.mode == .horizontalGallery }
 
     var body: some View {
+        let prepared = geometry.prepare(presentation, settings: settings, viewport: viewport)
         ZStack {
             Color(hex: settings.backgroundHex)
             if settings.glassBackground, (sharedAmbient ?? ambient).image != nil {
@@ -24,7 +26,7 @@ struct WallSceneLayer: View {
                     }
                 }.overlay(Color.black.opacity(0.18))
             }
-            let placements = ForegroundGeometry.placements(presentation, settings: settings, viewport: viewport)
+            let placements = prepared.placements(presentation)
             ForEach(Array(placements.enumerated()), id: \.offset) { _, item in
                 PhotoCard(asset: item.asset, settings: settings, images: images, showCaption: usesCardCaption)
                     .frame(width: item.frame.width, height: item.frame.height)
@@ -41,10 +43,15 @@ struct WallSceneLayer: View {
             }
         }
         .clipped()
-        .onChange(of: Int(presentation.elapsed * 8), initial: true) {
-            if sharedAmbient == nil, settings.glassBackground { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: paused) }
+        .onChange(of: sharedAmbient == nil ? AmbientRefreshToken(presentation, prepared: prepared, images: images) : nil, initial: true) {
+            if sharedAmbient == nil { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: paused) }
         }
-        .onChange(of: paused) { _, paused in if paused { ambient.stop() } }
+        .onChange(of: paused) { _, paused in
+            if sharedAmbient == nil {
+                if paused { ambient.stop() }
+                else { ambient.update(presentation, settings: settings, viewport: viewport, images: images, paused: false) }
+            }
+        }
         .onDisappear { ambient.stop() }
     }
 }

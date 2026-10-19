@@ -4,12 +4,20 @@ import AppKit
     struct PreparedCard { let placement: PNPlacement; let image: CGImage }
     struct SurfaceContent { let crop: CGRect; let cards: [PreparedCard]; let ambient: [PNAmbientImage] }
     struct Frame {
+        let renderID = UUID()
         let plan: PNScene
         let images: [String: DecodedPhoto]
         let ambient: [PNAmbientImage]
         let contents: [PNDisplayKey: SurfaceContent]
         var start = 0.0, paused = 0.0
         init(plan: PNScene, images: [String: DecodedPhoto], ambient: [PNAmbientImage]) {
+            var byPNG: [Data: NSImage] = [:]
+            let ambient = ambient.map { item -> PNAmbientImage in
+                guard !item.frame.png.isEmpty else { return item }
+                let image = byPNG[item.frame.png] ?? item.image
+                byPNG[item.frame.png] = image
+                return PNAmbientImage(frame: item.frame, image: image)
+            }
             self.plan = plan; self.images = images; self.ambient = ambient
             // Resolve wire identities and display membership once. Hashing asset
             // IDs inside draw() also charged every invisible timeline segment

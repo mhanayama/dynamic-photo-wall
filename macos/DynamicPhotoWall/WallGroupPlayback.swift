@@ -98,7 +98,6 @@ final class WallGroupPlayback {
         let displayID: UInt32?
         let playback: WallPlaybackController
         var ambients: [Int: AmbientSampler] = [:]
-        var ambientTicks: [Int: Int] = [:]
         init(displayID: UInt32?, playback: WallPlaybackController) {
             self.displayID = displayID; self.playback = playback
             if let scene = playback.currentScene { ambients[scene.id] = AmbientSampler() }
@@ -220,11 +219,9 @@ final class WallGroupPlayback {
             let ids = Set(layers.map(\.id))
             for id in s.ambients.keys.filter({ !ids.contains($0) }) { s.ambients.removeValue(forKey: id)?.stop() }
             for layer in layers {
-                let sampler = s.ambients[layer.id] ?? AmbientSampler()
-                s.ambients[layer.id] = sampler
-                let tick = Int(layer.presentation.elapsed * 8)
-                guard s.ambientTicks[layer.id] != tick else { continue }
-                s.ambientTicks[layer.id] = tick
+                let sampler: AmbientSampler
+                if let existing = s.ambients[layer.id] { sampler = existing }
+                else { sampler = AmbientSampler(); s.ambients[layer.id] = sampler }
                 if settings.glassBackground, let images {
                     sampler.update(layer.presentation, settings: settings, viewport: s.playback.viewport,
                         images: images, paused: (paused && sampler.image != nil) || layer.id != s.playback.currentScene?.id)
