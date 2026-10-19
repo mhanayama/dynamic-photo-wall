@@ -29,6 +29,7 @@ import SwiftUI
         let content: PNPlayback.SurfaceContent
         let cards: [Card]
         let ambient: [CGImage?]
+        let ambientOpaque: [Bool]
         init(_ layer: PNPlaybackLayer, content: PNPlayback.SurfaceContent) {
             self.content = content
             root.anchorPoint = .zero; root.position = .zero
@@ -49,6 +50,28 @@ import SwiftUI
                 let image = item.image.cgImage(forProposedRect: nil, context: nil, hints: nil)
                 decoded[key] = image; return image
             }
+            var opacity: [ObjectIdentifier: Bool] = [:]
+            ambientOpaque = ambient.map { image in
+                guard let image else { return false }
+                let key = ObjectIdentifier(image)
+                if let opaque = opacity[key] { return opaque }
+                let opaque = Self.isOpaque(image); opacity[key] = opaque; return opaque
+            }
+        }
+        private static func isOpaque(_ image: CGImage) -> Bool {
+            switch image.alphaInfo {
+            case .none, .noneSkipFirst, .noneSkipLast: return true
+            default: break
+            }
+            guard let canvas = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            canvas.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            guard let bytes = canvas.data?.assumingMemoryBound(to: UInt8.self) else { return false }
+            for y in 0..<image.height {
+                for x in 0..<image.width where bytes[y * canvas.bytesPerRow + x * 4 + 3] != 255 { return false }
+            }
+            return true
         }
     }
     let root = CALayer()
@@ -116,7 +139,9 @@ import SwiftUI
         var amount = 0.0
         if let next = frames.indices.first(where: { frames[$0].frame.at > layer.elapsed }) {
             setContents(scene.nextBackground, scene.ambient[next])
-            if scene.ambient[index] !== scene.ambient[next] {
+            // Equal opaque samples need no animation. Equal translucent samples
+            // still change under source-over and must preserve the wire blend.
+            if scene.ambient[index] !== scene.ambient[next] || !scene.ambientOpaque[index] {
                 amount = min(1, max(0, (layer.elapsed - a.frame.at) / max(0.001, frames[next].frame.at - a.frame.at)))
             }
         }

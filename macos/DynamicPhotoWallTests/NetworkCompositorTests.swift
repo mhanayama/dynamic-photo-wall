@@ -88,6 +88,14 @@ import Testing
         #expect(renderer.mutationCount == mutations)
     }
 
+    @Test func equalTranslucentAmbientSamplesPreserveSourceOverBlending() throws {
+        let layer = try fixture(at: 5, ambient: [background([128, 0, 0, 128], at: 0), background([128, 0, 0, 128], at: 10)])
+        let renderer = PNLayerCompositor(); renderer.update([layer], size: size)
+        #expect(try #require(renderer.scenes.values.first).nextBackground.opacity == 0.5)
+        let old = try bitmap([layer], composited: false), new = try bitmap([layer], composited: true)
+        for i in 0..<4 { #expect(abs(Int(old[i]) - Int(new[i])) < 4) }
+    }
+
     @Test func backgroundCrossfadeChangesOpacityWhilePhotographContentsStayHeld() throws {
         let layer = try fixture(ambient: [background([255, 0, 0, 255], at: 0), background([0, 0, 255, 255], at: 10)])
         let renderer = PNLayerCompositor(); renderer.update([at(layer, 2)], size: size)
