@@ -8,7 +8,7 @@ namespace DynamicPhotoWall.Rendering;
 public static class SharedSceneBuilder
 {
     public static SharedVisual Build(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images,
-        IReadOnlyCollection<string> localDisplayIds)
+        IReadOnlyCollection<string> localDisplayIds, bool optimized = true)
     {
         // Static spans often carry byte-identical PNG samples. Decode/enhance
         // them once per plan and share only immutable textures across surfaces.
@@ -32,16 +32,26 @@ public static class SharedSceneBuilder
             texture.Freeze(); ambientTextures[hash] = (frame.Png, texture, opaque);
             return (texture, opaque);
         }
-        SceneVisual Surface(double width, double height) => new()
+        SceneVisual Surface(double width, double height)
         {
+            var background = PhotoRenderer.ParseBrush(plan.Background);
+            DrawingGroup? drawing = null;
+            if (optimized)
+            {
+                drawing = new DrawingGroup { ClipGeometry = new RectangleGeometry(new Rect(0, 0, width, height)) };
+                drawing.Children.Add(new GeometryDrawing(background, null, new RectangleGeometry(new Rect(0, 0, width, height))));
+            }
+            return new()
+            {
             Canvas = new Canvas { Width = width, Height = height, ClipToBounds = true, Background = PhotoRenderer.ParseBrush(plan.Background) },
             Foreground = new Canvas { Width = width, Height = height, ClipToBounds = true },
             Mode = Enum.Parse<CompositionMode>(plan.Mode.ToString()), Viewport = new(width, height), Seconds = plan.Duration,
             OutputRegions = plan.Displays.ToDictionary(d => d.Key.LayoutId,
-                d => new FrameRect(d.X - plan.Displays.Min(v => v.X), d.Y - plan.Displays.Min(v => v.Y), d.Width, d.Height))
-        };
+                d => new FrameRect(d.X - plan.Displays.Min(v => v.X), d.Y - plan.Displays.Min(v => v.Y), d.Width, d.Height)), Drawing = drawing
+            };
+        }
         var scene = Surface(plan.Viewport.Width, plan.Viewport.Height);
-        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images };
+        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images, Optimized = optimized };
         foreach (var id in plan.Placements.Select(p => p.DisplayId).Distinct())
         {
             if (id != null && !localDisplayIds.Contains(id)) continue;
@@ -61,7 +71,8 @@ public static class SharedSceneBuilder
             {
                 var textures = frames.Select(DecodeAmbient).ToArray();
                 var ambient = new AmbientFrameVisual(frames, textures.Select(t => t.Texture).ToArray(),
-                    surface.Viewport.Width, surface.Viewport.Height, textures.Select(t => t.Opaque).ToArray());
+                    surface.Viewport.Width, surface.Viewport.Height, textures.Select(t => t.Opaque).ToArray(), optimized);
+                if (ambient.CombinedDrawing != null) surface.Drawing!.Children.Add(ambient.CombinedDrawing.Root);
                 foreach (var image in ambient.Images) surface.Canvas.Children.Add(image);
                 surface.Canvas.Children.Add(new Border { Width = surface.Viewport.Width, Height = surface.Viewport.Height,
                     Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
@@ -73,13 +84,18 @@ public static class SharedSceneBuilder
                 var clip = new Canvas { Width = p.Clip.Width, Height = p.Clip.Height, ClipToBounds = true };
                 Canvas.SetLeft(clip, p.Clip.X - x); Canvas.SetTop(clip, p.Clip.Y - y);
                 var image = new System.Windows.Controls.Image { Source = images[p.Asset.OpaqueId], Width = p.Width, Height = p.Height,
-                    Stretch = Stretch.Fill, RenderTransformOrigin = new(p.CenterX, p.CenterY),
+                    Stretch = Stretch.Fill, Opacity = optimized ? 0 : 1, RenderTransformOrigin = new(p.CenterX, p.CenterY),
                     Clip = new RectangleGeometry(new Rect(0, 0, p.Width, p.Height), p.CornerRadius, p.CornerRadius) };
                 var scale = new ScaleTransform(1, 1); var translation = new TranslateTransform();
                 var transforms = new TransformGroup(); transforms.Children.Add(scale); transforms.Children.Add(translation); image.RenderTransform = transforms;
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.Linear);
                 clip.Children.Add(image); surface.Foreground.Children.Add(clip);
                 visual.Photos.Add((p, image, scale, translation));
+                if (optimized)
+                {
+                    var drawing = new SharedPhotoDrawing(p, images[p.Asset.OpaqueId], x, y);
+                    surface.Drawing!.Children.Add(drawing.Root); visual.PhotoDrawings.Add(drawing);
+                }
             }
         }
         if (scene.Displays.Count > 0) scene.Canvas.Children.Add(scene.Foreground);

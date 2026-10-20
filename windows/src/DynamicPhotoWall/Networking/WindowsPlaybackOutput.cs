@@ -58,22 +58,29 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         if (photos == null) throw new InvalidOperationException("写真キャッシュが接続されていません。");
         var own = plan.Displays.Where(d => d.Key.PeerId == localPeer).Select(d => d.Key.LayoutId).ToArray();
         var required = plan.Placements.Where(p => p.DisplayId == null || own.Contains(p.DisplayId)).Select(p => p.Asset).Distinct().ToArray();
-        var held = await dispatcher.InvokeAsync(() => current.TryGetValue(plan.GroupId, out var group) && plan.Continues(group.Visual.Plan)
-            ? group.Visual.Images : null);
+        var held = await dispatcher.InvokeAsync(() => current.TryGetValue(plan.GroupId, out var group) ? group.Visual.Images : null);
+        var monitors = MonitorManager.Enumerate();
+        var outputs = plan.Displays.Where(d => own.Contains(d.Key.LayoutId)).ToDictionary(d => d.Key.LayoutId, d =>
+        {
+            var monitor = monitors.FirstOrDefault(m => m.Id == d.Key.DisplayId);
+            return new Viewport(monitor?.Width ?? d.Width, monitor?.Height ?? d.Height);
+        });
+        var catalog = photos.Available.ToDictionary(p => p.Key);
+        var cacheMegabytes = settings().CacheMegabytes;
         var bitmaps = await Task.Run(() =>
         {
             var result = new Dictionary<string, System.Windows.Media.Imaging.BitmapSource>();
             foreach (var key in required)
             {
                 cancellation.ThrowIfCancellationRequested();
-                if (held?.TryGetValue(key.OpaqueId, out var retained) == true) { result[key.OpaqueId] = retained; continue; }
+                var metadata = catalog[key];
+                var width = SharedDecodeSizing.Width(plan, metadata, outputs, cacheMegabytes, required.Length);
+                if (held?.TryGetValue(key.OpaqueId, out var retained) == true && retained.PixelWidth >= width && retained.PixelWidth <= width * 1.25)
+                { result[key.OpaqueId] = retained; continue; }
                 var data = photos.ReadImage(key);
                 try
                 {
-                    var metadata = photos.Available.First(p => p.Key == key);
-                    var maxPixels = Math.Min(16_000_000d, Math.Max(65536, settings().CacheMegabytes * 1024d * 1024 / 8 / Math.Max(1, required.Length)));
-                    var width = (int)Math.Min(4096, Math.Sqrt(maxPixels * metadata.PixelWidth / metadata.PixelHeight));
-                    result[key.OpaqueId] = NetworkBitmap.Decode(data, Math.Max(64, width), metadata.Orientation);
+                    result[key.OpaqueId] = NetworkBitmap.Decode(data, width, metadata.Orientation);
                 }
                 finally { CryptographicOperations.ZeroMemory(data); }
             }

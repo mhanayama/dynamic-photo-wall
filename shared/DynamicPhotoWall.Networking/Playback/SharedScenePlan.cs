@@ -71,13 +71,18 @@ public static class SceneEvaluation
 {
     public static EvaluatedPlacement Evaluate(ScenePlacement p, double elapsed)
     {
+        Evaluate(p, elapsed, out var x, out var y, out var scale, out var opacity);
+        return new(x, y, scale, opacity);
+    }
+    public static void Evaluate(ScenePlacement p, double elapsed, out double x, out double y, out double scale, out double opacity)
+    {
         var progress = Math.Clamp((elapsed - p.StartSeconds) / p.MotionSeconds, 0, 1);
         if (p.Ease) progress = .5 - Math.Cos(progress * Math.PI) / 2;
         var fadeIn = p.FadeInSeconds ?? p.FadeSeconds; var fadeOut = p.FadeOutSeconds ?? p.FadeSeconds;
-        var opacity = elapsed < p.VisibleFrom || elapsed >= p.VisibleUntil ? 0
+        opacity = elapsed < p.VisibleFrom || elapsed >= p.VisibleUntil ? 0
             : Math.Min(fadeIn <= 0 ? 1 : Math.Clamp((elapsed - p.VisibleFrom) / fadeIn, 0, 1),
                 fadeOut <= 0 ? 1 : Math.Clamp((p.VisibleUntil - elapsed) / fadeOut, 0, 1));
-        return new(p.FromX + (p.ToX - p.FromX) * progress, p.FromY + (p.ToY - p.FromY) * progress,
-            p.FromScale + (p.ToScale - p.FromScale) * progress, opacity);
+        x = p.FromX + (p.ToX - p.FromX) * progress; y = p.FromY + (p.ToY - p.FromY) * progress;
+        scale = p.FromScale + (p.ToScale - p.FromScale) * progress;
     }
 }

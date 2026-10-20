@@ -62,6 +62,8 @@ internal static class Program
             if (args.Contains("--scan-only") && args.Contains("--mode-weights")) await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--gallery-continuation")) await Test("shared static and scrolling galleries renew across two hours without windows", GalleryContinuationTests.Run);
             if (args.Contains("--scan-only") && args.Contains("--ambient-transitions")) await AmbientTransitions();
+            if (args.Contains("--scan-only") && args.Contains("--shared-rendering")) await SharedRendering();
+            if (args.Contains("--scan-only") && args.Contains("--shared-render-benchmark")) await Test("shared renderer CPU and upload work", () => SharedRenderingTests.Benchmark(root));
             if (args.Contains("--scan-only") && args.Contains("--ambient-scheduling")) await AmbientScheduling();
             if (args.Contains("--scan-only") && args.Contains("--ambient-frame-timing")) await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
             var ambientBenchmark = args.FirstOrDefault(a => a.StartsWith("--ambient-benchmark="))?[20..];
@@ -132,6 +134,11 @@ internal static class Program
         await Test("shared ambient sample boundaries keep stable sources and opaque coverage", AmbientTransitionTests.SharedFrameBoundariesNeverSwapImageSources);
         await Test("shared equal opaque samples avoid GPU invalidations while preserving alpha composition", SharedAmbientGpuTests.Run);
     }
+    private static async Task SharedRendering()
+    {
+        await Test("direct shared drawings preserve clipping, color, alpha, fades and seeks", SharedRenderingTests.Parity);
+        await Test("shared decode sizes follow placements, zoom, output pixels and budget", SharedRenderingTests.DecodeSizes);
+    }
     private static async Task AmbientScheduling()
     {
         await Test("static ambient stops all generation and preserves original pixels", AmbientSchedulingTests.StaticAndReference);
@@ -151,6 +158,7 @@ internal static class Program
         await Test("WPF tray menu routes every command without opening windows", TrayMenuTests.CommandsWithoutWindows);
         await GalleryFaces();
         await AmbientTransitions();
+        await SharedRendering();
         await AmbientScheduling();
         await Test("shared ambient timestamps preserve fractional scene endpoints", AmbientFrameTimingTests.Run);
         await Test("two-stage eighty-twenty categories preserve ratios, eligibility and legacy settings", ModeWeightTests.Run);

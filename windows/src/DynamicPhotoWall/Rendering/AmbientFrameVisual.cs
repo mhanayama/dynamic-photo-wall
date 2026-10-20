@@ -9,8 +9,9 @@ public sealed class AmbientFrameVisual
 {
     private readonly Net.AmbientFrame[] frames;
     private readonly int[] representatives;
+    internal SharedAmbientDrawing? CombinedDrawing { get; }
     public IReadOnlyList<System.Windows.Controls.Image> Images { get; }
-    public AmbientFrameVisual(Net.AmbientFrame[] frames, BitmapSource[] textures, double width, double height, bool[]? opaqueTextures = null)
+    public AmbientFrameVisual(Net.AmbientFrame[] frames, BitmapSource[] textures, double width, double height, bool[]? opaqueTextures = null, bool directDrawing = false)
     {
         this.frames = frames;
         representatives = Enumerable.Range(0, textures.Length).ToArray();
@@ -19,6 +20,7 @@ public sealed class AmbientFrameVisual
                 representatives[i] = representatives[i - 1];
         Images = textures.Select(texture => new System.Windows.Controls.Image
             { Width = width, Height = height, Stretch = Stretch.Fill, Source = texture, Opacity = 0 }).ToArray();
+        if (directDrawing) CombinedDrawing = new(textures, opaqueTextures ?? textures.Select(IsOpaque).ToArray(), width, height);
         Present(0);
     }
     public void Present(double elapsed)
@@ -28,6 +30,7 @@ public sealed class AmbientFrameVisual
         var next = Math.Min(index + 1, frames.Length - 1);
         var blend = next == index ? 0 : Math.Clamp((elapsed - frames[index].At) / Math.Max(.001, frames[next].At - frames[index].At), 0, 1);
         index = representatives[index]; next = representatives[next];
+        CombinedDrawing?.Present(index, next, blend);
         // Keep a stable representative throughout a run of identical opaque
         // images. Translucent images still require their original source-over.
         for (var i = 0; i < Images.Count; i++)
