@@ -110,7 +110,7 @@ bash macos/scripts/package.sh --reuse-app 0159a24e02813b889ec438b8c218ca49405c1b
 
 `release/macos/arm64/`にアドホック署名付きAPP・ZIP・DMG・`SHA256SUMS.txt`を生成します。ZIP／DMGにはREADME・`BUILD-INFO.txt`・ライセンスも含みます。APPはそのまま直接起動できます。署名・arm64・ZIP／DMG・チェックサムの検査後に既存のローカル配布物を置き換え、旧配布物は`artifacts/macos/package/previous-release.*/`へ退避します。archive・DerivedData・ログも`artifacts/macos/`へ分け、DMG stagingはOS標準の一時領域を使います。
 
-初回公開時の`macos-v1.1.0`タグは保持します。実際のAPPのソースはRelease本文と`BUILD-INFO.txt`のcommitを参照してください。置き換え済みの旧Mac Releaseはタグ・配布物を保持した下書きにし、公開一覧は現行版へまとめます。GitHubへの公開はパッケージ作成とは別の操作です。Developer ID署名・公証は行っていません。
+初回公開時の`macos-v1.1.0`タグは保持します。実際のAPPのソースはRelease本文と`BUILD-INFO.txt`のcommitを参照してください。置き換え済みの旧Mac Releaseは下書きも含めて削除し、現行版1件へまとめます。ソースタグは保持し、削除前の本文・添付ファイルは`artifacts/macos/`へ退避します。GitHubへの公開はパッケージ作成とは別の操作です。Developer ID署名・公証は行っていません。
 
 過去の配布・検証は[build 4](docs/RELEASE-NOTES-v1.1.0.md)、[build 14](docs/RELEASE-NOTES-v1.1.0-build14.md)、[build 17の実装記録](docs/RELEASE-NOTES-v1.1.0-build17.md)を参照してください。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。
 

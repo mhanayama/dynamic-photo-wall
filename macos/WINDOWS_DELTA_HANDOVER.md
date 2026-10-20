@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**旧Mac Releaseの削除（2026-10-20）:** ユーザーの追加指示により、下書きで保管していたbuild 14・build 12・v1.0.1・v1.0.0のRelease 4件を削除した。本文と添付ファイルはSHA-256を確認して`artifacts/macos/github-release-20261020/deleted-release-backups/`へ退避済み。ソースタグは保持し、現行Mac版・Windows版のReleaseと添付ファイルは変更しない。以下の下書き保管は当時の記録。
+
 **Macの公開配布更新（2026-10-20）:** Windows側の説明・配布構成へ合わせ、動作確認済みbuild 17の署名済みAPPを再ビルドせず、README・BUILD-INFO.txt・ライセンスを添えたZIP／DMGとSHA256SUMS.txtへ再梱包した。APP全6ファイルは受け入れ済みAPPと一致。公開先は既存の`macos-v1.1.0`、初回公開時のタグを保持し、実際のAPPソースは`0159a24`として本文・BUILD-INFOへ記録する。旧Mac独立Releaseはタグと配布物を保持した下書きで保管し、公開一覧は現行Mac版1件へまとめる。Windows本体・配布物・Releaseは更新しない。[配布検証](docs/RELEASE-VERIFICATION-2026-10-20.md)と[利用者向け更新内容](docs/RELEASE-NOTES-2026-10-20.md)を参照。以下は各作業時点の記録。
 
 **build 17のユーザー受け入れ（2026-10-20）:** 配布後の手動テストでユーザーが「カクつかなくなった」と確認し、commit・push・PR作成とmainへのマージを指示した。今回の同期表示のカクつき改善として記録し、長時間運転・複数画面・スリープ復帰の網羅的な確認や通常アプリの定量再測定まで完了とは扱わない。以下の手動確認待ちは当時の記録。
