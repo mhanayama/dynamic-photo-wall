@@ -24,6 +24,7 @@ public sealed class SceneVisual
     public List<SceneVisual> Displays { get; } = [];
     public IReadOnlyList<FrameRect> DisplayRegions { get; init; } = [];
     public IReadOnlyDictionary<string, FrameRect> OutputRegions { get; init; } = new Dictionary<string, FrameRect>();
+    internal DrawingGroup? Drawing { get; init; }
     public IEnumerable<SceneVisual> Surfaces => Displays.Count == 0 ? new[] { this } : Displays.SelectMany(d => d.Surfaces);
     public IEnumerable<PhotoInfo> DisplayedPhotos => Surfaces.SelectMany(s => s.Photos);
 }
@@ -41,6 +42,7 @@ public sealed partial class PhotoRenderer : Window
     private readonly List<DisplayView> views = [];
     private readonly List<SceneVisual> visibleScenes = [];
     private DisplayView? primaryView;
+    private Canvas? sourceCrop;
     private bool testPattern;
     public SceneVisual? Current { get; private set; }
     public PhotoRenderer(Viewport viewport, WallSettings settings, TransitionController transitions, AnimationScheduler scheduler, IReadOnlyList<FrameRect>? displayRegions = null)
@@ -54,11 +56,12 @@ public sealed partial class PhotoRenderer : Window
     public static Brush ParseBrush(string value) { try { var b = (Brush)new BrushConverter().ConvertFromString(value)!; b.Freeze(); return b; } catch (Exception e) when (e is FormatException or NotSupportedException) { return Brushes.Black; } }
     public void SetDisplayRegion(FrameRect region, string? displayId = null)
     {
-        // Keep the single animated tree attached to the first display. Other
-        // outputs sample this same tree, including its common blurred background.
+        // Local storyboards keep an attached source tree. Shared playback uses
+        // retained Drawing commands and collapses this source crop below.
         ((Viewbox)Content).Child = null;
         if (VisualTreeHelper.GetParent(layers) is Panel previous) previous.Children.Remove(layers);
         var crop = new Canvas { Width = region.Width, Height = region.Height, ClipToBounds = true, Background = Background };
+        sourceCrop = crop;
         var positioned = new Canvas { Width = viewport.Width, Height = viewport.Height };
         Canvas.SetLeft(positioned, -region.X); Canvas.SetTop(positioned, -region.Y);
         positioned.Children.Add(layers); crop.Children.Add(positioned);
@@ -85,16 +88,19 @@ public sealed partial class PhotoRenderer : Window
     {
         Width = region.Width, Height = region.Height,
         Fill = new VisualBrush(source) { AutoLayoutContent = false, ViewboxUnits = BrushMappingMode.Absolute,
-            Viewbox = new Rect(region.X, region.Y, region.Width, region.Height), Stretch = Stretch.Fill,
-            AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }
+                Viewbox = new Rect(region.X, region.Y, region.Width, region.Height), Stretch = Stretch.Fill,
+                AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }
     };
     private void AddPresentation(DisplayView view, SceneVisual scene)
     {
-        System.Windows.Shapes.Rectangle rectangle;
+        if (sourceCrop != null) sourceCrop.Visibility = visibleScenes.All(s => s.Drawing != null) ? Visibility.Collapsed : Visibility.Visible;
+        FrameworkElement rectangle;
         if (scene.Displays.Count == 0)
         {
             var region = view.Id != null && scene.OutputRegions.TryGetValue(view.Id, out var output) ? output : view.Region;
-            rectangle = Sample(scene.Canvas, region);
+            rectangle = scene.Drawing != null
+                ? new SharedDrawingPresenter(scene.Drawing, new Rect(region.X, region.Y, region.Width, region.Height), view.Region.Width, view.Region.Height)
+                : Sample(scene.Canvas, region);
             rectangle.Width = view.Region.Width; rectangle.Height = view.Region.Height;
         }
         else
@@ -102,7 +108,9 @@ public sealed partial class PhotoRenderer : Window
             var child = scene.Displays.FirstOrDefault(s => s.DisplayId == view.Id)
                 ?? (view.Id == null ? scene.Displays.FirstOrDefault(s => s.DisplayRegion == view.Region) : null);
             if (child == null) return;
-            rectangle = Sample(child.Canvas, new(0, 0, child.Viewport.Width, child.Viewport.Height));
+            rectangle = child.Drawing != null
+                ? new SharedDrawingPresenter(child.Drawing, new Rect(0, 0, child.Viewport.Width, child.Viewport.Height), view.Region.Width, view.Region.Height)
+                : Sample(child.Canvas, new(0, 0, child.Viewport.Width, child.Viewport.Height));
             rectangle.Width = view.Region.Width; rectangle.Height = view.Region.Height;
             rectangle.SetBinding(OpacityProperty, new Binding(nameof(Opacity)) { Source = scene.Canvas });
         }
@@ -380,5 +388,6 @@ public sealed partial class PhotoRenderer : Window
         foreach (var background in backgrounds) background.Dispose(); backgrounds.Clear();
         transitions.Clear(); layers.Children.Clear(); visibleScenes.Clear(); foreach (var view in views) view.Canvas.Children.Clear();
         Current = null; testPattern = false;
+        if (sourceCrop != null) sourceCrop.Visibility = Visibility.Visible;
     }
 }

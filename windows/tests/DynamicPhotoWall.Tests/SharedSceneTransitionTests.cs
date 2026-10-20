@@ -38,7 +38,7 @@ internal static class SharedSceneTransitionTests
     private static SharedVisual Build(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images)
         => SharedSceneBuilder.Build(plan, images, plan.Displays.Where(d => d.Key.PeerId == local).Select(d => d.Key.LayoutId).ToArray());
     private static Canvas View(FrameworkElement element) => (Canvas)((Viewbox)element).Child;
-    private static Rectangle Presentation(Canvas view, SharedVisual visual) => view.Children.OfType<Rectangle>().Single(r => r.Tag == visual.Scene);
+    private static SharedDrawingPresenter Presentation(Canvas view, SharedVisual visual) => view.Children.OfType<SharedDrawingPresenter>().Single(r => r.Tag == visual.Scene);
     private static IEnumerable<Image> Photos(SharedVisual visual) => visual.Scene.Surfaces.SelectMany(s => s.Foreground.Children.OfType<Canvas>()).SelectMany(c => c.Children.OfType<Image>());
 
     public static Task PhysicalOutputsSurviveLogicalCanvasChanges()
@@ -77,7 +77,7 @@ internal static class SharedSceneTransitionTests
                 Check(ReferenceEquals(renderer.Content, primaryContent) && ReferenceEquals(((Viewbox)output).Child, view), "handoff retains output view objects");
                 Check(ReferenceEquals(Presentation(view, old), oldPresentation) && ReferenceEquals(VisualTreeHelper.GetParent(old.Scene.Canvas), oldParent), "outgoing scene and presentation are never detached during a handoff");
                 Check(old.Scene.Canvas.Opacity == 1 && next.Scene.Canvas.Opacity == 0, "an opaque old scene covers a transparent new first frame");
-                Check(((VisualBrush)oldPresentation.Fill).Viewbox.X == 800 && ((VisualBrush)Presentation(view, next).Fill).Viewbox.X == 400,
+                Check(oldPresentation.Region.X == 800 && Presentation(view, next).Region.X == 400,
                     "each scene crops its own canvas as a remote peer disappears");
                 renderer.PresentShared(next, .5);
                 Check(next.Scene.Canvas.Opacity == .5 && old.Scene.Canvas.Opacity == 1, "fade blends over a retained opaque scene");

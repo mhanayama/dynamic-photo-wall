@@ -67,7 +67,8 @@ public static class NetworkBitmap
         using var codec = SkiaSharp.SKCodec.Create(stream);
         if (codec != null && codec.EncodedFormat == SkiaSharp.SKEncodedImageFormat.Webp)
         {
-            var dimensions = codec.GetScaledDimensions(Math.Min(1f, (float)width / Math.Max(1, codec.Info.Width)));
+            var orientedWidth = orientation is >= 5 and <= 8 ? codec.Info.Height : codec.Info.Width;
+            var dimensions = codec.GetScaledDimensions(Math.Min(1f, (float)width / Math.Max(1, orientedWidth)));
             using var bitmap = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(dimensions.Width, dimensions.Height,
                 SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Premul));
             if (codec.GetPixels(bitmap.Info, bitmap.GetPixels()) != SkiaSharp.SKCodecResult.Success) throw new InvalidDataException("画像をデコードできません。");

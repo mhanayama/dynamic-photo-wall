@@ -1,4 +1,5 @@
 using System.Windows.Media.Imaging;
+using System.Security.Cryptography;
 using Net = DynamicPhotoWall.Networking;
 
 namespace DynamicPhotoWall.Rendering;
@@ -7,18 +8,50 @@ namespace DynamicPhotoWall.Rendering;
 public static class SharedSceneBuilder
 {
     public static SharedVisual Build(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images,
-        IReadOnlyCollection<string> localDisplayIds)
+        IReadOnlyCollection<string> localDisplayIds, bool optimized = true)
     {
-        SceneVisual Surface(double width, double height) => new()
+        // Static spans often carry byte-identical PNG samples. Decode/enhance
+        // them once per plan and share only immutable textures across surfaces.
+        var ambientTextures = new Dictionary<string, (byte[] Png, BitmapSource Texture, bool Opaque)>();
+        (BitmapSource Texture, bool Opaque) DecodeAmbient(Net.AmbientFrame frame)
         {
+            var hash = Convert.ToHexString(SHA256.HashData(frame.Png));
+            if (ambientTextures.TryGetValue(hash, out var cached) && cached.Png.AsSpan().SequenceEqual(frame.Png))
+                return (cached.Texture, cached.Opaque);
+            using var stream = new MemoryStream(frame.Png, false);
+            var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = stream; bitmap.EndInit();
+            // Receiving displays apply color enhancement exactly once.
+            var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Pbgra32, null, 0);
+            var pixels = new byte[converted.PixelWidth * converted.PixelHeight * 4];
+            converted.CopyPixels(pixels, converted.PixelWidth * 4, 0); AmbientPixels.EnhanceColors(pixels);
+            var opaque = true;
+            for (var i = 3; i < pixels.Length; i += 4) if (pixels[i] != 255) { opaque = false; break; }
+            var texture = BitmapSource.Create(converted.PixelWidth, converted.PixelHeight, 96, 96,
+                PixelFormats.Pbgra32, null, pixels, converted.PixelWidth * 4);
+            texture.Freeze(); ambientTextures[hash] = (frame.Png, texture, opaque);
+            return (texture, opaque);
+        }
+        SceneVisual Surface(double width, double height)
+        {
+            var background = PhotoRenderer.ParseBrush(plan.Background);
+            DrawingGroup? drawing = null;
+            if (optimized)
+            {
+                drawing = new DrawingGroup { ClipGeometry = new RectangleGeometry(new Rect(0, 0, width, height)) };
+                drawing.Children.Add(new GeometryDrawing(background, null, new RectangleGeometry(new Rect(0, 0, width, height))));
+            }
+            return new()
+            {
             Canvas = new Canvas { Width = width, Height = height, ClipToBounds = true, Background = PhotoRenderer.ParseBrush(plan.Background) },
             Foreground = new Canvas { Width = width, Height = height, ClipToBounds = true },
             Mode = Enum.Parse<CompositionMode>(plan.Mode.ToString()), Viewport = new(width, height), Seconds = plan.Duration,
             OutputRegions = plan.Displays.ToDictionary(d => d.Key.LayoutId,
-                d => new FrameRect(d.X - plan.Displays.Min(v => v.X), d.Y - plan.Displays.Min(v => v.Y), d.Width, d.Height))
-        };
+                d => new FrameRect(d.X - plan.Displays.Min(v => v.X), d.Y - plan.Displays.Min(v => v.Y), d.Width, d.Height)), Drawing = drawing
+            };
+        }
         var scene = Surface(plan.Viewport.Width, plan.Viewport.Height);
-        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images };
+        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images, Optimized = optimized };
         foreach (var id in plan.Placements.Select(p => p.DisplayId).Distinct())
         {
             if (id != null && !localDisplayIds.Contains(id)) continue;
@@ -36,21 +69,10 @@ public static class SharedSceneBuilder
             var frames = plan.Ambient.Where(f => f.DisplayId == id).OrderBy(f => f.At).ToArray();
             if (frames.Length > 0)
             {
-                var bitmaps = frames.Select(frame =>
-                {
-                    using var stream = new MemoryStream(frame.Png, false);
-                    var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.StreamSource = stream; bitmap.EndInit();
-                    // Apply at the receiving display so previews from either OS
-                    // gain color once, without baking enhancement into the wire PNG.
-                    var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Pbgra32, null, 0);
-                    var pixels = new byte[converted.PixelWidth * converted.PixelHeight * 4];
-                    converted.CopyPixels(pixels, converted.PixelWidth * 4, 0); AmbientPixels.EnhanceColors(pixels);
-                    var texture = BitmapSource.Create(converted.PixelWidth, converted.PixelHeight, 96, 96,
-                        PixelFormats.Pbgra32, null, pixels, converted.PixelWidth * 4);
-                    texture.Freeze(); return texture;
-                }).ToArray();
-                var ambient = new AmbientFrameVisual(frames, bitmaps, surface.Viewport.Width, surface.Viewport.Height);
+                var textures = frames.Select(DecodeAmbient).ToArray();
+                var ambient = new AmbientFrameVisual(frames, textures.Select(t => t.Texture).ToArray(),
+                    surface.Viewport.Width, surface.Viewport.Height, textures.Select(t => t.Opaque).ToArray(), optimized);
+                if (ambient.CombinedDrawing != null) surface.Drawing!.Children.Add(ambient.CombinedDrawing.Root);
                 foreach (var image in ambient.Images) surface.Canvas.Children.Add(image);
                 surface.Canvas.Children.Add(new Border { Width = surface.Viewport.Width, Height = surface.Viewport.Height,
                     Background = new SolidColorBrush(Color.FromArgb(46, 12, 17, 28)) });
@@ -62,13 +84,18 @@ public static class SharedSceneBuilder
                 var clip = new Canvas { Width = p.Clip.Width, Height = p.Clip.Height, ClipToBounds = true };
                 Canvas.SetLeft(clip, p.Clip.X - x); Canvas.SetTop(clip, p.Clip.Y - y);
                 var image = new System.Windows.Controls.Image { Source = images[p.Asset.OpaqueId], Width = p.Width, Height = p.Height,
-                    Stretch = Stretch.Fill, RenderTransformOrigin = new(p.CenterX, p.CenterY),
+                    Stretch = Stretch.Fill, Opacity = optimized ? 0 : 1, RenderTransformOrigin = new(p.CenterX, p.CenterY),
                     Clip = new RectangleGeometry(new Rect(0, 0, p.Width, p.Height), p.CornerRadius, p.CornerRadius) };
                 var scale = new ScaleTransform(1, 1); var translation = new TranslateTransform();
                 var transforms = new TransformGroup(); transforms.Children.Add(scale); transforms.Children.Add(translation); image.RenderTransform = transforms;
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.Linear);
                 clip.Children.Add(image); surface.Foreground.Children.Add(clip);
                 visual.Photos.Add((p, image, scale, translation));
+                if (optimized)
+                {
+                    var drawing = new SharedPhotoDrawing(p, images[p.Asset.OpaqueId], x, y);
+                    surface.Drawing!.Children.Add(drawing.Root); visual.PhotoDrawings.Add(drawing);
+                }
             }
         }
         if (scene.Displays.Count > 0) scene.Canvas.Children.Add(scene.Foreground);

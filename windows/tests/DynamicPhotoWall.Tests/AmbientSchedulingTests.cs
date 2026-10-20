@@ -100,12 +100,12 @@ internal static class AmbientSchedulingTests
             Check(!fixture.Background.IsSampling && fixture.Background.UpdateCount == held && fixture.Background.CaptureCount == captured,
                 scenario + " must stop generation immediately during pause");
             fixture.Pause(false);
-            await Until(() => !fixture.Background.IsSampling && fixture.Background.UpdateCount > held);
+            await Until(() => !fixture.Background.IsSampling && !fixture.Background.IsRefreshing && fixture.Background.UpdateCount > held);
             var endpoint = fixture.Background.UpdateCount; await Task.Delay(220);
             Check(endpoint == fixture.Background.UpdateCount, scenario + " must retain its exact endpoint without a perpetual timer");
         }
         using var slow = new Fixture(); await slow.Background.StartAsync(default);
-        slow.Motion(.8, .1); await Until(() => !slow.Background.IsSampling);
+        slow.Motion(.8, .1); await Until(() => !slow.Background.IsSampling && !slow.Background.IsRefreshing);
         await Task.Delay(40);
         Check(slow.Background.GeometryCheckCount > slow.Background.CaptureCount && slow.Background.CaptureCount <= 3,
             "subpixel motion must deduplicate readback but still sample its start and exact end");
@@ -163,7 +163,7 @@ internal static class AmbientSchedulingTests
             var first = scene.Displays[0]; var second = scene.Displays[1];
             var untouched = second.Ambient!.CaptureCount;
             await renderer.ReplaceSlotAsync(first, 0, Photo("blue"), Bitmap(blue: true), default);
-            await Until(() => !first.Ambient!.IsSampling && first.Ambient.UpdateCount >= 2); await Task.Delay(40);
+            await Until(() => !first.Ambient!.IsSampling && !first.Ambient.IsRefreshing && first.Ambient.UpdateCount >= 2); await Task.Delay(40);
             Check(second.Ambient.CaptureCount == untouched, "one display's slot replacement must not invalidate another display");
             Check(Pixels(first.Ambient!.Texture!)[0] > 200, "real Gallery final child replacement must refresh the target");
             var beforeCancellation = first.Ambient.UpdateCount;
@@ -174,13 +174,13 @@ internal static class AmbientSchedulingTests
                 try { await replacement; throw new Exception("Replacement cancellation was swallowed"); }
                 catch (OperationCanceledException) { }
             }
-            await Until(() => first.Ambient.UpdateCount > beforeCancellation && !first.Ambient.IsSampling);
+            await Until(() => first.Ambient.UpdateCount > beforeCancellation && !first.Ambient.IsSampling && !first.Ambient.IsRefreshing);
             Check(Pixels(first.Ambient.Texture!)[2] > 200, "cancelled reflow must capture its committed final child after removing animation clocks");
             var retired = first.Ambient.CaptureCount;
             var scroll = renderer.Build(new(CompositionMode.GalleryScroll, [Photo("one"), Photo("two")]), [Bitmap(), Bitmap(true)], new Random(1));
             await renderer.ShowAsync(scroll, default); Layout();
             await renderer.AdvanceGalleryAsync(scroll, Photo("three"), Bitmap(), default);
-            await Until(() => !scroll.Ambient!.IsSampling); await Task.Delay(60);
+            await Until(() => !scroll.Ambient!.IsSampling && !scroll.Ambient.IsRefreshing); await Task.Delay(60);
             Check(scroll.Ambient!.UpdateCount >= 3, "real scrolling must sample the visible crop and final structural change");
             Check(first.Ambient.CaptureCount == retired, "a replaced scene must stop all background work");
             var final = scroll.Ambient.CaptureCount; renderer.Clear(); await Task.Delay(160);
