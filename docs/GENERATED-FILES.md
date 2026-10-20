@@ -5,7 +5,7 @@
 | 種類 | Windows | macOS |
 |---|---|---|
 | 配布用完成物 | `release/windows/win-x64/` | `release/macos/arm64/` |
-| 内容 | 単一EXE、README・ライセンス・関連資料、起動ショートカット | DynamicPhotoWall.app、ZIP、DMG、SHA256SUMS |
+| 内容 | 単一EXE、README・ライセンス・関連資料、起動ショートカット | DynamicPhotoWall.app、ZIP、DMG、SHA256SUMS.txt、README・ライセンス・BUILD-INFO.txt |
 | パッケージ作業 | 必要な作業ファイルは`artifacts/windows/` | `artifacts/macos/package/`にarchive・DerivedData・ログ。DMG stagingはOS標準一時領域 |
 | 検証・診断 | `artifacts/windows/<検証名>/` | `artifacts/macos/verification/`など |
 | その他の一時ファイル | `artifacts/windows/tmp/`またはOS標準一時領域 | `artifacts/macos/tmp/`またはOS標準一時領域 |

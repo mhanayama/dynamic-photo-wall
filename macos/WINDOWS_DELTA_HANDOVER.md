@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Macの公開配布更新（2026-10-20）:** Windows側の説明・配布構成へ合わせ、動作確認済みbuild 17の署名済みAPPを再ビルドせず、README・BUILD-INFO.txt・ライセンスを添えたZIP／DMGとSHA256SUMS.txtへ再梱包した。APP全6ファイルは受け入れ済みAPPと一致。公開先は既存の`macos-v1.1.0`、初回公開時のタグを保持し、実際のAPPソースは`0159a24`として本文・BUILD-INFOへ記録する。旧Mac独立Releaseはタグと配布物を保持した下書きで保管し、公開一覧は現行Mac版1件へまとめる。Windows本体・配布物・Releaseは更新しない。[配布検証](docs/RELEASE-VERIFICATION-2026-10-20.md)と[利用者向け更新内容](docs/RELEASE-NOTES-2026-10-20.md)を参照。以下は各作業時点の記録。
+
 **build 17のユーザー受け入れ（2026-10-20）:** 配布後の手動テストでユーザーが「カクつかなくなった」と確認し、commit・push・PR作成とmainへのマージを指示した。今回の同期表示のカクつき改善として記録し、長時間運転・複数画面・スリープ復帰の網羅的な確認や通常アプリの定量再測定まで完了とは扱わない。以下の手動確認待ちは当時の記録。
 
 **Mac同期カクつき修正のローカルbuild 17（2026-10-20）:** ユーザーの「両方を修正してRelease APPを置き換え、手動テストする」という指示により、display linkによる周期修正と、全写真のID・URL・顔情報・参照表の生成を専用actorへ移す修正を反映した。同じ写真metadataと順序の間は1つの不変snapshotを再利用し、Next・停止・進行役変更で古い準備結果を確定しない。Swift単体209件 / 31 suites、共通fixture・色・Zoom、ネットワーク26件 / 241 assertions、arm64 Release成功。署名付きAPP／ZIP／DMGとSHA256SUMSを`release/macos/arm64/`へ更新し、archiveも含むAPP全6ファイル一致を確認。旧配布物は`artifacts/macos/package/previous-release.IUtGFf/`。稼働build 16の終了・再起動、`/Applications`へのコピー、GitHub公開は行っていない。実機での改善はユーザーの手動確認待ち。初回画像表示の色変換・コピー等の別経路は未変更。[build 17のノート](docs/RELEASE-NOTES-v1.1.0-build17.md)を参照。以下の未修正という記述は調査時点の記録。

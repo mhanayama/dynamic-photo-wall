@@ -6,7 +6,7 @@ Apple Silicon搭載Mac、macOS 27.0以降、Xcode 27.0向けです。SwiftUI＋A
 
 **生成物の共通規則:** 配布物は `release/macos/arm64/`、作業・検証ファイルは `artifacts/macos/`。プロジェクトルート直下へAPP・ZIP・DMG・ログ・一時ファイルを置きません。[共通規則](../docs/GENERATED-FILES.md)と[AGENTS.md](../AGENTS.md)に従ってください。
 
-本体コードは[MIT License](../LICENSE)です。[外部コンポーネントとテスト画像の通知](../THIRD-PARTY-NOTICES.md)も参照してください。`package.sh`は次回のパッケージ作成から、署名済みAPPの外側に`LICENSE`と`THIRD-PARTY-NOTICES.md`を添え、ZIP／DMGと配布先へ同梱します。この同梱変更はWindows上で行ったもので、Macでのパッケージ実行確認は残っています。このライセンス同梱変更では、公開済みbuild 14のバイナリは変更していません。
+本体コードは[MIT License](../LICENSE)です。[外部コンポーネントとテスト画像の通知](../THIRD-PARTY-NOTICES.md)も参照してください。署名済みAPPの外側にREADME・`BUILD-INFO.txt`・`LICENSE`・`THIRD-PARTY-NOTICES.md`を添え、ZIP／DMGと配布先へ同梱します。
 
 **描画負荷の改善（Issue #1）:** 静止時の背景再生成を抑え、色追従を表示補間へ分離しました。前景の幾何計算をキャッシュし、同じ写真への不要な再描画要求も抑えます。稼働build 14のCPU/GPU採取と、同じ合成画像による比較を実施しました。[測定結果](docs/RENDERING-MEASUREMENTS-2026-10-19.md) / [監査・回帰結果・実機計測手順](docs/RENDERING-PERFORMANCE.md)。通常の全画面表示での前後比較と電力は未測定です。
 
@@ -98,27 +98,27 @@ xcodebuild build-for-testing \
   -derivedDataPath artifacts/macos/compile/DerivedData CODE_SIGNING_ALLOWED=NO
 ```
 
-## Release候補のパッケージ化
+## Releaseのパッケージ化
 
-ローカル配布用候補は1.1.0 build 17です。同期描画を画面更新周期へ合わせ、次の表示計画に使う全写真のID・参照表の生成を描画スレッドから外しました。`release/macos/arm64/`のAPP／ZIP／DMGを同じReleaseから更新しました。[build 17のリリースノート](docs/RELEASE-NOTES-v1.1.0-build17.md)と[原因調査](docs/SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md)を参照してください。稼働アプリの反映には終了・再起動が必要です。GitHubで公開済みのプレリリースはbuild 14です。
+公開版は[Mac v1.1.0（2026-10-20更新）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)、build 17です。同期描画を画面更新周期へ合わせ、次の表示計画に使う全写真のID・参照表の生成を描画スレッドから外しました。[更新内容](docs/RELEASE-NOTES-2026-10-20.md) / [配布検証](docs/RELEASE-VERIFICATION-2026-10-20.md)を参照してください。
 
 ```sh
 bash macos/scripts/package.sh
+# 動作確認済みAPPをそのまま再梱包する場合
+bash macos/scripts/package.sh --reuse-app 0159a24e02813b889ec438b8c218ca49405c1b82
 ```
 
-`release/macos/arm64/` にアドホック署名付きの`DynamicPhotoWall.app`、ZIP／DMG、SHA256SUMSを生成します。APPはそのまま直接起動できます。すべて同じReleaseのAPPから作り、署名・CPU構成・ZIP／DMGの検査後に既存のローカル配布物を置き換えます。旧配布物は`artifacts/macos/package/previous-release.*/`へ退避します。arm64専用archive・DerivedData・ログも `artifacts/macos/package/` へ分け、DMG stagingはOS標準の一時ディレクトリを使います。Developer ID署名・公証・GitHubへの公開は含みません。XcodeのProduct → Archiveも利用できますが、リポジトリ内の生成物は共通規則に従って配置してください。
+`release/macos/arm64/`にアドホック署名付きAPP・ZIP・DMG・`SHA256SUMS.txt`を生成します。ZIP／DMGにはREADME・`BUILD-INFO.txt`・ライセンスも含みます。APPはそのまま直接起動できます。署名・arm64・ZIP／DMG・チェックサムの検査後に既存のローカル配布物を置き換え、旧配布物は`artifacts/macos/package/previous-release.*/`へ退避します。archive・DerivedData・ログも`artifacts/macos/`へ分け、DMG stagingはOS標準の一時領域を使います。
 
-GitHubで公開済みの配布物は1.1.0 build 14で、2026-10-19の[プレリリース](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14)です。`d67fd1f`までの修正を取り込み、Zoomの構図を守る最小限の位置補正と、同期Galleryの写真・配置・交換時計を引き継ぐ継続処理を反映しました。静止Galleryは1枚ずつの交換を続け、Scrolling Galleryも終端位置と速度を保持します。[Keychainを使わない保存方式](docs/LOCAL-NETWORK-STORAGE.md)、権限取得と表示面の保持も維持します。ネットワークの実機確認は未完了です。Windows側も`d67fd1f`以降からビルドしてください。[リリースノート](docs/RELEASE-NOTES-v1.1.0-build14.md)と[今回の差分と検証](docs/TEST-RESULTS-2026-10-19.md#build-14-同期galleryの継続とプレリリース更新)を参照してください。
+初回公開時の`macos-v1.1.0`タグは保持します。実際のAPPのソースはRelease本文と`BUILD-INFO.txt`のcommitを参照してください。置き換え済みの旧Mac Releaseはタグ・配布物を保持した下書きにし、公開一覧は現行版へまとめます。GitHubへの公開はパッケージ作成とは別の操作です。Developer ID署名・公証は行っていません。
 
-DMG用の一時フォルダはプロジェクト外に作成し、終了時に削除します。DMG内の `/Applications` リンクをエディタがたどって大量のファイルを検索することを防ぎます。VS Codeのワークスペース設定でもビルド生成物をファイル一覧・検索・監視から除外しています。
-
-[macOS v1.1.0（build 4）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0)は2026-10-18の更新です。変更点と検証状況は[リリースノート](docs/RELEASE-NOTES-v1.1.0.md)を参照してください。旧版は下書きで保管しています。公開一覧には現行版を掲載します。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。Spaces、実ログイン、画面抜差し、8時間運転は未検証で、自動テストの合格に含みません。
+過去の配布・検証は[build 4](docs/RELEASE-NOTES-v1.1.0.md)、[build 14](docs/RELEASE-NOTES-v1.1.0-build14.md)、[build 17の実装記録](docs/RELEASE-NOTES-v1.1.0-build17.md)を参照してください。[実機受け入れの残件](MACOS_PARITY_TODO.md#release前に残す実機受け入れ)は継続管理します。
 
 ## ネットワーク機能の追加実装
 
-写真ソースは接続中のものを既定で表示し、「未接続の写真ソースも表示」で保存済みの選択を確認できます。接続済みピアの「接続解除」はこのMacとの接続を切り、オンラインモードを終了するかこのMacから手動で接続し直すまで自動再接続を止めます。画面配置・ソース選択・キャッシュは保持します。build 12で`NetworkDisconnectTests`を含むMacの単体・ビルド検証を確認しました。実際のMac↔Windows端末間の接続確認は残ります。
+写真ソースは接続中のものを既定で表示し、「未接続の写真ソースも表示」で保存済みの選択を確認できます。接続済みピアの「接続解除」はこのMacとの接続を切り、オンラインモードを終了するかこのMacから手動で接続し直すまで自動再接続を止めます。画面配置・ソース選択・キャッシュは保持します。build 12で`NetworkDisconnectTests`を含むMacの単体・ビルド検証を確認しました。Mac↔Windowsの同期表示の滑らかさはbuild 17でユーザー確認済みです。網羅的な接続・復旧条件は引き続き確認します。
 
-Swiftネイティブの通信・専用ファイル保存・PhotoKit原写真転送・同期表示を`DynamicPhotoWall/Networking/`へ分割して追加しました。既存の単体表示と、Dock／メニューバーをOS設定に従わせる方針を保持します。2026-10-18にMacのコンパイル修正と隔離検証を実施しました。[結果と実機残件](docs/NETWORK-TEST-RESULTS-2026-10-18.md)を参照してください。ネットワークはbuild 14プレリリースの試験用機能で、正式版v1.1.0（build 4）の検証結果に含めないでください。
+Swiftネイティブの通信・専用ファイル保存・PhotoKit原写真転送・同期表示を`DynamicPhotoWall/Networking/`へ分割して追加しました。既存の単体表示と、Dock／メニューバーをOS設定に従わせる方針を保持します。2026-10-18にMacのコンパイル修正と隔離検証を実施しました。[結果と実機残件](docs/NETWORK-TEST-RESULTS-2026-10-18.md)を参照してください。現在のbuild 17にもネットワーク機能を含みますが、試験用として扱い、過去のbuild 4の検証結果と区別してください。
 
 「ネットワーク」のオンラインモードを有効にすると待受と自動検出を開始します。候補の「接続」から参加し、受信側の確認操作は不要です。「使用ディスプレイ」「画面グルーピング」は全ピアの共通一覧へ切り替わり、共有する写真ソースは選択後に「保存して適用」で確定します。オンライン切替は即時の端末操作で、共有設定のドラフトとは独立します。
 
