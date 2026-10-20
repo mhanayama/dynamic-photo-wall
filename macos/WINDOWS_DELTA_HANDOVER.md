@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**Mac同期表示のカクつきの引き継ぎ（2026-10-20）:** ユーザー指示により、速度差よりカクつきの原因調査・修正を優先する。`fix/macos-synchronized-frame-pacing`に、描画後16ms待機を選択画面のdisplay linkへ置き換える修正候補と、偽driverによる共有時刻・pause/resume・切替のテストを追加した。Swiftコンパイル・テスト実行・実機での改善確認はWindows上のため未実施。通常アプリ・配布物は未更新。[調査結果とMacでの検証手順](docs/HANDOVER-SYNC-STUTTER-2026-10-20.md)から引き継ぐ。速度差は改善後に再観測された場合に調べる。
+
 **共有背景の終端時刻の修正（2026-10-20）:** Windowsの`duration * index / (count - 1)`が1 ULPだけ終了値を超え、`Invalid ambient frame`となる条件を再現。実Galleryの小数の終端でも発生する。Macと同じ比率先行の計算へ揃えた。通信の範囲検証は厳密なまま、例外に時刻・終了値・PNG bytesを追加。2,416背景フレームとWindows単体48件、共有ネットワーク26件／241 assertions成功。Swiftは既に安全な計算順序のため変更なし。[調査記録](../windows/docs/RENDERING-PERFORMANCE.md)を参照。修正版の実運転での再試行消失は未確認。
 
 **Windows候補の長時間表示確認（2026-10-20）:** `ca71363`のRelease EXEを更新し、ユーザーは起動後約6時間に違和感なしと報告。同じプロセスの稼働も確認した。観測設定はオンラインGalleryのためローカル背景最適化の実機検証とは区別する。共有計画検証の`Invalid ambient frame`再試行が11件あり、原因・影響は未確定。PR #4はドラフトを維持する。[Windowsの記録](../windows/docs/RENDERING-PERFORMANCE.md)を参照。

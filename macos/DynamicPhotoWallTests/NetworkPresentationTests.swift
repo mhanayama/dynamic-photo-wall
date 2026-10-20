@@ -255,6 +255,54 @@ import Testing
         #expect(throws: (any Error).self) { try plan.validate() }
     }
 
+    @Test func displayTicksUseSharedTimeAcrossMissedFramesPauseAndHandoff() async throws {
+        let driver = FrameDriver(), f = try await Fixture(frameDriver: driver)
+        defer { f.close() }
+        var plan = f.plan("verticalPan")
+        plan.duration = 13; plan.fadeSeconds = 0
+        plan.placements[0].height = 1500
+        plan.placements[0].fromY = -1200; plan.placements[0].toY = 0
+        plan.placements[0].visibleUntil = 13; plan.placements[0].fadeSeconds = 0
+        let placement = plan.placements[0]
+        try await f.output.prepare(plan)
+        f.output.commit(PNCommit(planId: plan.id, groupId: plan.groupId, startAt: 100))
+        #expect(driver.screens == [1, 2])
+        #expect(f.log.created == 0) // Only the injected display tick presents.
+        for elapsed in [0.0, 1.0 / 60, 0.05, 0.2, 1.0, 4.25] {
+            f.clock.time = 100 + elapsed; driver.fire()
+            let layer = try #require(f.log.surfaces[1]?.layers.last)
+            #expect(abs(layer.elapsed - elapsed) < 1e-8)
+            #expect(abs(layer.evaluate(placement).y - (-1200 + elapsed * 120)) < 1e-8)
+        }
+        f.output.control(PNControl(operation: "pause", effectiveAt: 104.25)); driver.fire()
+        f.clock.time = 108.25; driver.fire()
+        #expect(try #require(f.log.surfaces[1]?.layers.last).elapsed == 4.25)
+        f.output.control(PNControl(operation: "resume", effectiveAt: 108.25)); driver.fire()
+        f.clock.time = 114; driver.fire()
+        #expect(try #require(f.log.surfaces[1]?.layers.last).evaluate(placement).y == 0)
+        var next = f.plan("gallery"); next.fadeSeconds = 0
+        try await f.output.prepare(next)
+        f.output.commit(PNCommit(planId: next.id, groupId: next.groupId, startAt: 115))
+        f.clock.time = 114.99; driver.fire()
+        #expect(try #require(f.log.surfaces[1]?.layers.last).frame.plan.id == plan.id)
+        f.clock.time = 115; driver.fire()
+        #expect(try #require(f.log.surfaces[1]?.layers.last).frame.plan.id == next.id)
+        #expect(f.log.created == 2)
+        f.output.stop()
+        #expect(driver.render == nil)
+        driver.fire()
+        #expect(f.log.surfaces.values.allSatisfy { $0.closed == 1 })
+    }
+
+    private final class FrameDriver: PNFrameDriving {
+        var screens: [UInt32] = []
+        var render: (@MainActor () -> Void)?
+        func start(screens: [UInt32], render: @escaping @MainActor () -> Void) {
+            self.screens = screens; self.render = render
+        }
+        func fire() { render?() }
+        func stop() { render = nil }
+    }
     private final class Clock: PNClock {
         var time = 100.0
         var now: Double { time }; var elapsed: Double { time }
@@ -285,7 +333,7 @@ import Testing
     @MainActor private final class Fixture {
         let root: URL, local: UUID, remote = UUID(), group = UUID(), session = UUID(), original: Data
         let clock: Clock, log: Log, planner: Planner, output: PNPlayback, transfers: PNPhotoTransfers, photo: PNPhoto
-        init() async throws {
+        init(frameDriver: (any PNFrameDriving)? = nil) async throws {
             let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Presentation.\(UUID())")
             self.root = root
             let local = UUID(); self.local = local
@@ -306,7 +354,7 @@ import Testing
                 screens: { log.screens }, makeSurface: { screen in
                     let surface = Surface(id: screen.id, log: log); log.created += 1; log.surfaces[screen.id] = surface
                     log.events.append("create\(screen.id)"); return surface
-                }, automaticRendering: false)
+                }, automaticRendering: frameDriver != nil, frameDriver: frameDriver)
             output.bind(planner: planner, photos: transfers)
         }
         func close() { output.stop(); transfers.stop(); try? FileManager.default.removeItem(at: root) }
