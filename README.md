@@ -8,7 +8,7 @@ WindowsとMacに対応し、複数の画面をつなげて表示することも�
 | OS | ダウンロード | 対応環境 |
 |---|---|---|
 | Windows | [Windows版（10月20日更新）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/windows-v0.1.0) | Windows 11、x64 |
-| Mac | [正式版](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0) / [試用版（ネットワーク機能あり）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0-build.14) | Apple Silicon、macOS 27.0以降 |
+| Mac | [Mac版（10月20日更新）](https://github.com/mhanayama/dynamic-photo-wall/releases/tag/macos-v1.1.0) | Apple Silicon、macOS 27.0以降 |
 
 **Windows:** ZIPを展開し、`DynamicPhotoWall.exe`を起動します。.NETのインストールは不要です。
 
@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/83bbe258-322d-41b4-ae13-ecd4524e761b
 
 写真の表示と顔検出は端末内で処理します。クラウドへの写真送信や利用状況の収集はありません。
 
-Windows版とMac試用版では、LAN内の端末間で写真を共有し、同期再生できます。
+Windows版とMac版の試験用ネットワーク機能では、LAN内の端末間で写真を共有し、同期再生できます。
 オンラインモードでは、選択した写真と顔データを接続先へ送ります。接続要求は受信側の確認なしで受け入れます。
 端末間の同期、異なる表示倍率の画面、画面の抜き差し、長時間運転は引き続き確認中です。
 
@@ -43,6 +43,7 @@ Windows版とMac試用版では、LAN内の端末間で写真を共有し、同�
 
 - [Windowsの使い方](windows/README.md) / [Macの使い方](macos/README.md)
 - [Windowsの更新内容](windows/docs/RELEASE-NOTES-2026-10-20.md)
+- [Macの更新内容](macos/docs/RELEASE-NOTES-2026-10-20.md)
 - [ビルド・テストと開発資料](docs/DEVELOPMENT.md)
 
 本体は[MITライセンス](LICENSE)です。[外部ライブラリの通知](THIRD-PARTY-NOTICES.md)も参照してください。

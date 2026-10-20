@@ -1,6 +1,6 @@
 # macOS v1.1.0 build 17 — 同期再生の更新周期と計画準備の停止を修正
 
-2026-10-20。Macの同期再生のカクつきについて、[更新間隔の比較と稼働中build 16のトレース](SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md)から確認した2つの要因に対応したApple Silicon用ローカル候補です。GitHub Releaseには未公開です。
+2026-10-20。Macの同期再生のカクつきについて、[更新間隔の比較と稼働中build 16のトレース](SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md)から確認した2つの要因に対応したbuild 17の実装・検証記録です。利用者向けの[更新内容](RELEASE-NOTES-2026-10-20.md)と[公開用パッケージの検証](RELEASE-VERIFICATION-2026-10-20.md)も参照してください。
 
 ## 変更
 

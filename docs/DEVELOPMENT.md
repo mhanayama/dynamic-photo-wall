@@ -27,7 +27,10 @@ bash macos/scripts/verify.sh
 bash macos/scripts/package.sh
 ```
 
-完成物は`release/macos/arm64/`のAPP・ZIP・DMG・SHA256SUMSです。
+完成物は`release/macos/arm64/`のAPP・ZIP・DMG・SHA256SUMS.txtです。
+ZIP／DMGにはREADME・ライセンス・ビルド元のコミットと実行ファイルのハッシュを記録した`BUILD-INFO.txt`も含みます。
+動作確認済みAPPを再ビルドせずに再梱包する場合は`bash macos/scripts/package.sh --reuse-app <ビルド元commit>`を使います。
+指定commitと現在のMac本体・プロジェクトに差分がある場合は再利用を中止します。
 WindowsではMac版をビルドできません。パッケージ作成とGitHubへの公開は別の操作です。
 
 ## 検証
@@ -48,7 +51,7 @@ WindowsではMac版をビルドできません。パッケージ作成とGitHub�
 
 ## Releaseの更新
 
-公開一覧にはWindowsの現行版、Macの正式版、Macの最新試用版を掲載します。
+公開一覧にはWindowsとMacの現行版をそれぞれ1件掲載します。ネットワーク機能は両OSとも試験用です。
 置き換え済みのMac旧版は下書きで保管し、タグと配布物を残します。
 下書きは一般公開されず、旧Releaseのダウンロードリンクからは利用できなくなります。
 
