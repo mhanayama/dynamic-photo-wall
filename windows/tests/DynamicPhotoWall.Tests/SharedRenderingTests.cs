@@ -129,6 +129,14 @@ internal static class SharedRenderingTests
             Check(ReferenceEquals(retainedPresenter, outputCanvas.Children[0]), "continuation retains output rendering commands");
             Check(RetainedPixels().Zip(Pixels(next, 1, true)).Max(p => Math.Abs(p.First - p.Second)) <= 1,
                 "a retained presenter observes the replacement drawing contents across continuation");
+            var late = displayPlan with { Placements = [displayPlan.Placements[1] with { VisibleFrom = 9.8, FadeSeconds = 1 }] };
+            var lateReference = Build(late, false); var lateCandidate = Build(late, true);
+            foreach (var at in new[] { 9.8, 9.9, 10, 10.1, 10.6, 10.8, 11, 20, 10.2 })
+            {
+                renderer.PresentShared(lateReference, at); renderer.PresentShared(lateCandidate, at);
+                Check(lateReference.Photos[0].Image.Opacity == lateCandidate.Photos[0].Image.Opacity,
+                    "a late final-slot fade keeps progressing after the geometry reaches the plan endpoint");
+            }
         }
         finally { renderer.Clear(); renderer.Close(); }
         Console.WriteLine($"Shared drawing: {count} output comparisons; maximum channel delta {maximum}.");

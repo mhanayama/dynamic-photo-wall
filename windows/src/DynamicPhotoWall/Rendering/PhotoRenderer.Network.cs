@@ -89,11 +89,11 @@ public sealed partial class PhotoRenderer
     {
         if (!visual.Optimized) { PresentSharedReference(visual, elapsed); return; }
         var at = Math.Min(elapsed, visual.Plan.Duration - .00001);
-        var seek = double.IsNaN(visual.LastPresentation) || at < visual.LastPresentation;
+        var seek = double.IsNaN(visual.LastPresentation) || elapsed < visual.LastPresentation;
         visual.NextPhotoUpdates ??= Enumerable.Repeat(double.NegativeInfinity, visual.Photos.Count).ToArray();
         for (var i = 0; i < visual.Photos.Count; i++)
         {
-            if (visual.Optimized && !seek && (at == visual.LastPresentation || at < visual.NextPhotoUpdates[i])) continue;
+            if (!seek && (elapsed == visual.LastPresentation || at < visual.NextPhotoUpdates[i])) continue;
             var (p, image, scale, translation) = visual.Photos[i];
             if (visual.Optimized && (at < p.VisibleFrom || at >= p.VisibleUntil))
             {
@@ -115,9 +115,12 @@ public sealed partial class PhotoRenderer
             {
                 visual.PhotoDrawings[i].Present(x, y, factor, opacity);
                 visual.NextPhotoUpdates[i] = NextPhotoChange(p, at, visual.Plan.Duration);
+                if (elapsed >= visual.Plan.Duration)
+                    visual.NextPhotoUpdates[i] = p.VisibleUntil == visual.Plan.Duration && p.FadeSeconds > 0 && elapsed < p.VisibleFrom + p.FadeSeconds
+                        ? double.NegativeInfinity : double.PositiveInfinity;
             }
         }
-        visual.LastPresentation = at;
+        visual.LastPresentation = elapsed;
         foreach (var background in visual.Backgrounds) background.Present(elapsed);
         var sceneOpacity = visual.IsContinuation || visual.Plan.FadeSeconds <= 0 ? 1 : Math.Clamp(elapsed / visual.Plan.FadeSeconds, 0, 1);
         if (visual.Scene.Canvas.Opacity != sceneOpacity) visual.Scene.Canvas.Opacity = sceneOpacity;
