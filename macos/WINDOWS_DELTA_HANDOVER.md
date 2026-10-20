@@ -1,6 +1,14 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
-**Mac同期表示のカクつきの引き継ぎ（2026-10-20）:** ユーザー指示により、速度差よりカクつきの原因調査・修正を優先する。`fix/macos-synchronized-frame-pacing`に、描画後16ms待機を選択画面のdisplay linkへ置き換える修正候補と、偽driverによる共有時刻・pause/resume・切替のテストを追加した。Swiftコンパイル・テスト実行・実機での改善確認はWindows上のため未実施。通常アプリ・配布物は未更新。[調査結果とMacでの検証手順](docs/HANDOVER-SYNC-STUTTER-2026-10-20.md)から引き継ぐ。速度差は改善後に再観測された場合に調べる。
+**build 17のユーザー受け入れ（2026-10-20）:** 配布後の手動テストでユーザーが「カクつかなくなった」と確認し、commit・push・PR作成とmainへのマージを指示した。今回の同期表示のカクつき改善として記録し、長時間運転・複数画面・スリープ復帰の網羅的な確認や通常アプリの定量再測定まで完了とは扱わない。以下の手動確認待ちは当時の記録。
+
+**Mac同期カクつき修正のローカルbuild 17（2026-10-20）:** ユーザーの「両方を修正してRelease APPを置き換え、手動テストする」という指示により、display linkによる周期修正と、全写真のID・URL・顔情報・参照表の生成を専用actorへ移す修正を反映した。同じ写真metadataと順序の間は1つの不変snapshotを再利用し、Next・停止・進行役変更で古い準備結果を確定しない。Swift単体209件 / 31 suites、共通fixture・色・Zoom、ネットワーク26件 / 241 assertions、arm64 Release成功。署名付きAPP／ZIP／DMGとSHA256SUMSを`release/macos/arm64/`へ更新し、archiveも含むAPP全6ファイル一致を確認。旧配布物は`artifacts/macos/package/previous-release.IUtGFf/`。稼働build 16の終了・再起動、`/Applications`へのコピー、GitHub公開は行っていない。実機での改善はユーザーの手動確認待ち。初回画像表示の色変換・コピー等の別経路は未変更。[build 17のノート](docs/RELEASE-NOTES-v1.1.0-build17.md)を参照。以下の未修正という記述は調査時点の記録。
+
+**稼働Macの長い停止を特定（2026-10-20）:** build 16へ20秒の`Animation Hitches`をattachし、`PNScenePlanner.prepare`の全候補写真からの参照表・ID生成がMainActorを116ms・72ms占有し、同時刻の更新の空白と一致することを確認した。初回画像表示のCore Animation色変換・コピー等も約48ms占有。display link修正だけではこれらは解消しない。次の対象は計画作成時の全写真のID・参照表生成をMainActorから外す／安全に再利用することと初回表示準備の検証。今回は原因調査で製品の追加修正・配布更新は行っていない。[時刻別のスタックと更新間隔](docs/SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md#稼働中build-16の確認)を参照。
+
+**同期フレーム周期の実測（2026-10-20）:** ユーザーの原因調査依頼により、同じ本体の`PNPlayback`と合成縦Panでdriverだけを切り替え、1920×1080・60Hzで各3回比較した。旧16ms相対待機は約57.5更新/秒・画面更新通知での据え置き4.223%、display linkは60更新/秒・据え置き0%。render処理は両方式ともp95約0.44msで、相対待機が滑らかさを損ねる要因であることを再現した。通常アプリ・配布物は未更新で、実同期条件の解消と他の停止要因は未確定。[測定条件と限界](docs/SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md)を参照。
+
+**Mac同期表示のカクつきの引き継ぎ（2026-10-20）:** ユーザー指示により、速度差よりカクつきの原因調査・修正を優先する。`fix/macos-synchronized-frame-pacing`に、描画後16ms待機を選択画面のdisplay linkへ置き換える修正候補と、偽driverによる共有時刻・pause/resume・切替のテストを追加した。Mac引き継ぎ後、Swift単体206件 / 31 suites、共通fixture・背景色・Zoom構図、ネットワーク26件 / 241 assertions、arm64 Releaseコンパイルが成功。実更新間隔・CPUの比較と実機での改善確認は残る。通常アプリ・配布物は未更新。[調査結果とMacでの検証手順](docs/HANDOVER-SYNC-STUTTER-2026-10-20.md)から引き継ぐ。速度差は改善後に再観測された場合に調べる。
 
 **共有背景の終端時刻の修正（2026-10-20）:** Windowsの`duration * index / (count - 1)`が1 ULPだけ終了値を超え、`Invalid ambient frame`となる条件を再現。実Galleryの小数の終端でも発生する。Macと同じ比率先行の計算へ揃えた。通信の範囲検証は厳密なまま、例外に時刻・終了値・PNG bytesを追加。2,416背景フレームとWindows単体48件、共有ネットワーク26件／241 assertions成功。Swiftは既に安全な計算順序のため変更なし。[調査記録](../windows/docs/RENDERING-PERFORMANCE.md)を参照。修正版の実運転での再試行消失は未確認。
 

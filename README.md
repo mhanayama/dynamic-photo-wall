@@ -13,9 +13,9 @@ WindowsはZIPを展開して`DynamicPhotoWall.exe`を起動し、使用ディス
 
 macOSはZIPまたはDMGの`DynamicPhotoWall.app`をApplicationsへ移して起動します。配布物はad-hoc署名で、Appleの公証はありません。写真・フォルダー・通知・LANの権限はOSの確認に従ってください。
 
-Windows最新版とmacOSプレリリースには試験用のネットワーク機能を含みます。Mac↔Windows間の実機同期は未検証です。macOSの公開済み配布物はbuild 14、ソースのバージョンはbuild 16です。Zoomの構図と同期Galleryの継続を修正し、同期描画のCPU負荷も軽減しました。Windows側もGallery継続修正を含む`d67fd1f`以降からビルドしてください。このWindows環境でmacOSの再ビルドは行っていません。
+Windows最新版とmacOSプレリリースには試験用のネットワーク機能を含みます。Mac↔Windows間の実機同期の受け入れは継続中です。macOSの公開済み配布物はbuild 14、ローカル候補はbuild 17です。Zoomの構図と同期Galleryの継続、同期描画の負荷軽減に加え、画面更新周期と次計画準備による描画の停止を修正しました。Windows側もGallery継続修正を含む`d67fd1f`以降からビルドしてください。
 
-詳しい操作と制約: [Windowsガイド](windows/README.md) / [macOSガイド](macos/README.md)。変更点: [Windows更新内容](windows/docs/RELEASE-NOTES-2026-10-19.md) / [macOS build 14](macos/docs/RELEASE-NOTES-v1.1.0-build14.md) / [macOS build 16のソース更新](macos/docs/RELEASE-NOTES-v1.1.0-build16.md)。
+詳しい操作と制約: [Windowsガイド](windows/README.md) / [macOSガイド](macos/README.md)。変更点: [Windows更新内容](windows/docs/RELEASE-NOTES-2026-10-19.md) / [macOS build 14](macos/docs/RELEASE-NOTES-v1.1.0-build14.md) / [macOS build 17のローカル候補](macos/docs/RELEASE-NOTES-v1.1.0-build17.md)。
 
 ## 動作デモ
 

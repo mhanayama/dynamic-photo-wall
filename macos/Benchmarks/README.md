@@ -48,6 +48,22 @@ python3 macos/scripts/measure-rendering.py --baseline-name baseline-sync --candi
 
 本番の全画面/複数画面/写真/同期状態とは条件が異なるため、このCPU値を稼働中アプリの改善率へ直接置き換えない。同じMac上の他アプリの稼働、熱状態、GPU競合の影響もある。比較の生データとばらつきを併記する。
 
+## 同期再生の更新間隔の比較
+
+ユーザーが原因調査・実描画計測を依頼したときだけ、次を実行する。
+
+```sh
+python3 macos/scripts/frame-pacing-benchmark.py build
+python3 macos/scripts/frame-pacing-benchmark.py measure \
+  --output artifacts/macos/sync-frame-pacing/comparison-new
+```
+
+`FramePacingBenchmark.swift`は現在の本体ソースをRelease最適化でコンパイルし、同じバイナリ内でdriverだけを切り替える。旧`PNPlayback.startTimer()`と同じ「render後に16ms sleep」のループと、本体の`PNDisplayFrameDriver`を、AB→BA→ABの順で各3回比較する。各回は準備3秒＋測定20秒。実行先は既定で物理1920×1080の最初の画面、なければmain画面。`--display <画面ID>`で指定できる。画面ID・物理解像度・最大更新周波数を結果へ残す。
+
+暗号化した一時キャッシュと合成写真から本体の`PNPlayback.prepare`、共有時刻の評価、`render`、`PNSceneView`、保持レイヤー更新を通し、120px/秒の縦Panを表示する。ウィンドウは専用の通常レベルで最大960×540pt。個人写真・通常設定・通常アプリのエントリーポイント・ネットワーク接続・desktop windowのorderingは使用しない。共有時計には補正なしの単調時計を注入し、ネットワーク起因の詰まりはこの比較に含めない。
+
+独立した同じ画面のdisplay linkで、アプリの更新番号・評価位置を採取する。`duplicate_probe_percent`は連続する画面更新通知でアプリの状態が同じだった割合で、実際にディスプレイへ提示された画像の欠落率ではない。producerとprobeのcallback順序の影響もあるため、render間隔、probe間隔、処理時間と併せて読む。生の時刻・位置、ビルド条件、ソースとハーネス・バイナリのSHA-256を保存する。既存の描画CPUハーネスとは別物で、製品ソースの書換えは行わない。
+
 ## 稼働アプリのトレース解析
 
 Time Profiler/Metal System Traceの採取は[描画負荷の監査](../docs/RENDERING-PERFORMANCE.md)を参照。`xctrace export`から`time-profile`と`metal-gpu-intervals`表をXMLへ出し、次のように集計できる。

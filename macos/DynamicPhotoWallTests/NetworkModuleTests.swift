@@ -79,6 +79,76 @@ import Testing
         try await coordinator.ready(other, PNReady(planId: v.scene.id, groupId: v.scene.groupId))
         #expect(output.commits.count == 1); #expect(output.commits[0].startAt == 1012)
     }
+    @Test func planningCatalogRefreshesFacesDimensionsMembershipAndOrder() async throws {
+        let v = try vector(), catalog = PNPlanningCatalog()
+        let first = v.photo
+        var second = first; second.key.imageId = PNWire.digest(Data("second".utf8))
+        second.faceMetadata.state = "pending"; second.faceMetadata.faces = []
+        var third = second; third.key.imageId = PNWire.digest(Data("third".utf8)); third.faceMetadata.state = "failed"
+        let initial = try await catalog.prepare([first, second, third])
+        let firstURL = URL(string: "peer-cache://image/\(first.key.opaqueId)")!
+        let thirdURL = URL(string: "peer-cache://image/\(third.key.opaqueId)")!
+        #expect(initial.assets.map(\.url) == [firstURL, thirdURL])
+        #expect(initial.byID[first.key.opaqueId]?.faces == first.faceMetadata.faces.map { FaceRegion(x: $0.x, y: $0.y, width: $0.width, height: $0.height) })
+        #expect(initial.byURL[thirdURL] == third)
+        #expect(initial.byID[second.key.opaqueId] == nil)
+        let repeated = try await catalog.prepare([first, second, third])
+        #expect(repeated.assets == initial.assets && repeated.byURL == initial.byURL && repeated.byID == initial.byID)
+        second.faceMetadata.state = "complete"
+        second.faceMetadata.faces = [PNFaceRegion(x: 0.2, y: 0.3, width: 0.1, height: 0.1)]
+        second.pixelWidth = 1200; second.faceMetadata.pixelWidth = 1200; second.byteLength += 1
+        let updated = try await catalog.prepare([second, first])
+        #expect(updated.assets.map(\.url) == [URL(string: "peer-cache://image/\(second.key.opaqueId)")!, firstURL])
+        #expect(updated.assets[0].pixelWidth == 1200 && updated.assets[0].fileSize == Int64(second.byteLength))
+        #expect(updated.assets[0].faces == [FaceRegion(x: 0.2, y: 0.3, width: 0.1, height: 0.1)])
+        #expect(updated.byID[third.key.opaqueId] == nil && updated.byURL[thirdURL] == nil)
+        #expect(initial.assets.map(\.url) == [firstURL, thirdURL]) // Prior scenes retain their immutable snapshot.
+        #expect(try await catalog.prepare([]).assets.isEmpty)
+    }
+    @Test func cancelledPlanningCatalogRequestDoesNotPublishItsMetadata() async throws {
+        let v = try vector(), catalog = PNPlanningCatalog()
+        let original = try await catalog.prepare([v.photo])
+        var changed = v.photo; changed.pixelWidth += 100
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await catalog.prepare([changed])
+        }
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(try await catalog.prepare([v.photo]).assets == original.assets)
+        #expect(try await catalog.prepare([changed]).assets[0].pixelWidth == changed.pixelWidth)
+    }
+    @Test func delayedScenePreparationCannotUndoNextStopOrLeadershipChange() async throws {
+        let v = try vector()
+        for phase in ["planner", "output"] {
+            for operation in ["next", "stop", "leadership"] {
+                let clock = Clock(), output = Output(), planner = Planner(scene: v.scene)
+                let coordinator = PNSceneCoordinator(planner: planner, output: output, clock: clock)
+                var packets: [PNPacket] = []; coordinator.broadcast = { packets.append($0) }
+                var release: (() -> Void)?, pump: Task<Void, Error>?
+                await withCheckedContinuation { began in
+                    let wait: @MainActor () async -> Void = {
+                        await withCheckedContinuation { finish in
+                            release = { finish.resume() }; began.resume()
+                        }
+                    }
+                    if phase == "planner" { planner.beforePrepare = wait } else { output.beforePrepare = wait }
+                    pump = Task {
+                        try await coordinator.pump(local: v.wall.leaderId, wall: v.wall,
+                            live: Set(v.wall.displays.map { $0.key.peerId }), photos: [v.photo])
+                    }
+                }
+                if operation == "leadership" { coordinator.leadershipChanged() }
+                else { try coordinator.apply(PNControl(operation: operation, effectiveAt: clock.now)) }
+                let finish = try #require(release), task = try #require(pump)
+                finish(); try await task.value
+                let remote = try #require(v.wall.displays.first { $0.key.peerId != v.wall.leaderId }?.key.peerId)
+                try await coordinator.ready(remote, PNReady(planId: v.scene.id, groupId: v.scene.groupId))
+                #expect(output.commits.isEmpty)
+                #expect(!packets.contains { $0.type == "sceneCommit" })
+                if phase == "planner" { #expect(output.prepared == 0 && packets.isEmpty) }
+            }
+        }
+    }
     @Test func sharedGalleriesRenewAcrossTwoHoursWithoutWindows() async throws {
         let v = try vector()
         let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Gallery.\(UUID())")
@@ -180,7 +250,8 @@ import Testing
     private final class Output: PNPlaybackOutput {
         var prepared = 0; var commits: [PNCommit] = []
         var plans: [PNScene] = []
-        func prepare(_ scene: PNScene) async throws { prepared += 1; plans.append(scene) }
+        var beforePrepare: (@MainActor () async -> Void)?
+        func prepare(_ scene: PNScene) async throws { prepared += 1; plans.append(scene); await beforePrepare?() }
         func commit(_ commit: PNCommit) { commits.append(commit) }
         func control(_ control: PNControl) {}
         func recover(_ state: PNRecoveryState, wall: PNSnapshot) {}
@@ -188,6 +259,7 @@ import Testing
     }
     private final class Planner: PNScenePlanning {
         let scene: PNScene; init(scene: PNScene) { self.scene = scene }
-        func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? { scene }
+        var beforePrepare: (@MainActor () async -> Void)?
+        func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? { await beforePrepare?(); return scene }
     }
 }

@@ -4,14 +4,19 @@ import SwiftUI
 
 @MainActor final class PNScenePlanner: PNScenePlanning {
     private let cache: PNPhotoCache
+    private let catalog = PNPlanningCatalog()
     var readOriginal: ((PNAssetKey) async throws -> Data?)?
     private var planners: [UUID: WallScenePlanner] = [:]
     private var configurations: [UUID: (session: UUID, revision: Int64)] = [:]
+    private var preparations: [UUID: UUID] = [:]
     init(cache: PNPhotoCache) { self.cache = cache }
     func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto]) async throws -> PNScene? {
         try await prepare(wall: wall, group: group, photos: photos, previous: nil)
     }
     func prepare(wall: PNSnapshot, group: UUID, photos: [PNPhoto], previous: PNScene?) async throws -> PNScene? {
+        try Task.checkCancellation()
+        let token = UUID(); preparations[group] = token
+        defer { if preparations[group] == token { preparations.removeValue(forKey: group) } }
         let displays = wall.displays.filter { $0.selected && $0.unit == group }; guard !displays.isEmpty else { return nil }
         let settings = try wall.playback.applying()
         let left = displays.map(\.x).min()!, top = displays.map(\.y).min()!
@@ -19,14 +24,14 @@ import SwiftUI
         let height = displays.map { Double($0.y) + Double($0.height) }.max()! - Double(top)
         let nativeDisplays = displays.enumerated().map { index, d in WallDisplay(id: UInt32(index + 1), name: d.id, x: Double(d.x), y: Double(d.y), width: Double(d.width), height: Double(d.height), groupID: group.uuidString) }
         let nativeGroup = WallDisplayGroup(id: .named(group.uuidString), displays: nativeDisplays, bounds: CGRect(x: left, y: top, width: Int(width), height: Int(height)))
-        let usable = photos.filter { $0.faceMetadata.state != "pending" }
-        let assets = usable.map { PhotoAsset(url: URL(string: "peer-cache://image/\($0.key.opaqueId)")!, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight, fileSize: Int64($0.byteLength), faces: $0.faceMetadata.faces.map { FaceRegion(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }) }
-        let byURL = Dictionary(uniqueKeysWithValues: zip(assets.map(\.url), usable))
+        let prepared = try await catalog.prepare(photos)
+        try Task.checkCancellation()
+        guard preparations[group] == token else { throw CancellationError() }
+        let assets = prepared.assets, byURL = prepared.byURL, byID = prepared.byID
         let planner = planners[group] ?? WallScenePlanner(); planners[group] = planner
         if configurations[group]?.session != wall.sessionId || configurations[group]?.revision != wall.revision {
             planner.resetModeHistory(); configurations[group] = (wall.sessionId, wall.revision)
         }
-        let byID = Dictionary(uniqueKeysWithValues: zip(usable.map { $0.key.opaqueId }, assets))
         let previousGallery = previous.flatMap { p -> PNScene? in
             guard p.groupId == group, p.sessionId == wall.sessionId, p.settingsRevision == wall.revision, p.displays == displays,
                   ["gallery", "galleryScroll"].contains(p.mode),
@@ -128,6 +133,8 @@ import SwiftUI
         var plan = PNScene(id: UUID(), groupId: group, sessionId: wall.sessionId, settingsRevision: wall.revision, mode: mode, viewport: PNSize(width: width, height: height), displays: displays, duration: duration, fadeSeconds: min(settings.fadeSeconds, duration), background: settings.backgroundHex, placements: placements, ambient: [])
         plan.continuationOf = continuing ? previousGallery?.id : nil; plan.gallerySchedule = gallerySchedule
         if settings.glassBackground { plan.ambient = try await ambient(plan) }
+        try Task.checkCancellation()
+        guard preparations[group] == token else { throw CancellationError() }
         try plan.validate(); return plan
     }
     private func ambient(_ plan: PNScene) async throws -> [PNAmbient] {
