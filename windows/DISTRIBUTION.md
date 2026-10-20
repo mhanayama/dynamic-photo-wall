@@ -23,7 +23,7 @@ EXEを移動した場合、ログオン時の自動起動は設定し直して�
 混在DPI、画面の実ケーブル抜差し、長時間運転も実機受け入れが残っています。
 
 詳しい操作・制約は[Windowsガイド](https://github.com/mhanayama/dynamic-photo-wall/blob/main/windows/README.md)、
-今回の変更は[リリースノート](https://github.com/mhanayama/dynamic-photo-wall/blob/main/windows/docs/RELEASE-NOTES-2026-10-19.md)を参照してください。
+今回の変更は[リリースノート](https://github.com/mhanayama/dynamic-photo-wall/blob/main/windows/docs/RELEASE-NOTES-2026-10-20.md)を参照してください。
 `BUILD-INFO.txt`にはビルド元のコミットと依存バージョン、配布用の`SHA256SUMS.txt`にはEXEとZIPのSHA-256を記録します。
 
 ## ライセンス
