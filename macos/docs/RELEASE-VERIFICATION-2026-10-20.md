@@ -26,7 +26,7 @@ APPを再ビルドせず、署名済みの全6ファイルを保持してREADME�
 
 Windowsと同じく、初回公開時の`macos-v1.1.0`タグを保持して配布物を更新する。
 実際のAPPのソースはRelease本文と同梱の`BUILD-INFO.txt`を参照する。
-独立した旧Mac Release（build 14・build 12・v1.0.1・v1.0.0）はタグと添付ファイルを保持した下書きで保管し、公開一覧は現行Mac版1件へまとめる。
+独立した旧Mac Release（build 14・build 12・v1.0.1・v1.0.0）は当初下書きで保管したが、ユーザーの追加指示により4件とも削除した。ソースタグは保持し、Releaseは現行Mac版とWindows版の各1件のみ。削除前に本文・添付ファイルを`artifacts/macos/github-release-20261020/deleted-release-backups/`へ保存し、GitHubのSHA-256との一致を確認した。
 
 更新前のv1.1.0公開版（build 4）の本文・添付ファイルと、公開前後のRelease一覧・検証結果は`artifacts/macos/github-release-20261020/`へ保存する。
 ローカルの再梱包前配布物は`artifacts/macos/package/previous-release.s0wPW8/`、完成物は`release/macos/arm64/`。
