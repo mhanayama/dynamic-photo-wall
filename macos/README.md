@@ -100,7 +100,7 @@ xcodebuild build-for-testing \
 
 ## Release候補のパッケージ化
 
-ローカル配布用ビルドは1.1.0 build 16です。build 15のローカル背景改善に加え、同期表示の写真をCore Animationのcontentsへ保持し、毎フレームのbitmap再描画を抑えます。`release/macos/arm64/`のAPP／ZIP／DMGを更新しました。[build 16のリリースノート](docs/RELEASE-NOTES-v1.1.0-build16.md)と[測定結果](docs/RENDERING-MEASUREMENTS-2026-10-19.md)を参照してください。GitHubで公開済みのプレリリースはbuild 14です。
+ローカル配布用候補は1.1.0 build 17です。同期描画を画面更新周期へ合わせ、次の表示計画に使う全写真のID・参照表の生成を描画スレッドから外しました。`release/macos/arm64/`のAPP／ZIP／DMGを同じReleaseから更新しました。[build 17のリリースノート](docs/RELEASE-NOTES-v1.1.0-build17.md)と[原因調査](docs/SYNC-FRAME-PACING-MEASUREMENTS-2026-10-20.md)を参照してください。稼働アプリの反映には終了・再起動が必要です。GitHubで公開済みのプレリリースはbuild 14です。
 
 ```sh
 bash macos/scripts/package.sh

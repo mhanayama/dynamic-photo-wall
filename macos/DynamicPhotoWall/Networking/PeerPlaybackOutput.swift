@@ -45,11 +45,12 @@ import AppKit
     private let screenProvider: @MainActor () -> [ScreenDescriptor]
     private let makeSurface: (ScreenDescriptor) -> any PNPlaybackSurface
     private let automaticRendering: Bool
+    private let frameDriver: any PNFrameDriving
     private var prepared: [UUID: Frame] = [:], preparing: [UUID: UUID] = [:]
     private var presentations: [PNDisplayKey: PNPresentation] = [:]
     private var surfaces: [PNDisplayKey: any PNPlaybackSurface] = [:]
     private var commits: [UUID: PNCommit] = [:], controls: [PNControl] = []
-    private var timer: Task<Void, Never>?, fallback: Task<Void, Never>?
+    private var fallback: Task<Void, Never>?
     private var fallbackToken = UUID()
     private var fallbackPlans: Set<UUID> = []
     private var recovery = PNRecoveryState.listening
@@ -67,12 +68,14 @@ import AppKit
     var changed: (() -> Void)?
     init(local: UUID, clock: any PNClock, cache: PNPhotoCache, budget: @escaping () -> Int, enter: @escaping () -> Void,
          screens: @escaping @MainActor () -> [ScreenDescriptor] = ScreenDescriptor.availableScreens,
-         makeSurface: ((ScreenDescriptor) -> any PNPlaybackSurface)? = nil, automaticRendering: Bool = true) {
+         makeSurface: ((ScreenDescriptor) -> any PNPlaybackSurface)? = nil, automaticRendering: Bool = true,
+         frameDriver: (any PNFrameDriving)? = nil) {
         self.local = local; self.clock = clock; self.budget = budget; self.enter = enter
         screenProvider = screens; self.makeSurface = makeSurface ?? { PNWindowSurface(screen: $0) }
         self.automaticRendering = automaticRendering; layoutPreview = PNLayoutPreview(local: local)
+        self.frameDriver = frameDriver ?? PNDisplayFrameDriver()
     }
-    func preview(_ plan: PNPreviewPlan) { layoutPreview.schedule(plan); layoutPreview.changed = { [weak self] in self?.changed?() }; startTimer() }
+    func preview(_ plan: PNPreviewPlan) { layoutPreview.schedule(plan); layoutPreview.changed = { [weak self] in self?.changed?() }; startRendering() }
     func bind(planner: any PNScenePlanning, photos: PNPhotoTransfers) { self.planner = planner; self.photos = photos }
     func prepare(_ scene: PNScene) async throws {
         try Task.checkCancellation(); guard !shutdown else { throw CancellationError() }
@@ -108,16 +111,14 @@ import AppKit
         prepared = prepared.filter { $0.value.plan.groupId != scene.groupId }
         prepared[scene.id] = Frame(plan: scene, images: images, ambient: ambient)
     }
-    func commit(_ commit: PNCommit) { guard !shutdown, prepared[commit.planId]?.plan.groupId == commit.groupId else { return }; commits[commit.groupId] = commit; startTimer() }
-    func control(_ control: PNControl) { guard !shutdown else { return }; controls.append(control); startTimer() }
-    private func startTimer() {
-        if timer != nil || !automaticRendering || shutdown { return }
-        timer = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                self?.render()
-                do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
-            }
-        }
+    func commit(_ commit: PNCommit) { guard !shutdown, prepared[commit.planId]?.plan.groupId == commit.groupId else { return }; commits[commit.groupId] = commit; startRendering() }
+    func control(_ control: PNControl) { guard !shutdown else { return }; controls.append(control); startRendering() }
+    private func startRendering() {
+        guard automaticRendering, !shutdown else { return }
+        let planned = prepared.values.flatMap { $0.plan.displays }.filter { $0.selected && $0.key.peerId == local }
+            .compactMap { UInt32($0.key.displayId) }
+        let active = presentations.keys.compactMap { UInt32($0.displayId) }.sorted()
+        frameDriver.start(screens: Array(Set(active + planned)).sorted()) { [weak self] in self?.render() }
     }
     func render() {
         guard !shutdown else { return }
@@ -210,7 +211,7 @@ import AppKit
     }
     private func closeSurfaces() { for surface in surfaces.values { surface.close() }; surfaces.removeAll() }
     func stop() {
-        shutdown = true; timer?.cancel(); timer = nil; cancelFallback(); layoutPreview.close(); closeSurfaces()
+        shutdown = true; frameDriver.stop(); cancelFallback(); layoutPreview.close(); closeSurfaces()
         presentations.removeAll(); prepared.removeAll(); preparing.removeAll(); commits.removeAll(); controls.removeAll(); isDisplaying = false
     }
 }

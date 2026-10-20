@@ -60,6 +60,7 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
     private var pending: [UUID: Pending] = [:]
     private var retryAt: [UUID: Double] = [:]
     private var current: [UUID: (plan: PNScene, started: Double, paused: Double)] = [:]
+    private var preparationGeneration = UUID()
     private var pauseAt: Double?, pausedSeconds = 0.0
     private(set) var paused = false, stopped = false
     var status: PNPlaybackStatus { PNPlaybackStatus(paused: paused, stopped: stopped, effectiveAt: clock.now + 1) }
@@ -78,11 +79,21 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
             if participants.isEmpty || pending[group] != nil { continue }
             if let active = current[group], active.plan.settingsRevision == wall.revision && clock.now - active.started - (pausedSeconds - active.paused) < active.plan.duration - 4 { continue }
             if let retry = retryAt[group], clock.elapsed < retry { continue }
-            guard let plan = try await planner.prepare(wall: wall, group: group, photos: photos, previous: current[group]?.plan) else { retryAt[group] = clock.elapsed + 5; continue }
+            let generation = preparationGeneration
+            let prepared = try await planner.prepare(wall: wall, group: group, photos: photos, previous: current[group]?.plan)
+            try Task.checkCancellation()
+            guard preparationGeneration == generation, !stopped else { return }
+            guard let plan = prepared else { retryAt[group] = clock.elapsed + 5; continue }
             retryAt.removeValue(forKey: group)
             try plan.validate(); pending[group] = Pending(plan: plan, waiting: participants, created: clock.elapsed)
             try await broadcast?(PNPacket("scenePrepare", plan))
-            if participants.contains(local) { try await output.prepare(plan); pending[group]?.waiting.remove(local) }
+            guard preparationGeneration == generation, !stopped, pending[group]?.plan.id == plan.id else { return }
+            if participants.contains(local) {
+                try await output.prepare(plan)
+                try Task.checkCancellation()
+                guard preparationGeneration == generation, !stopped, pending[group]?.plan.id == plan.id else { return }
+                pending[group]?.waiting.remove(local)
+            }
             try await tryCommit(group)
         }
     }
@@ -109,15 +120,15 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         switch command.operation {
         case "pause": if !paused { paused = true; pauseAt = command.effectiveAt }
         case "resume": if let pauseAt { pausedSeconds += max(0, command.effectiveAt - pauseAt) }; paused = false; pauseAt = nil
-        case "stop": stopped = true
+        case "stop": stopped = true; preparationGeneration = UUID(); pending.removeAll()
         case "start": stopped = false; paused = false; pauseAt = nil; invalidate()
         case "next": invalidate()
         default: throw PNError.invalid("Unknown playback operation")
         }
         output.control(command)
     }
-    func invalidate() { current.removeAll(); pending.removeAll(); retryAt.removeAll(); pausedSeconds = 0 }
-    func leadershipChanged() { pending.removeAll(); retryAt.removeAll() }
+    func invalidate() { preparationGeneration = UUID(); current.removeAll(); pending.removeAll(); retryAt.removeAll(); pausedSeconds = 0 }
+    func leadershipChanged() { preparationGeneration = UUID(); pending.removeAll(); retryAt.removeAll() }
 }
 
 // Session composes state authority, transport, transfer and playback ports. It
