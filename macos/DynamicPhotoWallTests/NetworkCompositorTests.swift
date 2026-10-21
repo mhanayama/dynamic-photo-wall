@@ -31,6 +31,25 @@ import Testing
         return PNPlayback.PNAmbientImage(frame: PNAmbient(at: at, png: try #require(PNImageDecode.png(image)), displayId: nil),
             image: NSImage(cgImage: image, size: CGSize(width: image.width, height: image.height)))
     }
+    func scrollFixture(count: Int = 16, cropX: Int = 0) throws -> PNPlaybackLayer {
+        let original = try fixture()
+        var plan = original.frame.plan
+        plan.mode = "galleryScroll"; plan.viewport.width += Double(cropX)
+        var display = original.display; display.x = cropX
+        if cropX > 0 {
+            var left = display; left.key.displayId = "left"; left.x = 0; left.width = cropX
+            plan.displays = [left, display]
+        }
+        plan.placements = (0..<count).map { index in
+            var p = plan.placements[0]
+            p.id = index; p.clip.width = plan.viewport.width
+            p.fromX = Double(index * 40 + 5); p.toX = p.fromX - 240
+            p.motionSeconds = plan.duration; p.cornerRadius = 3
+            return p
+        }
+        let frame = PNPlayback.Frame(plan: plan, images: original.frame.images, ambient: [])
+        return PNPlaybackLayer(frame: frame, display: display, elapsed: 0, opacity: 1)
+    }
     func bitmap(_ layers: [PNPlaybackLayer], composited: Bool, size: CGSize? = nil) throws -> [UInt8] {
         let size = size ?? self.size, width = Int(size.width), height = Int(size.height)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
@@ -76,6 +95,78 @@ import Testing
         #expect(scene.cards[0].image.contents as AnyObject? === image)
         #expect(renderer.contentBuildCount == 1)
         #expect(scene.root.animationKeys() == nil && scene.cards[0].image.animationKeys() == nil)
+    }
+
+    @Test func scrollingUpdatesOneTranslationInsteadOfEveryOffscreenCard() throws {
+        let layer = try scrollFixture(count: 128), renderer = PNLayerCompositor()
+        renderer.update([layer], size: size)
+        let scene = try #require(renderer.scenes.values.first)
+        #expect(scene.scrollMotion != nil)
+        let frames = scene.cards.map { $0.image.frame }, contents = scene.cards.map { $0.image.contents as AnyObject? }
+        var individualPlan = layer.frame.plan; individualPlan.mode = "gallery"
+        let individualFrame = PNPlayback.Frame(plan: individualPlan, images: layer.frame.images, ambient: [])
+        let individual = PNLayerCompositor()
+        individual.update([PNPlaybackLayer(frame: individualFrame, display: layer.display, elapsed: 0, opacity: 1)], size: size)
+        let individualInitial = individual.mutationCount
+        let initial = renderer.mutationCount
+        for tick in 1...600 {
+            let elapsed = Double(tick) / 60
+            renderer.update([at(layer, elapsed)], size: size)
+            individual.update([PNPlaybackLayer(frame: individualFrame, display: layer.display, elapsed: elapsed, opacity: 1)], size: size)
+        }
+        #expect(renderer.mutationCount - initial == 600)
+        #expect(individual.mutationCount - individualInitial == 128 * 600)
+        #expect(renderer.contentBuildCount == 1)
+        #expect(scene.cards.map { $0.image.frame } == frames)
+        for index in scene.cards.indices { #expect(scene.cards[index].image.contents as AnyObject? === contents[index]) }
+        #expect(abs(scene.strip.transform.m41 + 24) < 0.000001)
+        let paused = renderer.mutationCount
+        for _ in 0..<60 { renderer.update([at(layer, 10)], size: size) }
+        #expect(renderer.mutationCount == paused)
+        #expect(scene.strip.animationKeys() == nil)
+    }
+
+    @Test func scrollingPixelsMatchIndividualLayersAtEntryExitAndSpannedDisplayCrop() throws {
+        for crop in [0, 40] {
+            let layer = try scrollFixture(cropX: crop)
+            for time in [0.0, 0.5, 8, 17.25, 31.5, 70, 99.9] {
+                let current = at(layer, time, opacity: 0.7)
+                let old = try bitmap([current], composited: false), new = try bitmap([current], composited: true)
+                var individualPlan = layer.frame.plan; individualPlan.mode = "gallery"
+                let individualFrame = PNPlayback.Frame(plan: individualPlan, images: layer.frame.images, ambient: [])
+                let individualLayer = PNPlaybackLayer(frame: individualFrame, display: layer.display, elapsed: time, opacity: 0.7)
+                let individual = try bitmap([individualLayer], composited: true)
+                #expect(new == individual, "crop=\(crop), elapsed=\(time)")
+                // Fractional rounded edges differ between bitmap and retained
+                // layers even before this change. At integral positions also
+                // verify the independent bitmap reference over every pixel.
+                if time == 0 || time == 70 {
+                    #expect(zip(old, new).allSatisfy { abs(Int($0) - Int($1)) < 4 })
+                }
+            }
+        }
+    }
+
+    @Test func scrollingWithIndependentMotionClipsOrFadesUsesIndividualCards() throws {
+        let layer = try scrollFixture()
+        for variant in 0..<5 {
+            var plan = layer.frame.plan
+            switch variant {
+            case 0: plan.placements[1].toX += 1
+            case 1: plan.placements[1].clip.width = 40
+            case 2: plan.placements[1].fadeInSeconds = 2
+            case 3: plan.placements[1].startSeconds = 2
+            default: plan.placements[1].toScale = 1.5
+            }
+            let frame = PNPlayback.Frame(plan: plan, images: layer.frame.images, ambient: [])
+            let current = PNPlaybackLayer(frame: frame, display: layer.display, elapsed: 1, opacity: 1)
+            let renderer = PNLayerCompositor(); renderer.update([current], size: size)
+            #expect(try #require(renderer.scenes.values.first).scrollMotion == nil)
+            plan.mode = "gallery"
+            let reference = PNPlayback.Frame(plan: plan, images: layer.frame.images, ambient: [])
+            let old = try bitmap([PNPlaybackLayer(frame: reference, display: layer.display, elapsed: 1, opacity: 1)], composited: true)
+            #expect(try bitmap([current], composited: true) == old)
+        }
     }
 
     @Test func duplicateAmbientPngsShareContentsAndDoNotAnimateAnUnchangedBackground() throws {
