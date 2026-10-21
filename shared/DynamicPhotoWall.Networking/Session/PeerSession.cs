@@ -307,7 +307,10 @@ public sealed partial class PeerSession : IAsyncDisposable
                 if (peer == Snapshot.LeaderId)
                 {
                     var commit = packet.Decode<SceneCommit>(); output.Commit(commit);
-                    if (knownPlans.TryGetValue(commit.PlanId, out var committedPlan)) scenes.Observe(committedPlan, commit);
+                    // Only uncommitted plans belong here. The coordinator and
+                    // output own the active plan; retaining committed history
+                    // also pins every retired plan's ambient PNG payloads.
+                    if (knownPlans.Remove(commit.PlanId, out var committedPlan)) scenes.Observe(committedPlan, commit);
                     recovery.PrepareSynchronization(clock.Elapsed, clock.Now, Math.Max(clock.Now + .01, commit.StartAt));
                 }
                 break;
@@ -327,7 +330,7 @@ public sealed partial class PeerSession : IAsyncDisposable
     {
         var changed = !importSources.SequenceEqual(Snapshot.Sources);
         photos.Configure(Snapshot.Sources); importSources = Snapshot.Sources; StartImport(changed);
-        if (invalidate) scenes.Invalidate();
+        if (invalidate) { scenes.Invalidate(); knownPlans.Clear(); }
         Changed?.Invoke();
     }
     private void StartImport(bool replace = false)
