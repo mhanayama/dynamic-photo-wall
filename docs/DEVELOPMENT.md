@@ -44,6 +44,7 @@ WindowsではMac版をビルドできません。パッケージ作成とGitHub�
 |---|---|
 | 詳しい設定と動作 | [Windows](../windows/REFERENCE.md) / [Mac](../macos/REFERENCE.md) |
 | Windowsの設計 | [アーキテクチャ](../windows/docs/ARCHITECTURE.md) |
+| Shared Core / Native Rendererの設計提案 | [現行分析](architecture/shared-core/CURRENT-ARCHITECTURE.md) / [全体設計・Render Plan](architecture/shared-core/PROPOSED-ARCHITECTURE.md) / [移行と検証](architecture/shared-core/MIGRATION-ROADMAP.md) / [リスク](architecture/shared-core/RISK-ASSESSMENT.md) / [ADR](architecture/shared-core/ADR-0001-SHARED-CORE.md) |
 | 今回のWindows描画改善と測定 | [検証・測定記録](../windows/docs/SHARED-RENDERING-TRIAL-2026-10-20.md) |
 | Macの同期描画改善 | [build 17](../macos/docs/RELEASE-NOTES-v1.1.0-build17.md) |
 | ネットワークの仕様と検証 | [通信基盤](NETWORK-CORE.md) / [ピア間設計](NETWORK-PEER-DESIGN.md) |
