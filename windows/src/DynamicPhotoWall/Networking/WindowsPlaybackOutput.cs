@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Windows.Threading;
 using DynamicPhotoWall.DesktopIntegration;
 using DynamicPhotoWall.Motion;
@@ -54,6 +55,7 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, outputLifetime.Token);
         cancellation = linked.Token;
+        var preparationTime = Stopwatch.StartNew();
         plan.Validate();
         if (photos == null) throw new InvalidOperationException("写真キャッシュが接続されていません。");
         var own = plan.Displays.Where(d => d.Key.PeerId == localPeer).Select(d => d.Key.LayoutId).ToArray();
@@ -67,8 +69,10 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         });
         var catalog = photos.Available.ToDictionary(p => p.Key);
         var cacheMegabytes = settings().CacheMegabytes;
-        var bitmaps = await Task.Run(() =>
+        double imageMilliseconds = 0, ambientMilliseconds = 0, treeMilliseconds = 0;
+        var textures = await Task.Run(() =>
         {
+            var stage = Stopwatch.StartNew();
             var result = new Dictionary<string, System.Windows.Media.Imaging.BitmapSource>();
             foreach (var key in required)
             {
@@ -84,15 +88,22 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 }
                 finally { CryptographicOperations.ZeroMemory(data); }
             }
-            return result;
+            imageMilliseconds = stage.Elapsed.TotalMilliseconds; stage.Restart();
+            var ambient = PreparedAmbientTextures.Create(plan, own, cancellation);
+            ambientMilliseconds = stage.Elapsed.TotalMilliseconds;
+            return (Images: result, Ambient: ambient);
         }, cancellation);
         await dispatcher.InvokeAsync(() =>
         {
             cancellation.ThrowIfCancellationRequested();
-            prepared[plan.Id] = SharedSceneBuilder.Build(plan, bitmaps, own);
+            var stage = Stopwatch.StartNew();
+            prepared[plan.Id] = SharedSceneBuilder.Build(plan, textures.Images, own, textures.Ambient);
+            treeMilliseconds = stage.Elapsed.TotalMilliseconds;
             foreach (var old in prepared.Where(p => p.Value.Plan.GroupId == plan.GroupId && p.Key != plan.Id).Select(p => p.Key).ToArray())
                 prepared.Remove(old);
-        });
+        }, DispatcherPriority.Background, cancellation);
+        if (preparationTime.Elapsed.TotalMilliseconds >= 250)
+            Configuration.Log.Write($"同期写真の準備: mode={plan.Mode}, images={required.Length}, total={preparationTime.Elapsed.TotalMilliseconds:F0}ms, image={imageMilliseconds:F0}ms, ambient={ambientMilliseconds:F0}ms, tree={treeMilliseconds:F0}ms");
     }
     public void Commit(Net.SceneCommit commit) => dispatcher.BeginInvoke(() =>
     {
@@ -137,6 +148,8 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
         foreach (var commit in commits.Values.Where(c => pausedAt == null && c.StartAt <= now).ToArray())
         {
             if (!prepared.Remove(commit.PlanId, out var visual)) { commits.Remove(commit.GroupId); continue; }
+            var handoffTime = Stopwatch.StartNew();
+            var lateMilliseconds = Math.Max(0, now - commit.StartAt) * 1000;
             if (!attached)
             {
                 entering = true;
@@ -161,7 +174,8 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 group.Started = commit.StartAt;
                 if (old != null)
                 {
-                    group.Previous = SharedSceneBuilder.Build(old.Visual.Plan, old.Visual.Images, selected.Select(d => d.Key.LayoutId).ToArray());
+                    group.Previous = SharedSceneBuilder.Build(old.Visual.Plan, old.Visual.Images,
+                        selected.Select(d => d.Key.LayoutId).ToArray(), old.Visual.AmbientTextures);
                     group.PreviousStarted = old.Started; group.PreviousPaused = old.PausedSeconds;
                 }
             }
@@ -188,6 +202,8 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
             if (old != null && !reuse) Close(old);
             foreach (var output in group.Outputs)
                 output.Taskbar.Update(output.Monitor, settings().Displays.FirstOrDefault(d => d.Id == output.Monitor.Id)?.HideTaskbar ?? settings().HideTaskbar);
+            if (handoffTime.Elapsed.TotalMilliseconds >= 100 || lateMilliseconds >= 250)
+                Configuration.Log.Write($"同期写真の切り替え: mode={plan.Mode}, displays={group.Outputs.Count}, reuse={reuse}, total={handoffTime.Elapsed.TotalMilliseconds:F0}ms, late={lateMilliseconds:F0}ms");
             Changed?.Invoke();
         }
         foreach (var group in current.Values.ToArray())
@@ -198,7 +214,8 @@ public sealed class WindowsPlaybackOutput(Guid localPeer, Net.ISharedClock clock
                 // Repeating after isolation is another scene transition, not a
                 // modulo jump to a transparent first frame on an empty backing.
                 var repeated = SharedSceneBuilder.Build(group.Visual.Plan, group.Visual.Images,
-                    group.Visual.Plan.Displays.Where(d => d.Key.PeerId == localPeer && d.Selected).Select(d => d.Key.LayoutId).ToArray());
+                    group.Visual.Plan.Displays.Where(d => d.Key.PeerId == localPeer && d.Selected).Select(d => d.Key.LayoutId).ToArray(),
+                    group.Visual.AmbientTextures);
                 group.Replace(repeated, now); elapsed = 0;
                 group.Renderer.PresentShared(group.Previous!, Math.Max(0, now - group.PreviousStarted - group.PreviousPaused));
                 group.Renderer.PresentShared(repeated, 0);

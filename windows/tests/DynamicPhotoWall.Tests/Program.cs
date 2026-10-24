@@ -138,6 +138,7 @@ internal static class Program
     {
         await Test("direct shared drawings preserve clipping, color, alpha, fades and seeks", SharedRenderingTests.Parity);
         await Test("shared decode sizes follow placements, zoom, output pixels and budget", SharedRenderingTests.DecodeSizes);
+        await Test("background preparation crosses threads and rebuilds both outputs without decoding PNGs on presentation", SharedRenderingTests.PreparedBackgrounds);
     }
     private static async Task AmbientScheduling()
     {

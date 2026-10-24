@@ -62,7 +62,7 @@ public static class NetworkBitmap
 {
     public static BitmapSource Decode(byte[] bytes, int width, int orientation = 1)
     {
-        using var stream = new MemoryStream(bytes, false);
+        using var stream = new ImageDecodeStream(bytes);
         BitmapSource source;
         using var codec = SkiaSharp.SKCodec.Create(stream);
         if (codec != null && codec.EncodedFormat == SkiaSharp.SKEncodedImageFormat.Webp)

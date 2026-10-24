@@ -44,7 +44,7 @@ public sealed class WallController : IAsyncDisposable
         Network = new(() => Settings, () => library.Photos, async () =>
         {
             await operations.WaitAsync();
-            try { await StopSessionsAsync(); }
+            try { await StopSessionsAsync(); await cache.ClearAsync(); }
             finally { operations.Release(); }
         });
         Network.Changed += () =>
