@@ -4,6 +4,53 @@ import Testing
 @testable import DynamicPhotoWall
 
 @MainActor struct NetworkDisconnectTests {
+    @Test func savedWallReconnectsFromDiscoveryAfterRestartAndEndpointChange() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Reconnect.Tests.\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = PNHello(peerId: UUID(), name: "Local"), remote = PNHello(peerId: UUID(), name: "Remote")
+        let own = PNSource(providerId: local.peerId, sourceId: UUID(), name: "Local photos")
+        let shared = PNSource(providerId: remote.peerId, sourceId: UUID(), name: "Remote photos")
+        let key = SymmetricKey(size: .bits256)
+        let saved = PNSnapshot(wallId: UUID(), sessionId: UUID(), leaderId: local.peerId, revision: 7,
+            groups: [], displays: [PNDisplay(key: PNDisplayKey(peerId: remote.peerId, displayId: "1"),
+                selected: true, x: 100, y: 40, width: 100, height: 100)], sources: [], playback: PNOptions(values: [:]))
+        let store = PNStateStore(file: root.appending(path: "wall.encrypted"), key: key)
+        try store.save(saved)
+        let candidate = PNCandidate(hello: remote, host: "127.0.0.1", port: 42)
+        let clock = Clock(), transport = Transport(candidate, source: shared), discovery = Discovery()
+        let session = try PNPeerSession(local: local, displays: [], transport: transport, discovery: discovery,
+            persistence: store, provider: Provider(own), cache: PNPhotoCache(root: root.appending(path: "cache"), key: key),
+            planner: Planner(), output: Output(), clock: clock, notifications: Notices(),
+            initial: PNSnapshot(wallId: UUID(), sessionId: UUID(), leaderId: local.peerId, revision: 0,
+                groups: [], displays: [], sources: [], playback: PNOptions(values: [:])))
+        defer { session.stop() }
+        try await session.start(automaticPump: false)
+        #expect(session.snapshot == saved && session.connectedPeers.isEmpty)
+        discovery.found?(PNCandidate(hello: PNHello(peerId: UUID(), name: "Stranger"), host: "127.0.0.1", port: 99))
+        try await session.pump()
+        for _ in 0..<20 { await Task.yield() }
+        #expect(transport.attempts == 0)
+
+        discovery.found?(PNCandidate(hello: remote, host: "127.0.0.1", port: 1))
+        clock.time += 6; try await session.pump()
+        for _ in 0..<100 where transport.attempts == 0 { await Task.yield() }
+        #expect(transport.attempts == 1 && session.connectedPeers.isEmpty)
+        discovery.found?(candidate)
+        clock.time += 6; try await session.pump()
+        for _ in 0..<100 where !session.isSourceConnected(shared) { await Task.yield() }
+        #expect(session.connectedPeers == [remote.peerId] && session.isSourceConnected(shared))
+        #expect(transport.lastCandidate == candidate && session.snapshot == saved)
+
+        // Also refresh a running process's target after the remote restarts.
+        transport.candidate = PNCandidate(hello: remote, host: "127.0.0.2", port: 43)
+        clock.time += 7; try await session.pump()
+        for _ in 0..<20 { await Task.yield() }
+        discovery.found?(transport.candidate)
+        clock.time += 6; try await session.pump()
+        for _ in 0..<100 where !session.isSourceConnected(shared) { await Task.yield() }
+        #expect(session.isSourceConnected(shared) && transport.lastCandidate == transport.candidate)
+        #expect(session.snapshot == saved)
+    }
     @Test func disconnectHidesSourcesRejectsRetriesAndAllowsExplicitReconnect() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Disconnect.Tests.\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -58,8 +105,10 @@ import Testing
         func stop() {}
     }
     private final class Transport: PNTransport {
-        let candidate: PNCandidate, source: PNSource
+        var candidate: PNCandidate
+        let source: PNSource
         var attempts = 0
+        var lastCandidate: PNCandidate?
         var accept: (@MainActor (any PNPeerLink) async -> Void)?
         var port: Int { 1 }
         init(_ candidate: PNCandidate, source: PNSource) { self.candidate = candidate; self.source = source }
@@ -68,7 +117,11 @@ import Testing
             try Link(candidate.hello, outbound: outbound,
                 packets: [PNPacket("inventory", PNInventory(candidate: candidate, displays: [], sources: [source]))])
         }
-        func connect(_ candidate: PNCandidate) async throws -> any PNPeerLink { attempts += 1; return try makeLink(outbound: true) }
+        func connect(_ candidate: PNCandidate) async throws -> any PNPeerLink {
+            attempts += 1; lastCandidate = candidate
+            try PNWire.require(candidate == self.candidate, "Stale endpoint")
+            return try makeLink(outbound: true)
+        }
         func stop() {}
     }
     private final class Link: PNPeerLink {

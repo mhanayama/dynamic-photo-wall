@@ -68,7 +68,7 @@ public sealed class WallController : IAsyncDisposable
         if (Settings.OnlineMode)
         {
             try { await Network.SetOnlineAsync(true); }
-            catch (Exception error) { Settings.OnlineMode = false; Log.Write("オンライン待受を開始できません。単体動作を継続します。", error); }
+            catch (Exception error) { Log.Write("オンライン待受を開始できません。単体動作を継続します。", error); }
         }
         if (Settings.StartOnLaunch && Settings.HasDisplaySelection && (Settings.DisplayTestPattern || Settings.Folders.Count > 0)) await StartAsync();
         else SetStatus($"停止中 · {PhotoCount}枚");

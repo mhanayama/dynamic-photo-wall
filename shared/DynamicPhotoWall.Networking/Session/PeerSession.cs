@@ -468,6 +468,17 @@ public sealed partial class PeerSession : IAsyncDisposable
             foreach (var peer in links.Where(p => clock.Elapsed - p.Value.Seen > 6).Select(p => p.Key).ToArray()) await RemovePeer(peer);
             foreach (var peer in discoveredAt.Where(p => clock.Elapsed - p.Value > 8 && !links.ContainsKey(p.Key)).Select(p => p.Key).ToArray())
             { candidates.TryRemove(peer, out _); discoveredAt.TryRemove(peer, out _); }
+            // Saved wall membership survives a restart; endpoints do not. Use
+            // fresh advertisements for known peers, including changed TCP ports.
+            // Discovery of a new wall still requires an explicit Connect.
+            foreach (var candidate in candidates.Values.Where(c => c.Hello.PeerId != local.PeerId))
+            {
+                var peer = candidate.Hello.PeerId;
+                if (targets.ContainsKey(peer) || Snapshot.LeaderId == peer
+                    || Snapshot.Displays.Any(d => d.Key.PeerId == peer)
+                    || Snapshot.Sources.Any(s => s.ProviderId == peer))
+                    targets[peer] = candidate;
+            }
             recovery.Tick(clock.Elapsed, clock.Now); output.SetRecovery(recovery.State, Snapshot);
             var members = links.Keys.Where(targets.ContainsKey).Select(id => targets[id]).Append(Self).ToArray();
             await Broadcast(PeerPacket.Create("heartbeat", new Heartbeat(members, Snapshot.LeaderId, Snapshot.SessionId, Snapshot.Revision)));

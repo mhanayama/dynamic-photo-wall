@@ -261,6 +261,70 @@ internal static class PeerMeshIntegration
             }
         }
     }
+    public static async Task ReconnectAfterRestart(string root)
+    {
+        var mesh = new Mesh();
+        var ids = new[] { Guid.Parse("30000000-0000-0000-0000-000000000001"), Guid.Parse("30000000-0000-0000-0000-000000000002") };
+        var hellos = ids.Select((id, i) => new PeerHello(1, id, $"restart{i}", "windows")).ToArray();
+        var displays = ids.Select((id, i) => new PeerDisplay(new(id, "screen"), true, null, i * 100, 40, 100, 100)).ToArray();
+        var keys = ids.Select(_ => RandomNumberGenerator.GetBytes(32)).ToArray();
+        var sessions = new List<PeerSession>();
+        var caches = new List<EncryptedPhotoCache>();
+        var discoveries = new Discovery[2]; var transports = new Transport[2];
+        var clocks = ids.Select(_ => new NetworkIntegration.FixtureClock()).ToArray();
+        try
+        {
+            sessions.Add(await Create(0, 1)); sessions.Add(await Create(1, 1));
+            await sessions[1].ConnectAsync(new(hellos[0], "127.0.0.1", 1));
+            await Until(() => sessions.All(s => s.Snapshot.Displays.Length == 2) && sessions[0].Snapshot.WallId == sessions[1].Snapshot.WallId);
+            var saved = sessions[0].Snapshot;
+            foreach (var session in sessions) await session.DisposeAsync();
+            sessions.Clear(); foreach (var cache in caches) cache.Dispose(); caches.Clear();
+
+            sessions.Add(await Create(0, 41)); sessions.Add(await Create(1, 42));
+            Check(sessions.All(s => s.Snapshot.WallId == saved.WallId && s.Snapshot.Displays.SequenceEqual(saved.Displays)),
+                "both restarted processes restore their encrypted wall and layout");
+            Check(sessions.All(s => s.ConnectedPeers.Count == 0), "saved membership alone does not claim a live connection");
+            discoveries[0].Offer(new(new(1, Guid.NewGuid(), "stranger", "macos"), "127.0.0.1", 99));
+            await sessions[0].PumpAsync(); await Task.Delay(50);
+            Check(transports[0].Attempts.IsEmpty, "discovery cannot automatically join an unknown wall");
+
+            discoveries[0].Offer(new(hellos[1], "127.0.0.1", 1));
+            clocks[0].Time += 6; await sessions[0].PumpAsync();
+            await Until(() => !transports[0].Attempts.IsEmpty);
+            Check(sessions[0].ConnectedPeers.Count == 0, "unavailable saved endpoint remains waiting");
+            discoveries[0].Offer(new(hellos[1], "127.0.0.1", 42));
+            clocks[0].Time += 6; await sessions[0].PumpAsync();
+            await Until(() => sessions.All(s => s.ConnectedPeers.Count == 1 && s.IsDisplayConnected(displays[1].Key)));
+            Check(transports[0].Attempts.Last().Port == 42, "fresh discovery replaces the failed endpoint without an explicit Connect");
+            Check(sessions.All(s => s.Snapshot.WallId == saved.WallId && s.Snapshot.Displays.SequenceEqual(saved.Displays)),
+                "automatic reconnect keeps the existing wall rather than merging a new one");
+
+            await sessions[1].DisposeAsync();
+            await Until(() => sessions[0].ConnectedPeers.Count == 0);
+            sessions[1] = await Create(1, 43);
+            discoveries[0].Offer(new(hellos[1], "127.0.0.2", 43));
+            clocks[0].Time += 6; await sessions[0].PumpAsync();
+            await Until(() => sessions.All(s => s.ConnectedPeers.Count == 1));
+            var latest = transports[0].Attempts.Last();
+            Check(latest.Host == "127.0.0.2" && latest.Port == 43, "a running peer also refreshes its target after the other process restarts");
+        }
+        finally { foreach (var session in sessions) await session.DisposeAsync(); foreach (var cache in caches) cache.Dispose(); }
+
+        async Task<PeerSession> Create(int i, int port)
+        {
+            var directory = Path.Combine(root, i.ToString());
+            var cache = new EncryptedPhotoCache(Path.Combine(directory, "cache"), keys[i]); caches.Add(cache);
+            var transport = transports[i] = new Transport(mesh, hellos[i], port);
+            var discovery = discoveries[i] = new Discovery();
+            var session = new PeerSession(hellos[i], [displays[i]], transport, discovery,
+                new EncryptedStateStore(Path.Combine(directory, "wall.encrypted"), keys[i]),
+                new NetworkIntegration.FixtureProvider(ids[i], Guid.NewGuid(), []), cache,
+                new NetworkIntegration.FixturePlanner(), new NetworkIntegration.FixtureOutput(), clocks[i], new Notices(), NetworkIntegration.Initial(ids[i], [displays[i]]));
+            await session.StartAsync(false);
+            return session;
+        }
+    }
     private sealed class MutableProvider : IPhotoProvider
     {
         public IReadOnlyList<SharedSource> Sources { get; set; } = [];
@@ -292,17 +356,20 @@ internal static class PeerMeshIntegration
             if (value) foreach (var link in Links.Where(l => l.Local == id || l.Remote.PeerId == id)) link.Close();
         }
     }
-    private sealed class Transport(Mesh mesh, PeerHello hello) : IPeerTransport
+    private sealed class Transport(Mesh mesh, PeerHello hello, int port = 1) : IPeerTransport
     {
         private Func<IPeerLink, Task>? accept;
-        public int Port => 1;
+        public int Port => port;
+        public readonly ConcurrentQueue<PeerCandidate> Attempts = new();
         public Task StartAsync(Func<IPeerLink, Task> handler, CancellationToken token)
         { accept = handler; mesh.Nodes[hello.PeerId] = this; return Task.CompletedTask; }
         public Task<IPeerLink> ConnectAsync(PeerCandidate candidate, CancellationToken token)
         {
+            Attempts.Enqueue(candidate);
             if (mesh.Blocked.GetValueOrDefault(hello.PeerId) || mesh.Blocked.GetValueOrDefault(candidate.Hello.PeerId))
                 throw new IOException("Simulated partition");
             var remote = mesh.Nodes[candidate.Hello.PeerId];
+            if (candidate.Port != remote.Port) throw new IOException("Stale endpoint");
             var a = Channel.CreateUnbounded<PeerPacket>(); var b = Channel.CreateUnbounded<PeerPacket>();
             var outgoing = new Link(hello.PeerId, candidate.Hello, true, a, b);
             var incoming = new Link(candidate.Hello.PeerId, hello, false, b, a);

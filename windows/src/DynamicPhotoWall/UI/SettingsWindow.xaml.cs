@@ -105,7 +105,7 @@ public partial class SettingsWindow : Window
                 throw new InvalidOperationException("少なくとも1つの表示モードを有効にして、ウェイトを1以上にしてください。");
             _ = new BrushConverter().ConvertFromString(draft.Background);
             draft.Normalize();
-            draft.OnlineMode = controller.Network.Online;
+            draft.OnlineMode = controller.Settings.OnlineMode;
             SaveButton.IsEnabled = false;
             if (!await networkPanel.ApplyAsync(draft)) return false;
             if (draft.AutoStart != controller.Settings.AutoStart) SettingsManager.SetAutoStart(draft.AutoStart);

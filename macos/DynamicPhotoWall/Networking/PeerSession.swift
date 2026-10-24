@@ -406,6 +406,17 @@ extension PNPlaybackOutput { func preview(_ plan: PNPreviewPlan) {} }
         guard !stopped && !pumping else { return }; pumping = true; defer { pumping = false }
         for peer in links.keys.filter({ clock.elapsed - links[$0]!.seen > 6 }) { await remove(peer) }
         for peer in discovered.keys.filter({ clock.elapsed - discovered[$0]! > 8 && links[$0] == nil }) { discovered.removeValue(forKey: peer); candidates.removeValue(forKey: peer) }
+        // Restore known wall members from fresh LAN endpoints after a restart.
+        // New walls still require an explicit connection, and connect below
+        // continues to honor this session's manual disconnects.
+        for candidate in candidates.values where candidate.id != local.peerId {
+            let peer = candidate.id
+            if targets[peer] != nil || snapshot.leaderId == peer
+                || snapshot.displays.contains(where: { $0.key.peerId == peer })
+                || snapshot.sources.contains(where: { $0.providerId == peer }) {
+                targets[peer] = candidate
+            }
+        }
         recovery.tick(elapsed: clock.elapsed, now: clock.now); output.recover(recovery.state, wall: snapshot)
         let members = links.keys.compactMap { targets[$0] } + [selfCandidate]
         try await broadcast(PNPacket("heartbeat", PNHeartbeat(members: members, leaderId: snapshot.leaderId, sessionId: snapshot.sessionId, revision: snapshot.revision)))
