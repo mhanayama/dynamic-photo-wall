@@ -1,5 +1,7 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**同期切替前の計算分離とShared Core準備（2026-10-22）:** ネットワーク同期中のPan／scrollからの切替直前のカクつき報告を受け、終了4秒前に走る選択・配置・timeline計算をMainActorから専用actorへ移した。`docs/shared-core-native-renderer-design`の設計commit `01def47`を参照し、既存Swift計算値とLAN変換・背景／画像decodeを分離。将来のRust呼出はLAN adapterの内側へ置き、毎frameの描画・時計・Ready／Commitは既存所有者へ残す。URL／native RNG等は旧動作を維持する中間形で、Rust・FFIの導入や移行gate完了ではない。Swift単体215件／31 suites、共通fixture・背景色・Zoom、ネットワーク26件／241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新、実機での体感改善は未確認。GUI自動操作は行っていない。[実装境界・残る課題・検証](docs/SCENE-PLANNING-SEPARATION-2026-10-22.md)を参照。
+
 **同期横スクロールの負荷削減（2026-10-21）:** ユーザー報告を受け、稼働build 17のスタックと20秒の診断トレースを採取した。描画・Core Animation反映が主要な経路として現れたが、33ms以上のメインスレッド占有は記録されず、報告された瞬間の原因を断定しない。同期横スクロールの共通移動を親レイヤーへまとめ、最大128枚を個別に動かす負荷を削減した。同一計画600更新の座標変更は76,800回→600回、従来レイヤーとの全画素一致を確認。独立した動き・clip・フェードは個別処理を維持する。Swift単体212件 / 31 suites、共通fixture・背景色・Zoom、ネットワーク26件 / 241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新で、実機での体感改善は未確認。GUI自動操作は行っていない。[調査・検証記録](docs/GALLERY-SCROLL-STUTTER-2026-10-21.md)を参照。
 
 **旧Mac Releaseの削除（2026-10-20）:** ユーザーの追加指示により、下書きで保管していたbuild 14・build 12・v1.0.1・v1.0.0のRelease 4件を削除した。本文と添付ファイルはSHA-256を確認して`artifacts/macos/github-release-20261020/deleted-release-backups/`へ退避済み。ソースタグは保持し、現行Mac版・Windows版のReleaseと添付ファイルは変更しない。以下の下書き保管は当時の記録。
