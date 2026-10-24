@@ -290,6 +290,7 @@ Test("state revisions and coordinator succession are independent of OS adapters"
 Test("actual mutually authenticated TLS loopback and packet framing", () => NetworkIntegration.TlsLoopback().GetAwaiter().GetResult());
 Test("selected-source background transfer preserves originals and face metadata", () => NetworkIntegration.PhotoTransfer(Path.Combine(runRoot, "transfer")).GetAwaiter().GetResult());
 Test("scene readiness barrier commits shared future time", () => NetworkIntegration.SceneBarrier().GetAwaiter().GetResult());
+Test("committed scene payloads are released after rendering retires them", () => SceneRetentionTests.Run(Path.Combine(runRoot, "scene-retention")).GetAwaiter().GetResult());
 Test("disk quota defers originals without a transfer loop", () => NetworkIntegration.TransferQuota(Path.Combine(runRoot, "quota")).GetAwaiter().GetResult());
 assertions += NetworkIntegration.Assertions;
 Test("three-peer configuration, transfer, failover and background rejoin", () => PeerMeshIntegration.Run(Path.Combine(runRoot, "mesh")).GetAwaiter().GetResult());

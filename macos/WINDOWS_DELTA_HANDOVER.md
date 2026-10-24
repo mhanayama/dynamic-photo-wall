@@ -4,6 +4,20 @@
 
 **同期横スクロールの負荷削減（2026-10-21）:** ユーザー報告を受け、稼働build 17のスタックと20秒の診断トレースを採取した。描画・Core Animation反映が主要な経路として現れたが、33ms以上のメインスレッド占有は記録されず、報告された瞬間の原因を断定しない。同期横スクロールの共通移動を親レイヤーへまとめ、最大128枚を個別に動かす負荷を削減した。同一計画600更新の座標変更は76,800回→600回、従来レイヤーとの全画素一致を確認。独立した動き・clip・フェードは個別処理を維持する。Swift単体212件 / 31 suites、共通fixture・背景色・Zoom、ネットワーク26件 / 241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新で、実機での体感改善は未確認。GUI自動操作は行っていない。[調査・検証記録](docs/GALLERY-SCROLL-STUTTER-2026-10-21.md)を参照。
 
+**Windows EXEの領域別メモリ計測（2026-10-21 17:04 JST）:** ユーザーの詳細モニター依頼により、稼働PID 21116へWindows API、ClrMDのPSSクローン、Microsoft VMMapのCLIを使用した。生存managed約8.5〜11.7MiB、GCセグメントcommit約30〜51MiB、デコード済み画像のWPF推定約90MiB。ローカルLRUと入力配列保持は0。VMMapでは物理メモリ上の私有領域約210〜228MiB、ネイティブヒープ約143〜154MiB、DLL／EXE約105MiBで、managedヒープが使用量の中心ではない。画像量はネイティブ領域表の内数で合算不可。WPF／WIC／ドライバー等の割り当て元別の内訳にはスタック付き記録が必要で、リークや具体的な原因関数は未確定。製品コード・EXE・設定は変更せず、再起動・強制GCも行わなかった。[詳細と証跡](../windows/docs/PROCESS-MEMORY-BREAKDOWN-2026-10-21.md)。
+
+**第4候補の約7時間稼働（2026-10-21 16:50 JST）:** ユーザーは動作の安定を報告したが、メモリ使用量は相変わらずとのこと。本体PID 21116の約7.2時間稼働を確認し、受動30秒観測のWorking Set平均554.53MiB、Private Bytes平均1,113.39MiBを記録した。起動からの連続記録ではないため、長期増加傾向やリークの有無は未確定。使用量削減を受け入れ済みとは扱わない。追加最適化の見送りを維持し、コード・EXE・設定の変更やアプリの再起動、ヒープ取得は行わなかった。[記録](../windows/docs/TRANSITION-LATENCY-2026-10-21.md#約7時間稼働後の確認2026-10-21-1650-jst)。
+
+**Windowsの起動・切り替え遅延の第4候補（2026-10-21）:** 第3候補の手動確認では、2画面目は遅れて表示され、タスクマネージャー上の改善は見られないとの報告。遅延は起動・写真の切り替え時に目立つ。表示dispatcherに残っていた背景PNGのデコード・色補正をworkerへ移し、Freeze済み画像を渡す。再構築も準備済み背景を使う。GUIなし回帰14件と、PNG入力を破壊しても2画面を描画／再構築できる検証が成功。遅い準備・切り替えの段階別時間を通常ログへ追加し、Release EXEを`transition-candidate4`へ更新した。Mac・通信・FPS・GPU提示は変更せず、実機の遅延・メモリ・GPU削減は未確認。[詳細](../windows/docs/TRANSITION-LATENCY-2026-10-21.md)。
+
+**第2候補のGPU実測・第3候補（2026-10-21）:** 手動再起動後のWindows本体PID 38956でGPU平均5.89%を観測し、前候補の5.91%からの改善は確認できなかった。ユーザーの管理者計測承認後、12秒のGPU ETWを取得して欠落0を確認。3画面全体のBlitを計2,567回記録したが、GPU時間に占める寄与は未分離。次の比較対象は提示・コピー・全画面合成。メモリではLRU0を確認し、別に不要な入力配列約18.69MiBの保持を特定した。入力ストリームの参照をDispose時に外す修正で24 codec／方向ケースの保持が16件→0件、GUIなし回帰13件が成功。Release EXEを`memory-candidate3`へ更新し、稼働PID・Mac・通信形式・FPS・GPU提示経路は維持。新EXEの実運転でのメモリ削減幅は未検証。[詳細](../windows/docs/GPU-TRACE-2026-10-21.md)を参照。
+
+**Windowsメモリ・GPUの第2候補（2026-10-21）:** 第1候補の本体PID 23940でWorking Set約641MiB、Private Bytes約785MiB、GPU平均5.91%を30サンプル観測。過去256計画の保持は解消したが、同期移行後もローカルLRU約104MiBが残ることを確認した。ローカル停止後のLRU解放と、clip外／透明の写真Drawingを描画ツリーから外す追加修正を行い、GUIなし回帰11件・描画比較に成功。64枚の合成scrollで接続Drawingが最大2件となることを確認したが、実アプリのメモリ・GPU削減幅は未測定。`release/windows/win-x64/DynamicPhotoWall.exe`を識別可能な`memory-candidate2`へ更新し、旧PIDと補助プロセスは維持した。Mac・通信形式・ZIPは未変更。[計測条件と確認用EXE](../windows/docs/MEMORY-GPU-FOLLOWUP-2026-10-21.md)を参照。以下は前回までの記録。
+
+**Windowsメモリ修正の手動確認用EXE（2026-10-21）:** ユーザーの指示で`release/windows/win-x64/DynamicPhotoWall.exe`をReleaseビルドし、GUIなしの依存読み込み検証が成功。`dbdcaed`をベースとする未コミットの修正候補で、`BUILD-INFO.txt`にその旨を明記。旧EXE・ZIPは`artifacts/windows/memory-audit/release-build-20261020-235126/previous-release/`へ退避し、旧PID 49728は維持した。新ZIP・Mac配布物は未作成／未変更。ユーザーの手動再起動・稼働確認待ち。[記録](../windows/docs/MEMORY-AUDIT-2026-10-21.md#手動確認用のrelease-exe)を参照。以下の配布物未更新は候補作成前の記録。
+
+**Windowsメモリ調査（2026-10-21、Issue #5）:** 同期受信の.NET `PeerSession`で、開始確定後も過去256計画と背景PNGを保持する経路を実ヒープで確認。専用ブランチの修正候補は開始確定時・計画無効化時に準備待ち辞書から参照を外し、通信形式と描画側の保持を維持する。CLIで過去PNGの生存が256件→0件となることを確認した。通常アプリの削減量、100MB未満、MacのPhysical Footprintは未検証。Swift側は別実装のため未変更。[Windowsの計測条件・回帰・残件](../windows/docs/MEMORY-AUDIT-2026-10-21.md)を参照。稼働版・配布物は未更新。
+
 **旧Mac Releaseの削除（2026-10-20）:** ユーザーの追加指示により、下書きで保管していたbuild 14・build 12・v1.0.1・v1.0.0のRelease 4件を削除した。本文と添付ファイルはSHA-256を確認して`artifacts/macos/github-release-20261020/deleted-release-backups/`へ退避済み。ソースタグは保持し、現行Mac版・Windows版のReleaseと添付ファイルは変更しない。以下の下書き保管は当時の記録。
 
 **Macの公開配布更新（2026-10-20）:** Windows側の説明・配布構成へ合わせ、動作確認済みbuild 17の署名済みAPPを再ビルドせず、README・BUILD-INFO.txt・ライセンスを添えたZIP／DMGとSHA256SUMS.txtへ再梱包した。APP全6ファイルは受け入れ済みAPPと一致。公開先は既存の`macos-v1.1.0`、初回公開時のタグを保持し、実際のAPPソースは`0159a24`として本文・BUILD-INFOへ記録する。旧Mac独立Releaseはタグと配布物を保持した下書きで保管し、公開一覧は現行Mac版1件へまとめる。Windows本体・配布物・Releaseは更新しない。[配布検証](docs/RELEASE-VERIFICATION-2026-10-20.md)と[利用者向け更新内容](docs/RELEASE-NOTES-2026-10-20.md)を参照。以下は各作業時点の記録。

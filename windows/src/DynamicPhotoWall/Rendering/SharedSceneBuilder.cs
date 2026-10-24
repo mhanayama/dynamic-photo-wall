@@ -1,5 +1,4 @@
 using System.Windows.Media.Imaging;
-using System.Security.Cryptography;
 using Net = DynamicPhotoWall.Networking;
 
 namespace DynamicPhotoWall.Rendering;
@@ -9,29 +8,11 @@ public static class SharedSceneBuilder
 {
     public static SharedVisual Build(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images,
         IReadOnlyCollection<string> localDisplayIds, bool optimized = true)
+        => Build(plan, images, localDisplayIds, PreparedAmbientTextures.Create(plan, localDisplayIds), optimized);
+
+    internal static SharedVisual Build(Net.SharedScenePlan plan, IReadOnlyDictionary<string, BitmapSource> images,
+        IReadOnlyCollection<string> localDisplayIds, PreparedAmbientTextures ambientTextures, bool optimized = true)
     {
-        // Static spans often carry byte-identical PNG samples. Decode/enhance
-        // them once per plan and share only immutable textures across surfaces.
-        var ambientTextures = new Dictionary<string, (byte[] Png, BitmapSource Texture, bool Opaque)>();
-        (BitmapSource Texture, bool Opaque) DecodeAmbient(Net.AmbientFrame frame)
-        {
-            var hash = Convert.ToHexString(SHA256.HashData(frame.Png));
-            if (ambientTextures.TryGetValue(hash, out var cached) && cached.Png.AsSpan().SequenceEqual(frame.Png))
-                return (cached.Texture, cached.Opaque);
-            using var stream = new MemoryStream(frame.Png, false);
-            var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.StreamSource = stream; bitmap.EndInit();
-            // Receiving displays apply color enhancement exactly once.
-            var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Pbgra32, null, 0);
-            var pixels = new byte[converted.PixelWidth * converted.PixelHeight * 4];
-            converted.CopyPixels(pixels, converted.PixelWidth * 4, 0); AmbientPixels.EnhanceColors(pixels);
-            var opaque = true;
-            for (var i = 3; i < pixels.Length; i += 4) if (pixels[i] != 255) { opaque = false; break; }
-            var texture = BitmapSource.Create(converted.PixelWidth, converted.PixelHeight, 96, 96,
-                PixelFormats.Pbgra32, null, pixels, converted.PixelWidth * 4);
-            texture.Freeze(); ambientTextures[hash] = (frame.Png, texture, opaque);
-            return (texture, opaque);
-        }
         SceneVisual Surface(double width, double height)
         {
             var background = PhotoRenderer.ParseBrush(plan.Background);
@@ -51,7 +32,7 @@ public static class SharedSceneBuilder
             };
         }
         var scene = Surface(plan.Viewport.Width, plan.Viewport.Height);
-        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images, Optimized = optimized };
+        var visual = new SharedVisual { Scene = scene, Plan = plan, Images = images, Optimized = optimized, AmbientTextures = ambientTextures };
         foreach (var id in plan.Placements.Select(p => p.DisplayId).Distinct())
         {
             if (id != null && !localDisplayIds.Contains(id)) continue;
@@ -69,7 +50,7 @@ public static class SharedSceneBuilder
             var frames = plan.Ambient.Where(f => f.DisplayId == id).OrderBy(f => f.At).ToArray();
             if (frames.Length > 0)
             {
-                var textures = frames.Select(DecodeAmbient).ToArray();
+                var textures = frames.Select(frame => ambientTextures[frame]).ToArray();
                 var ambient = new AmbientFrameVisual(frames, textures.Select(t => t.Texture).ToArray(),
                     surface.Viewport.Width, surface.Viewport.Height, textures.Select(t => t.Opaque).ToArray(), optimized);
                 if (ambient.CombinedDrawing != null) surface.Drawing!.Children.Add(ambient.CombinedDrawing.Root);

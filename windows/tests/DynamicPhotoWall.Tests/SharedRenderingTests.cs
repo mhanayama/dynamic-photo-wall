@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -76,6 +77,54 @@ internal static class SharedRenderingTests
         }
         var pixels = new byte[32 * 24 * 4]; bitmap.CopyPixels(pixels, 32 * 4, 0); return pixels;
     }
+    public static async Task PreparedBackgrounds()
+    {
+        var uiThread = Environment.CurrentManagedThreadId;
+        var renderer = new PhotoRenderer(new(64, 24), new WallSettings(), new TransitionController(), new AnimationScheduler());
+        try
+        {
+            foreach (var alpha in new[] { false, true })
+            {
+                var plan = Plan(true, alpha, Net.SceneMode.Gallery);
+                var reference = Build(plan, false, alpha);
+                var prepared = await Task.Run(() =>
+                {
+                    Check(Environment.CurrentManagedThreadId != uiThread, "background decoding runs away from the presentation dispatcher");
+                    return PreparedAmbientTextures.Create(plan, plan.Displays.Select(d => d.Key.LayoutId).ToArray());
+                });
+                Check(plan.Ambient.All(f => prepared[f].Texture.IsFrozen), "all prepared textures are safe to share across dispatchers");
+                Check(ReferenceEquals(prepared[plan.Ambient[0]].Texture, prepared[plan.Ambient[2]].Texture),
+                    "identical PNG samples across displays still share one frozen texture");
+                Check(plan.Ambient.All(f => prepared[f].Opaque != alpha), "preparation preserves alpha classification");
+                foreach (var frame in plan.Ambient) Array.Clear(frame.Png);
+                var images = new Dictionary<string, BitmapSource> { [key.OpaqueId] = Texture(alpha) };
+                var ids = plan.Displays.Select(d => d.Key.LayoutId).ToArray();
+                var candidate = SharedSceneBuilder.Build(plan, images, ids, prepared);
+                // Also exercise rebuilding a retained scene without reading its PNG inputs.
+                var rebuilt = SharedSceneBuilder.Build(plan, images, ids, candidate.AmbientTextures);
+                foreach (var at in new[] { 0, .4, 2, 5, 9.6, 10, 20d })
+                {
+                    renderer.PresentShared(reference, at); renderer.PresentShared(candidate, at); renderer.PresentShared(rebuilt, at);
+                    for (var output = 0; output < 2; output++)
+                    {
+                        var expected = Pixels(reference, output, false);
+                        Check(expected.Zip(Pixels(candidate, output, true)).Max(p => Math.Abs(p.First - p.Second)) <= 2,
+                            "worker-prepared background preserves both outputs, color, fades and transparency");
+                        Check(Pixels(candidate, output, true).SequenceEqual(Pixels(rebuilt, output, true)),
+                            "recovery reuses decoded background textures without changing pixels");
+                    }
+                }
+            }
+            var localPlan = Plan(true, false, Net.SceneMode.Gallery);
+            var local = localPlan.Displays[0].Key.LayoutId;
+            localPlan = localPlan with { Ambient = localPlan.Ambient.Select(f => f.DisplayId == local ? f : f with { Png = [0] }).ToArray() };
+            PreparedAmbientTextures.Create(localPlan, [local]); // Remote PNGs are deliberately not decodable.
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            try { PreparedAmbientTextures.Create(localPlan, [local], cancelled.Token); throw new Exception("Cancelled background preparation completed"); }
+            catch (OperationCanceledException) { }
+        }
+        finally { renderer.Clear(); renderer.Close(); }
+    }
     public static Task Parity()
     {
         var renderer = new PhotoRenderer(new(64, 24), new WallSettings(), new TransitionController(), new AnimationScheduler());
@@ -139,8 +188,42 @@ internal static class SharedRenderingTests
             }
         }
         finally { renderer.Clear(); renderer.Close(); }
+        VerifyOffscreenTextures();
         Console.WriteLine($"Shared drawing: {count} output comparisons; maximum channel delta {maximum}.");
         return Task.CompletedTask;
+    }
+    private static void VerifyOffscreenTextures()
+    {
+        var source = Plan(false, false, Net.SceneMode.GalleryScroll);
+        var placements = Enumerable.Range(0, 64).Select(i => source.Placements[0] with
+        {
+            Id = i, Clip = new(0, 0, 64, 24), Width = 28, Height = 20,
+            FromX = 80 + i * 40, ToX = 80 + i * 40 - 240, FromY = 2, ToY = 2,
+            FromScale = 1, ToScale = 1, StartSeconds = 0, MotionSeconds = 10,
+            VisibleFrom = 0, VisibleUntil = 10, FadeSeconds = 0, Ease = false
+        }).ToArray();
+        var plan = source with { Placements = placements };
+        var reference = Build(plan, false); var candidate = Build(plan, true);
+        var renderer = new PhotoRenderer(new(64, 24), new WallSettings(), new TransitionController(), new AnimationScheduler());
+        var maximumAttached = 0;
+        try
+        {
+            foreach (var at in new[] { 0, .5, .625, .666666, .7, 1, 2, 5, 7.9999, 9.9999, 10, 30, 3, 0d })
+            {
+                renderer.PresentShared(reference, at); renderer.PresentShared(candidate, at);
+                var attached = candidate.PhotoDrawings.Count(d => d.Root.Children.Count != 0);
+                maximumAttached = Math.Max(maximumAttached, attached);
+                Check(attached <= 3, "the future scroll strip must not attach dozens of offscreen textures to an output");
+                if (at == 0) Check(attached == 0, "seeking before entry detaches every future photo without dropping the prepared textures");
+                for (var output = 0; output < 2; output++)
+                    Check(Pixels(reference, output, false).Zip(Pixels(candidate, output, true)).Max(p => Math.Abs(p.First - p.Second)) <= 2,
+                        $"scroll entry, exit and backward seeks preserve both physical crops (at={at})");
+            }
+            Check(maximumAttached > 0, "visible photos must reattach when scrolling into the clip");
+            Check(candidate.Images.Count == reference.Images.Count, "ready and seek retain all decoded assets");
+        }
+        finally { renderer.Clear(); renderer.Close(); }
+        Console.WriteLine($"Future scroll drawing attachments: 64 -> at most {maximumAttached}; prepared assets preserved; entry/exit/seek pixels verified.");
     }
     public static Task DecodeSizes()
     {
@@ -166,7 +249,47 @@ internal static class SharedRenderingTests
             var decoded = NetworkBitmap.Decode(data, 64, orientation);
             Check(decoded.PixelWidth == 64, $"oriented PNG and WebP decode at requested display width (orientation={orientation}, actual={decoded.PixelWidth})");
         }
+        var retained = new List<(BitmapSource Image, WeakReference<byte[]> Input, byte[] Pixels)>();
+        foreach (var orientation in Enumerable.Range(1, 8)) foreach (var format in new[] { "png", "jpg", "webp" })
+            retained.Add(DecodedWithoutInput(format, orientation));
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+        var retainedInputs = retained.Count(item => item.Input.TryGetTarget(out _));
+        Console.WriteLine($"Decoded input buffers retained: {retainedInputs}/{retained.Count}");
+        Check(retainedInputs == 0, "displaying a decoded image must not pin its disposed compressed input buffer");
+        foreach (var item in retained)
+        {
+            var actual = new byte[item.Pixels.Length]; item.Image.CopyPixels(actual, item.Image.PixelWidth * 4, 0);
+            Check(actual.SequenceEqual(item.Pixels), "decoded pixels stay readable after stream disposal, zeroing and input collection");
+        }
         return Task.CompletedTask;
+    }
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (BitmapSource Image, WeakReference<byte[]> Input, byte[] Pixels) DecodedWithoutInput(string format, int orientation)
+    {
+        var source = Texture(width: 128, height: 256);
+        byte[] data;
+        if (format == "webp")
+        {
+            var pixels = new byte[128 * 256 * 4]; source.CopyPixels(pixels, 128 * 4, 0);
+            using var bitmap = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(128, 256, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Premul));
+            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
+            using var image = SkiaSharp.SKImage.FromBitmap(bitmap); using var encoded = image.Encode(SkiaSharp.SKEncodedImageFormat.Webp, 100);
+            data = encoded.ToArray();
+        }
+        else
+        {
+            BitmapEncoder encoder = format == "jpg" ? new JpegBitmapEncoder() : new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            using var output = new MemoryStream(); encoder.Save(output); data = output.ToArray();
+        }
+        var weak = new WeakReference<byte[]>(data);
+        var decoded = NetworkBitmap.Decode(data, 64, orientation);
+        var expected = new byte[decoded.PixelWidth * decoded.PixelHeight * 4];
+        var converted = new FormatConvertedBitmap(decoded, PixelFormats.Pbgra32, null, 0);
+        converted.CopyPixels(expected, decoded.PixelWidth * 4, 0);
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(data);
+        // Compare premultiplied pixels for all codec output formats.
+        converted.Freeze(); return (converted, weak, expected);
     }
     public static Task Benchmark(string root)
     {

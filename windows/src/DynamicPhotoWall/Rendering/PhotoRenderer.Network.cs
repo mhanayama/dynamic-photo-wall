@@ -10,6 +10,7 @@ public sealed class SharedVisual
     public required IReadOnlyDictionary<string, BitmapSource> Images { get; init; }
     internal bool IsContinuation { get; set; }
     internal bool Optimized { get; init; }
+    internal PreparedAmbientTextures AmbientTextures { get; init; } = null!;
     internal double[]? NextPhotoUpdates { get; set; }
     internal double LastPresentation { get; set; } = double.NaN;
     internal long EvaluationCount { get; set; }
