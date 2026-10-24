@@ -1,5 +1,9 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**同期切替前の計算分離とShared Core準備（2026-10-22）:** ネットワーク同期中のPan／scrollからの切替直前のカクつき報告を受け、終了4秒前に走る選択・配置・timeline計算をMainActorから専用actorへ移した。`docs/shared-core-native-renderer-design`の設計commit `01def47`を参照し、既存Swift計算値とLAN変換・背景／画像decodeを分離。将来のRust呼出はLAN adapterの内側へ置き、毎frameの描画・時計・Ready／Commitは既存所有者へ残す。URL／native RNG等は旧動作を維持する中間形で、Rust・FFIの導入や移行gate完了ではない。Swift単体215件／31 suites、共通fixture・背景色・Zoom、ネットワーク26件／241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新、実機での体感改善は未確認。GUI自動操作は行っていない。[実装境界・残る課題・検証](docs/SCENE-PLANNING-SEPARATION-2026-10-22.md)を参照。
+
+**同期横スクロールの負荷削減（2026-10-21）:** ユーザー報告を受け、稼働build 17のスタックと20秒の診断トレースを採取した。描画・Core Animation反映が主要な経路として現れたが、33ms以上のメインスレッド占有は記録されず、報告された瞬間の原因を断定しない。同期横スクロールの共通移動を親レイヤーへまとめ、最大128枚を個別に動かす負荷を削減した。同一計画600更新の座標変更は76,800回→600回、従来レイヤーとの全画素一致を確認。独立した動き・clip・フェードは個別処理を維持する。Swift単体212件 / 31 suites、共通fixture・背景色・Zoom、ネットワーク26件 / 241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新で、実機での体感改善は未確認。GUI自動操作は行っていない。[調査・検証記録](docs/GALLERY-SCROLL-STUTTER-2026-10-21.md)を参照。
+
 **Windows EXEの領域別メモリ計測（2026-10-21 17:04 JST）:** ユーザーの詳細モニター依頼により、稼働PID 21116へWindows API、ClrMDのPSSクローン、Microsoft VMMapのCLIを使用した。生存managed約8.5〜11.7MiB、GCセグメントcommit約30〜51MiB、デコード済み画像のWPF推定約90MiB。ローカルLRUと入力配列保持は0。VMMapでは物理メモリ上の私有領域約210〜228MiB、ネイティブヒープ約143〜154MiB、DLL／EXE約105MiBで、managedヒープが使用量の中心ではない。画像量はネイティブ領域表の内数で合算不可。WPF／WIC／ドライバー等の割り当て元別の内訳にはスタック付き記録が必要で、リークや具体的な原因関数は未確定。製品コード・EXE・設定は変更せず、再起動・強制GCも行わなかった。[詳細と証跡](../windows/docs/PROCESS-MEMORY-BREAKDOWN-2026-10-21.md)。
 
 **第4候補の約7時間稼働（2026-10-21 16:50 JST）:** ユーザーは動作の安定を報告したが、メモリ使用量は相変わらずとのこと。本体PID 21116の約7.2時間稼働を確認し、受動30秒観測のWorking Set平均554.53MiB、Private Bytes平均1,113.39MiBを記録した。起動からの連続記録ではないため、長期増加傾向やリークの有無は未確定。使用量削減を受け入れ済みとは扱わない。追加最適化の見送りを維持し、コード・EXE・設定の変更やアプリの再起動、ヒープ取得は行わなかった。[記録](../windows/docs/TRANSITION-LATENCY-2026-10-21.md#約7時間稼働後の確認2026-10-21-1650-jst)。

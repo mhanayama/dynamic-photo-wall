@@ -30,8 +30,11 @@ import SwiftUI
         let cards: [Card]
         let ambient: [CGImage?]
         let ambientOpaque: [Bool]
+        let strip = CALayer()
+        let scrollMotion: PNPlacement?
         init(_ layer: PNPlaybackLayer, content: PNPlayback.SurfaceContent) {
             self.content = content
+            scrollMotion = Self.sharedScrollMotion(layer, content: content)
             root.anchorPoint = .zero; root.position = .zero
             root.isGeometryFlipped = true; root.masksToBounds = true; root.allowsGroupOpacity = true
             root.backgroundColor = NSColor(Color(hex: layer.frame.plan.background)).cgColor
@@ -42,7 +45,24 @@ import SwiftUI
             shade.backgroundColor = NSColor.black.withAlphaComponent(0.18).cgColor
             root.addSublayer(shade)
             cards = content.cards.map(Card.init)
-            for card in cards { root.addSublayer(card.clip) }
+            if scrollMotion != nil {
+                // All cards share one translation. Updating every offscreen
+                // photograph also sends its geometry to the render server.
+                strip.frame = CGRect(x: 0, y: 0, width: layer.display.width, height: layer.display.height)
+                root.addSublayer(strip)
+                for (prepared, card) in zip(content.cards, cards) {
+                    let p = prepared.placement
+                    // The scene root supplies the fixed display clip. Moving a
+                    // per-card clip with the strip would cut off entering cards.
+                    card.clip.masksToBounds = false
+                    card.clip.frame = CGRect(x: p.clip.x - content.crop.minX, y: p.clip.y - content.crop.minY,
+                                             width: p.clip.width, height: p.clip.height)
+                    card.image.frame = CGRect(x: p.fromX - p.clip.x, y: p.fromY - p.clip.y, width: p.width, height: p.height)
+                    strip.addSublayer(card.clip)
+                }
+            } else {
+                for card in cards { root.addSublayer(card.clip) }
+            }
             var decoded: [ObjectIdentifier: CGImage] = [:]
             ambient = content.ambient.map { item in
                 let key = ObjectIdentifier(item.image)
@@ -57,6 +77,19 @@ import SwiftUI
                 if let opaque = opacity[key] { return opaque }
                 let opaque = Self.isOpaque(image); opacity[key] = opaque; return opaque
             }
+        }
+        private static func sharedScrollMotion(_ layer: PNPlaybackLayer, content: PNPlayback.SurfaceContent) -> PNPlacement? {
+            guard layer.frame.plan.mode == "galleryScroll", let first = content.cards.first?.placement else { return nil }
+            let dx = first.toX - first.fromX
+            guard content.cards.allSatisfy({ card in
+                let p = card.placement
+                let clip = CGRect(x: p.clip.x, y: p.clip.y, width: p.clip.width, height: p.clip.height)
+                return clip.contains(content.crop) && p.fromScale == 1 && p.toScale == 1 && p.fromY == p.toY
+                    && p.startSeconds == first.startSeconds && p.motionSeconds == first.motionSeconds && !p.ease
+                    && abs((p.toX - p.fromX) - dx) < 0.0000001
+                    && p.visibleFrom == 0 && p.visibleUntil == layer.frame.plan.duration && (p.fadeInSeconds ?? 0) == 0
+            }) else { return nil }
+            return first
         }
         private static func isOpaque(_ image: CGImage) -> Bool {
             switch image.alphaInfo {
@@ -105,6 +138,15 @@ import SwiftUI
             if !CATransform3DEqualToTransform(scene.root.transform, transform) { scene.root.transform = transform; mutationCount += 1 }
             setOpacity(scene.root, layer.opacity)
             updateBackground(scene, layer: layer, bounds: bounds)
+            if let motion = scene.scrollMotion {
+                let value = layer.evaluate(motion)
+                let transform = CATransform3DMakeTranslation(value.x - motion.fromX, 0, 0)
+                if !CATransform3DEqualToTransform(scene.strip.transform, transform) {
+                    scene.strip.transform = transform; mutationCount += 1
+                }
+                setOpacity(scene.strip, value.opacity)
+                continue
+            }
             for (prepared, card) in zip(content.cards, scene.cards) {
                 let p = prepared.placement, value = layer.evaluate(p)
                 let hidden = value.opacity <= 0

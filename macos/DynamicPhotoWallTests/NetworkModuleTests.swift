@@ -149,6 +149,90 @@ import Testing
             }
         }
     }
+    @Test func sceneTimelineConversionPreservesAllPlacementFields() throws {
+        let v = try vector()
+        let asset = PhotoAsset(url: URL(string: "peer-cache://image/\(v.photo.key.opaqueId)")!,
+            pixelWidth: v.photo.pixelWidth, pixelHeight: v.photo.pixelHeight)
+        for fades in [false, true] {
+            var placement = v.scene.placements[0]
+            placement.id = 17; placement.displayId = v.wall.displays[1].id
+            placement.clip = PNRect(x: -120.25, y: 30.5, width: 1800.75, height: 900.125)
+            placement.width = 3200.5; placement.height = 1100.25
+            placement.fromX = -700.5; placement.fromY = 20.25; placement.toX = 45.75; placement.toY = -21.5
+            placement.fromScale = 1.125; placement.toScale = 1.75; placement.centerX = 0.3; placement.centerY = 0.7
+            placement.startSeconds = 3.5; placement.motionSeconds = 17.25
+            placement.visibleFrom = 2.25; placement.visibleUntil = 45.5
+            placement.fadeSeconds = 0.6; placement.cornerRadius = 12.5; placement.ease = fades
+            placement.fadeInSeconds = fades ? 0 : nil; placement.fadeOutSeconds = fades ? 1.25 : nil
+            let native = PNSceneTimelineAdapter.native(placement, asset: asset, displayID: 2)
+            #expect(native.asset == asset && native.displayID == 2)
+            let wire = PNSceneTimelineAdapter.wire(native, asset: v.photo.key, displayId: placement.displayId)
+            #expect(try PNWire.decode(PNJSON.self, PNWire.encode(wire)) == PNWire.decode(PNJSON.self, PNWire.encode(placement)))
+        }
+    }
+    @Test func nextScenePlanningLeavesMainActorResponsive() async throws {
+        let v = try vector(), catalog = PNPlanningCatalog(), worker = PNScenePlanWorker()
+        let photos = (0..<512).map { index in
+            var photo = v.photo
+            photo.key.imageId = PNWire.digest(Data("planning-\(index)".utf8))
+            photo.pixelWidth = 600; photo.pixelHeight = 1800
+            photo.faceMetadata = PNFaces(pixelWidth: 600, pixelHeight: 1800, detector: "fixture", state: "complete", faces: [])
+            return photo
+        }
+        // Finish catalog work first: callbacks must run during selection/layout,
+        // not merely while waiting for the library snapshot to be prepared.
+        let prepared = try await catalog.prepare(photos)
+        for scroll in [false, true] {
+            var settings = WallSettings()
+            settings.galleryEnabled = !scroll; settings.galleryScrollEnabled = scroll
+            settings.verticalPanEnabled = false; settings.horizontalPanEnabled = false; settings.zoomEnabled = false
+            settings.glassBackground = false
+            var wall = v.wall; wall.playback = PNOptions(settings)
+            var finished = false, callbacks = 0
+            let started = ProcessInfo.processInfo.systemUptime
+            let task = Task {
+                defer { finished = true }
+                return try await worker.build(wall: wall, group: wall.groups[0].id, prepared: prepared, previous: nil)
+            }
+            while !finished {
+                try await Task.sleep(for: .milliseconds(1))
+                if !finished { callbacks += 1 }
+            }
+            let plan = try #require(try await task.value)
+            try plan.validate()
+            #expect(plan.mode == (scroll ? "galleryScroll" : "gallery"))
+            #expect(callbacks > 0)
+            print("Scene planning \(plan.mode): \(ProcessInfo.processInfo.systemUptime - started)s, \(callbacks) MainActor callbacks")
+        }
+    }
+    @Test func cancelledScenePlanningCannotReturnAPlan() async throws {
+        let v = try vector()
+        let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Planning.\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = try PNPhotoCache(root: root, key: SymmetricKey(size: .bits256))
+        let planner = PNScenePlanner(cache: cache)
+        var settings = WallSettings()
+        settings.galleryEnabled = false; settings.galleryScrollEnabled = false
+        settings.verticalPanEnabled = false; settings.horizontalPanEnabled = false; settings.zoomEnabled = true
+        settings.glassBackground = false
+        var wall = v.wall; wall.playback = PNOptions(settings)
+        // Cancel after calculation, while native background input is pending.
+        // Completion must not publish the stale result or block a later request.
+        var waiting: CheckedContinuation<Data?, Never>?
+        planner.readOriginal = { _ in await withCheckedContinuation { waiting = $0 } }
+        settings.glassBackground = true; wall.playback = PNOptions(settings)
+        let cancelled = Task {
+            try await planner.prepare(wall: wall, group: wall.groups[0].id, photos: [v.photo])
+        }
+        while waiting == nil { await Task.yield() }
+        cancelled.cancel()
+        waiting?.resume(returning: nil); waiting = nil
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        settings.glassBackground = false; wall.playback = PNOptions(settings)
+        let plan = try #require(try await planner.prepare(wall: wall, group: wall.groups[0].id, photos: [v.photo]))
+        #expect(plan.mode == "zoom")
+        try plan.validate()
+    }
     @Test func sharedGalleriesRenewAcrossTwoHoursWithoutWindows() async throws {
         let v = try vector()
         let root = FileManager.default.temporaryDirectory.appending(path: "DPW.Gallery.\(UUID())")

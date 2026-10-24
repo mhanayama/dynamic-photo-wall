@@ -24,9 +24,10 @@ nonisolated struct WallScene: Equatable, Sendable {
     var zoomCenter = CGPoint(x: 0.5, y: 0.5)
 }
 
-/// One planner and one selector live for the entire playback session.
-@MainActor
-final class WallScenePlanner {
+/// One planner and one selector live for the entire playback session. Each
+/// mutable instance stays with its owner (MainActor playback or the network
+/// planning actor); no planner instance is shared across actors.
+nonisolated final class WallScenePlanner {
     private let selector: PhotoSelector
     private var generator: SeededRandomNumberGenerator
     private var previous: WallMode?

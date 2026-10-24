@@ -2,9 +2,9 @@ import Foundation
 
 /// Stateful photo selection matching the Windows implementation's history and
 /// sequential-playback rules. Simultaneously displayed photos are never used
-/// as the small-library history fallback.
-@MainActor
-final class PhotoSelector {
+/// as the small-library history fallback. Confine each instance to its owning
+/// playback actor; the selector is mutable and deliberately not Sendable.
+nonisolated final class PhotoSelector {
     private var recentURLs: [URL] = []
     private var selectedURLs: Set<URL> = []
     private var sequentialAfter: URL?
