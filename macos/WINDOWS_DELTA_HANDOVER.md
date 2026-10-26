@@ -1,5 +1,13 @@
 # Mac実装への引き継ぎ — 2026-10-17のWindows追加分
 
+**立体写真実験の終了（2026-10-26）:** ユーザー指定により、モデル研究へ踏み込まず資料とソースの記録で区切る。TripoSRの人物3Dは立体形状の再現性が低く、写真投影を加えたAlpha 2も実用不可。現経路は採用せず、人物モデル調査・高速化・本体統合・Metal移植を継続タスクにしない。[最終handover](../docs/SPATIAL-PHOTO-HANDOVER-2026-10-26.md)を参照。以下のAlpha 1／2・視差ワープの項目は実験経緯として残す。
+
+**人物3D Alpha 2の投影描画（2026-10-26）:** Alpha 1は頂点色のテクスチャ品質がユーザー評価で不合格。Alpha 2では人物RGBAを元カメラからメッシュへ投影し、人物だけの元視点深度マップで隠面への誤投影を防ぐ。生成形状・GLB・推論は変更せず、既存キャッシュを利用する。元写真の細部は戻るが、側面と生成色の境界・輪郭のずれは未解決。Metalで同じ結果を得るには、GLBの頂点色だけでなく人物RGBAと元視点の深度パスも必要。投影ON/OFF比較、初期表示の正面静止、CLI各6/6を追加した。Mac実装・GUI自動操作は行っていない。
+
+**人物3D＋補完背景のWindows Alpha 1（2026-10-26）:** [設計](../docs/PORTRAIT-3D-PIPELINE.md)と[アルファ版の手順・結果](../windows/experiments/SpatialPhoto/PORTRAIT-ALPHA.md)を参照。`release/windows/win-x64/portrait-alpha/PortraitAlpha.exe`でBiRefNet lite／LaMa／TripoSRのCPU生成とD3D12再生を試す。人物は側面を含む頂点色メッシュ、背景は別の平面で、実際のカメラが±60°まで移動する。上半身・全身各1枚で生成とCLI描画を確認したが、顔や広い背景の品質は不足。ランタイムは`.tools/portrait-alpha/`、作業出力は`artifacts/windows/portrait-alpha/`。GLB・背景PNG・カメラ情報とハッシュを持つmanifestを保存し、描画時に推論しない。Macへの移植では旧深度ワープと別のシーン契約として扱う。Metal・Macの生成環境・本体統合は未実装、既存のOS差分と隔離検証を維持する。
+
+**Spatial PhotoのWindows先行試作（2026-10-26）:** ユーザー指定によりネイティブ実装とし、まず[Windows用の深度生成＋Direct3D 12再生](../windows/experiments/SpatialPhoto/README.md)を試せる形にする。Mac／Metalの実装は今後行い、今回は変更しない。推論はONNX Runtime＋DirectML／CPU、描画はD3D12の独立試作。画像と深度を別に持ち、生成済み深度をキャッシュして再利用する。最新の強度調整版EXEは`release/windows/win-x64/spatial-photo-test/SpatialPhotoTest.exe`、モデルは同じ場所の`models/`に配置する。旧版の角度表記を0〜100%の強度へ変更し、係数上限0.24・既定0.12と手動視点による左右比較を追加。アプリ終了後に同じ配布先へ上書きする。作業生成物とキャッシュは`artifacts/windows/spatial-photo/`。Macへ移植するときは同じ正規化済み画像・白が近い相対深度・制限した水平変位の契約を利用できる。通常の再生・設定・ネットワークへの統合は後続。既存のOS差分と隔離検証の方針を維持し、GUI自動操作は明示依頼時だけ実施する。
+
 **同期切替前の計算分離とShared Core準備（2026-10-22）:** ネットワーク同期中のPan／scrollからの切替直前のカクつき報告を受け、終了4秒前に走る選択・配置・timeline計算をMainActorから専用actorへ移した。`docs/shared-core-native-renderer-design`の設計commit `01def47`を参照し、既存Swift計算値とLAN変換・背景／画像decodeを分離。将来のRust呼出はLAN adapterの内側へ置き、毎frameの描画・時計・Ready／Commitは既存所有者へ残す。URL／native RNG等は旧動作を維持する中間形で、Rust・FFIの導入や移行gate完了ではない。Swift単体215件／31 suites、共通fixture・背景色・Zoom、ネットワーク26件／241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新、実機での体感改善は未確認。GUI自動操作は行っていない。[実装境界・残る課題・検証](docs/SCENE-PLANNING-SEPARATION-2026-10-22.md)を参照。
 
 **同期横スクロールの負荷削減（2026-10-21）:** ユーザー報告を受け、稼働build 17のスタックと20秒の診断トレースを採取した。描画・Core Animation反映が主要な経路として現れたが、33ms以上のメインスレッド占有は記録されず、報告された瞬間の原因を断定しない。同期横スクロールの共通移動を親レイヤーへまとめ、最大128枚を個別に動かす負荷を削減した。同一計画600更新の座標変更は76,800回→600回、従来レイヤーとの全画素一致を確認。独立した動き・clip・フェードは個別処理を維持する。Swift単体212件 / 31 suites、共通fixture・背景色・Zoom、ネットワーク26件 / 241 assertionsとarm64 Release成功。通常アプリ・配布物は未更新で、実機での体感改善は未確認。GUI自動操作は行っていない。[調査・検証記録](docs/GALLERY-SCROLL-STUTTER-2026-10-21.md)を参照。

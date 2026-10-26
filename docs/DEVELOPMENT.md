@@ -40,6 +40,12 @@ WindowsではMac版をビルドできません。パッケージ作成とGitHub�
 
 ## 資料の入口
 
+**Issue #13の立体写真実験は終了。** 実用品質に届かず、モデル研究へ踏み込まないというユーザー指定で区切った。[最終handover](SPATIAL-PHOTO-HANDOVER-2026-10-26.md)を参照。以下の実験手順は記録として残し、生成器調査・本体統合・Mac移植を継続作業として扱わない。
+
+人物の側面を生成し、補完した背景1枚と組み合わせる方式は[人物3D＋補完背景の設計](PORTRAIT-3D-PIPELINE.md)を参照。上半身と全身を同等の対象とする。[Alpha 2](../windows/experiments/SpatialPhoto/PORTRAIT-ALPHA.md)を`release/windows/win-x64/portrait-alpha/PortraitAlpha.exe`へ作成。元写真の人物RGBAを可視面へ投影し、旧生成色とのON/OFF比較を追加。側面品質は未解決。`Setup-PortraitAlpha.ps1`でCPU生成ランタイムを取得し、`Package.ps1 -PortraitAlpha`でビルド、`Start-PortraitAlpha.ps1`で起動する。既存の視差ワープEXEとは別の試作。
+
+Issue #13のWindows用Spatial Photo試作は[専用README](../windows/experiments/SpatialPhoto/README.md)を参照。`windows/experiments/SpatialPhoto/Build.ps1 -DownloadModel -Test`で、深度生成とDirect3D 12の実描画・読み戻しをGUIなしで検証できる。`Package.ps1 -Test`はD&D用の強度調整版EXEを`release/windows/win-x64/spatial-photo-test/`へ作成し、モデルと必要なランタイムを揃える。更新時はアプリを終了してから同じEXEを上書きする。EXEを直接開くか同じ場所のソース側`Start.ps1`で起動し、画像をドロップして試す。通常のスライドショーへの組み込みは後続、MacのMetal実装は今後行う。
+
 | 調べたいこと | 資料 |
 |---|---|
 | 詳しい設定と動作 | [Windows](../windows/REFERENCE.md) / [Mac](../macos/REFERENCE.md) |

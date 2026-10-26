@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "triposr_source": "107cefdc244c39106fa830359024f6a2f1c78871",
+  "files": [
+    { "path": "triposr/model.ckpt", "url": "https://huggingface.co/stabilityai/TripoSR/resolve/5b521936b01fbe1890f6f9baed0254ab6351c04a/model.ckpt", "sha256": "429e2c6b22a0923967459de24d67f05962b235f79cde6b032aa7ed2ffcd970ee" },
+    { "path": "triposr/config.yaml", "url": "https://huggingface.co/stabilityai/TripoSR/resolve/5b521936b01fbe1890f6f9baed0254ab6351c04a/config.yaml" },
+    { "path": "birefnet/model.onnx", "url": "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/onnx/model.onnx", "sha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333" },
+    { "path": "birefnet/preprocessor_config.json", "url": "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/preprocessor_config.json" },
+    { "path": "lama/model.onnx", "url": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx", "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6" }
+  ]
+}

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.24)
+project(DpwSpatialNative LANGUAGES CXX)
+add_library(DpwSpatialNative SHARED Spatial.cpp)
+target_compile_features(DpwSpatialNative PRIVATE cxx_std_17)
+set_property(TARGET DpwSpatialNative PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_compile_definitions(DpwSpatialNative PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(DpwSpatialNative PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(DpwSpatialNative PRIVATE d3d12 dxgi d3dcompiler)
